@@ -1,0 +1,1158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Leopard vs Zombies</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  background: #111;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 100vh;
+  overflow: hidden;
+  font-family: 'Courier New', monospace;
+}
+canvas {
+  border: 2px solid #333;
+  image-rendering: pixelated;
+}
+</style>
+</head>
+<body>
+<canvas id="game" width="960" height="540"></canvas>
+<script>
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+
+// ============ GAME STATE ============
+const GRAVITY = 0.6;
+const GROUND_Y = 440;
+
+const keys = {};
+let gameState = 'title'; // title, playing, levelComplete, gameWin, gameOver
+let currentLevel = 1;
+let screenShake = 0;
+let screenFlash = 0;
+let particles = [];
+let floatingTexts = [];
+let transitionTimer = 0;
+
+// ============ PLAYER ============
+const player = {
+  x: 80, y: GROUND_Y, w: 40, h: 50,
+  vx: 0, vy: 0,
+  speed: 4, jumpForce: -12,
+  onGround: false,
+  hp: 100, maxHp: 100,
+  attacking: false, attackTimer: 0, attackCooldown: 0,
+  facing: 1, // 1 = right, -1 = left
+  frame: 0, frameTimer: 0,
+  invincible: 0,
+  combo: 0, comboTimer: 0,
+  score: 0
+};
+
+// ============ CAMERA ============
+const camera = { x: 0, y: 0 };
+
+// ============ LEVEL DATA ============
+function getLevelData(level) {
+  const levels = {
+    1: {
+      width: 3200,
+      name: "THE DARK FOREST",
+      bgColor: '#1a2a1a',
+      groundColor: '#2d4a2d',
+      zombieCount: 12,
+      zombieHp: 30,
+      zombieSpeed: 1.2,
+      platforms: [
+        { x: 400, y: 360, w: 120, h: 16 },
+        { x: 700, y: 300, w: 100, h: 16 },
+        { x: 1000, y: 340, w: 140, h: 16 },
+        { x: 1350, y: 280, w: 100, h: 16 },
+        { x: 1700, y: 360, w: 120, h: 16 },
+        { x: 2000, y: 300, w: 100, h: 16 },
+        { x: 2400, y: 340, w: 140, h: 16 },
+        { x: 2700, y: 280, w: 100, h: 16 },
+      ],
+      trees: generateTrees(3200),
+    },
+    2: {
+      width: 4000,
+      name: "THE GRAVEYARD",
+      bgColor: '#1a1a2a',
+      groundColor: '#3a3a4a',
+      zombieCount: 18,
+      zombieHp: 45,
+      zombieSpeed: 1.5,
+      platforms: [
+        { x: 300, y: 370, w: 100, h: 16 },
+        { x: 550, y: 300, w: 80, h: 16 },
+        { x: 800, y: 250, w: 100, h: 16 },
+        { x: 1100, y: 340, w: 120, h: 16 },
+        { x: 1400, y: 280, w: 80, h: 16 },
+        { x: 1700, y: 360, w: 100, h: 16 },
+        { x: 2000, y: 300, w: 120, h: 16 },
+        { x: 2300, y: 250, w: 80, h: 16 },
+        { x: 2600, y: 340, w: 100, h: 16 },
+        { x: 2900, y: 280, w: 120, h: 16 },
+        { x: 3200, y: 360, w: 100, h: 16 },
+        { x: 3500, y: 300, w: 80, h: 16 },
+      ],
+      gravestones: generateGravestones(4000),
+    },
+    3: {
+      width: 5000,
+      name: "THE ZOMBIE FORTRESS",
+      bgColor: '#2a1a1a',
+      groundColor: '#4a2a2a',
+      zombieCount: 25,
+      zombieHp: 60,
+      zombieSpeed: 1.8,
+      platforms: [
+        { x: 300, y: 360, w: 100, h: 16 },
+        { x: 550, y: 290, w: 80, h: 16 },
+        { x: 800, y: 220, w: 100, h: 16 },
+        { x: 1050, y: 340, w: 120, h: 16 },
+        { x: 1350, y: 270, w: 80, h: 16 },
+        { x: 1600, y: 360, w: 100, h: 16 },
+        { x: 1900, y: 300, w: 120, h: 16 },
+        { x: 2200, y: 240, w: 80, h: 16 },
+        { x: 2500, y: 340, w: 100, h: 16 },
+        { x: 2800, y: 280, w: 120, h: 16 },
+        { x: 3100, y: 360, w: 100, h: 16 },
+        { x: 3400, y: 300, w: 80, h: 16 },
+        { x: 3700, y: 250, w: 100, h: 16 },
+        { x: 4000, y: 340, w: 120, h: 16 },
+        { x: 4400, y: 300, w: 100, h: 16 },
+      ],
+      torches: generateTorches(5000),
+    }
+  };
+  return levels[level];
+}
+
+function generateTrees(width) {
+  const trees = [];
+  for (let x = 200; x < width - 200; x += 150 + Math.random() * 200) {
+    trees.push({ x, h: 80 + Math.random() * 60 });
+  }
+  return trees;
+}
+
+function generateGravestones(width) {
+  const stones = [];
+  for (let x = 200; x < width - 200; x += 100 + Math.random() * 150) {
+    stones.push({ x, h: 20 + Math.random() * 20 });
+  }
+  return stones;
+}
+
+function generateTorches(width) {
+  const torches = [];
+  for (let x = 200; x < width - 200; x += 200 + Math.random() * 200) {
+    torches.push({ x, flicker: Math.random() * Math.PI * 2 });
+  }
+  return torches;
+}
+
+// ============ ZOMBIES & ITEMS ============
+let zombies = [];
+let healthPickups = [];
+let levelData = null;
+let diamond = null;
+
+function spawnZombies() {
+  zombies = [];
+  const ld = levelData;
+  for (let i = 0; i < ld.zombieCount; i++) {
+    const x = 300 + (i / ld.zombieCount) * (ld.width - 600);
+    zombies.push({
+      x, y: GROUND_Y, w: 36, h: 48,
+      vx: 0, vy: 0,
+      hp: ld.zombieHp, maxHp: ld.zombieHp,
+      speed: ld.zombieSpeed * (0.8 + Math.random() * 0.4),
+      onGround: false,
+      facing: -1,
+      frame: 0, frameTimer: 0,
+      attackTimer: 0,
+      hurt: 0,
+      type: Math.random() < 0.3 ? 'big' : 'normal',
+      alive: true
+    });
+  }
+  // Make big zombies actually bigger and tougher
+  zombies.forEach(z => {
+    if (z.type === 'big') {
+      z.w = 44; z.h = 56;
+      z.hp *= 1.8; z.maxHp = z.hp;
+      z.speed *= 0.7;
+    }
+  });
+}
+
+function spawnHealthPickups() {
+  healthPickups = [];
+  const ld = levelData;
+  const count = 4 + currentLevel;
+  for (let i = 0; i < count; i++) {
+    healthPickups.push({
+      x: 200 + (i / count) * (ld.width - 400),
+      y: GROUND_Y - 10,
+      collected: false,
+      bobTimer: Math.random() * Math.PI * 2
+    });
+  }
+}
+
+function initLevel(level) {
+  currentLevel = level;
+  levelData = getLevelData(level);
+  player.x = 80;
+  player.y = GROUND_Y;
+  player.vx = 0;
+  player.vy = 0;
+  player.hp = player.maxHp;
+  player.attacking = false;
+  player.attackTimer = 0;
+  player.attackCooldown = 0;
+  player.invincible = 0;
+  player.facing = 1;
+  player.combo = 0;
+  camera.x = 0;
+  particles = [];
+  floatingTexts = [];
+  diamond = null;
+
+  if (level === 3) {
+    diamond = {
+      x: levelData.width - 150,
+      y: GROUND_Y - 30,
+      collected: false,
+      glow: 0
+    };
+  }
+
+  spawnZombies();
+  spawnHealthPickups();
+  gameState = 'playing';
+}
+
+// ============ INPUT ============
+window.addEventListener('keydown', e => {
+  keys[e.code] = true;
+  e.preventDefault();
+});
+window.addEventListener('keyup', e => {
+  keys[e.code] = false;
+  e.preventDefault();
+});
+
+// ============ PARTICLES ============
+function spawnParticles(x, y, color, count, spread) {
+  for (let i = 0; i < count; i++) {
+    particles.push({
+      x, y,
+      vx: (Math.random() - 0.5) * spread,
+      vy: (Math.random() - 0.8) * spread,
+      life: 30 + Math.random() * 20,
+      maxLife: 50,
+      color,
+      size: 2 + Math.random() * 3
+    });
+  }
+}
+
+function spawnFloatingText(x, y, text, color) {
+  floatingTexts.push({ x, y, text, color, life: 60 });
+}
+
+// ============ COLLISION ============
+function rectCollide(a, b) {
+  return a.x < b.x + b.w && a.x + a.w > b.x &&
+         a.y < b.y + b.h && a.y + a.h > b.y;
+}
+
+function getAttackBox() {
+  const reach = 50;
+  if (player.facing === 1) {
+    return { x: player.x + player.w, y: player.y - 5, w: reach, h: player.h + 5 };
+  } else {
+    return { x: player.x - reach, y: player.y - 5, w: reach, h: player.h + 5 };
+  }
+}
+
+// ============ UPDATE ============
+function update() {
+  if (gameState === 'title') {
+    if (keys['Enter']) {
+      initLevel(1);
+    }
+    return;
+  }
+
+  if (gameState === 'levelComplete') {
+    transitionTimer--;
+    if (transitionTimer <= 0) {
+      if (currentLevel < 3) {
+        initLevel(currentLevel + 1);
+      } else {
+        gameState = 'gameWin';
+      }
+    }
+    return;
+  }
+
+  if (gameState === 'gameWin' || gameState === 'gameOver') {
+    if (keys['Enter']) {
+      gameState = 'title';
+      player.score = 0;
+    }
+    return;
+  }
+
+  // --- PLAYING ---
+  const ld = levelData;
+
+  // Player movement
+  player.vx = 0;
+  if (keys['ArrowLeft']) { player.vx = -player.speed; player.facing = -1; }
+  if (keys['ArrowRight']) { player.vx = player.speed; player.facing = 1; }
+  if (keys['ArrowUp'] && player.onGround) {
+    player.vy = player.jumpForce;
+    player.onGround = false;
+  }
+
+  // Attack
+  if (keys['Space'] && player.attackCooldown <= 0 && !player.attacking) {
+    player.attacking = true;
+    player.attackTimer = 12;
+    player.attackCooldown = 20;
+  }
+
+  if (player.attacking) {
+    player.attackTimer--;
+    if (player.attackTimer <= 0) player.attacking = false;
+  }
+  if (player.attackCooldown > 0) player.attackCooldown--;
+  if (player.invincible > 0) player.invincible--;
+  if (player.comboTimer > 0) {
+    player.comboTimer--;
+    if (player.comboTimer <= 0) player.combo = 0;
+  }
+
+  // Physics
+  player.vy += GRAVITY;
+  player.x += player.vx;
+  player.y += player.vy;
+
+  // Ground collision
+  if (player.y >= GROUND_Y) {
+    player.y = GROUND_Y;
+    player.vy = 0;
+    player.onGround = true;
+  }
+
+  // Platform collision
+  player.onGround = player.y >= GROUND_Y;
+  ld.platforms.forEach(p => {
+    if (player.vy >= 0 &&
+        player.x + player.w > p.x && player.x < p.x + p.w &&
+        player.y + player.h >= p.y && player.y + player.h <= p.y + p.h + 10) {
+      player.y = p.y - player.h;
+      player.vy = 0;
+      player.onGround = true;
+    }
+  });
+
+  // Level bounds
+  player.x = Math.max(0, Math.min(player.x, ld.width - player.w));
+
+  // Animation
+  player.frameTimer++;
+  if (Math.abs(player.vx) > 0) {
+    if (player.frameTimer > 6) { player.frame = (player.frame + 1) % 4; player.frameTimer = 0; }
+  } else {
+    if (player.frameTimer > 12) { player.frame = (player.frame + 1) % 2; player.frameTimer = 0; }
+  }
+
+  // Attack hits on zombies
+  if (player.attacking && player.attackTimer === 10) {
+    const atkBox = getAttackBox();
+    zombies.forEach(z => {
+      if (!z.alive) return;
+      if (rectCollide(atkBox, z)) {
+        const dmg = 15 + player.combo * 3;
+        z.hp -= dmg;
+        z.hurt = 8;
+        z.vx = player.facing * 6;
+        z.vy = -4;
+        player.combo++;
+        player.comboTimer = 90;
+
+        spawnParticles(z.x + z.w / 2, z.y + z.h / 2, '#ff4444', 8, 6);
+        spawnFloatingText(z.x + z.w/2, z.y - 10, `-${dmg}`, '#ff6666');
+        screenShake = 5;
+
+        if (z.hp <= 0) {
+          z.alive = false;
+          player.score += z.type === 'big' ? 200 : 100;
+          spawnParticles(z.x + z.w / 2, z.y + z.h / 2, '#44ff44', 15, 10);
+          spawnFloatingText(z.x + z.w/2, z.y - 30, z.type === 'big' ? '+200' : '+100', '#ffff44');
+        }
+      }
+    });
+  }
+
+  // Zombie AI
+  zombies.forEach(z => {
+    if (!z.alive) return;
+    if (z.hurt > 0) { z.hurt--; }
+
+    const dist = player.x - z.x;
+    const absDist = Math.abs(dist);
+
+    // Chase player when within range
+    if (absDist < 400 && absDist > 5) {
+      z.facing = dist > 0 ? 1 : -1;
+      z.vx = z.facing * z.speed;
+    } else {
+      z.vx *= 0.8;
+    }
+
+    // Zombie attack
+    if (absDist < 45 && Math.abs(player.y - z.y) < 40) {
+      z.attackTimer++;
+      if (z.attackTimer > 40) {
+        if (player.invincible <= 0) {
+          const dmg = z.type === 'big' ? 18 : 10;
+          player.hp -= dmg;
+          player.invincible = 30;
+          player.vx = z.facing * -5;
+          player.vy = -4;
+          screenShake = 8;
+          screenFlash = 5;
+          spawnParticles(player.x + player.w/2, player.y + player.h/2, '#ff0000', 6, 5);
+          spawnFloatingText(player.x + player.w/2, player.y - 10, `-${dmg}`, '#ff0000');
+        }
+        z.attackTimer = 0;
+      }
+    } else {
+      z.attackTimer = Math.max(0, z.attackTimer - 1);
+    }
+
+    // Zombie physics
+    z.vy += GRAVITY;
+    z.x += z.vx;
+    z.y += z.vy;
+    z.vx *= 0.85;
+
+    if (z.y >= GROUND_Y) { z.y = GROUND_Y; z.vy = 0; z.onGround = true; }
+    z.x = Math.max(0, Math.min(z.x, ld.width - z.w));
+
+    // Animation
+    z.frameTimer++;
+    if (z.frameTimer > 10) { z.frame = (z.frame + 1) % 4; z.frameTimer = 0; }
+  });
+
+  // Health pickups
+  healthPickups.forEach(h => {
+    if (h.collected) return;
+    h.bobTimer += 0.05;
+    const hbox = { x: h.x - 10, y: h.y - 10 + Math.sin(h.bobTimer) * 5, w: 20, h: 20 };
+    const pbox = { x: player.x, y: player.y, w: player.w, h: player.h };
+    if (rectCollide(pbox, hbox)) {
+      h.collected = true;
+      player.hp = Math.min(player.maxHp, player.hp + 25);
+      spawnParticles(h.x, h.y, '#44ff44', 10, 6);
+      spawnFloatingText(h.x, h.y - 20, '+25 HP', '#44ff44');
+    }
+  });
+
+  // Diamond pickup (level 3)
+  if (diamond && !diamond.collected) {
+    diamond.glow += 0.05;
+    const dbox = { x: diamond.x - 15, y: diamond.y - 15, w: 30, h: 30 };
+    const pbox = { x: player.x, y: player.y, w: player.w, h: player.h };
+    if (rectCollide(pbox, dbox)) {
+      diamond.collected = true;
+      player.score += 1000;
+      screenFlash = 15;
+      spawnParticles(diamond.x, diamond.y, '#00ffff', 30, 12);
+      spawnParticles(diamond.x, diamond.y, '#ffffff', 20, 8);
+      spawnFloatingText(diamond.x, diamond.y - 40, 'LEOPARD DIAMOND!', '#00ffff');
+      gameState = 'levelComplete';
+      transitionTimer = 120;
+    }
+  }
+
+  // Check level completion (levels 1 & 2: kill all zombies)
+  if (currentLevel < 3) {
+    const allDead = zombies.every(z => !z.alive);
+    if (allDead) {
+      gameState = 'levelComplete';
+      transitionTimer = 90;
+      spawnFloatingText(player.x, player.y - 50, 'LEVEL CLEAR!', '#ffff00');
+    }
+  } else {
+    // Level 3: kill all zombies to reveal diamond
+    const allDead = zombies.every(z => !z.alive);
+    if (allDead && diamond && !diamond.collected) {
+      // Diamond is already there, just make it pulse more
+      diamond.glow += 0.02;
+    }
+  }
+
+  // Game over
+  if (player.hp <= 0) {
+    player.hp = 0;
+    gameState = 'gameOver';
+    screenShake = 15;
+  }
+
+  // Camera
+  const targetX = player.x - canvas.width / 3;
+  camera.x += (targetX - camera.x) * 0.08;
+  camera.x = Math.max(0, Math.min(camera.x, ld.width - canvas.width));
+
+  // Particles
+  particles = particles.filter(p => {
+    p.x += p.vx; p.y += p.vy;
+    p.vy += 0.15;
+    p.life--;
+    return p.life > 0;
+  });
+
+  // Floating texts
+  floatingTexts = floatingTexts.filter(t => {
+    t.y -= 1;
+    t.life--;
+    return t.life > 0;
+  });
+
+  // Screen effects
+  if (screenShake > 0) screenShake--;
+  if (screenFlash > 0) screenFlash--;
+}
+
+// ============ DRAW ============
+function drawLeopard(x, y) {
+  const f = player.facing;
+  const px = Math.floor(x);
+  const py = Math.floor(y);
+  const bobY = player.onGround ? Math.sin(player.frameTimer * 0.3) * 2 : 0;
+  const alpha = player.invincible > 0 ? (player.invincible % 4 < 2 ? 0.4 : 1) : 1;
+
+  ctx.globalAlpha = alpha;
+
+  // Body
+  ctx.fillStyle = '#e8a828';
+  ctx.fillRect(px + (f === 1 ? 5 : 10), py + 15 + bobY, 25, 18);
+
+  // Head
+  ctx.fillStyle = '#e8a828';
+  ctx.fillRect(px + (f === 1 ? 22 : 2), py + 5 + bobY, 16, 16);
+
+  // Ears
+  ctx.fillStyle = '#d09020';
+  ctx.fillRect(px + (f === 1 ? 24 : 6), py + 2 + bobY, 5, 5);
+  ctx.fillRect(px + (f === 1 ? 31 : 12), py + 2 + bobY, 5, 5);
+
+  // Eye
+  ctx.fillStyle = '#00ff00';
+  ctx.fillRect(px + (f === 1 ? 30 : 8), py + 10 + bobY, 3, 3);
+
+  // Nose
+  ctx.fillStyle = '#ff6688';
+  ctx.fillRect(px + (f === 1 ? 35 : 3), py + 14 + bobY, 2, 2);
+
+  // Spots
+  ctx.fillStyle = '#c08018';
+  const spots = [[8, 17], [15, 20], [22, 17], [12, 24], [20, 25]];
+  spots.forEach(([sx, sy]) => {
+    ctx.fillRect(px + (f === 1 ? sx : 40 - sx - 3), py + sy + bobY, 3, 3);
+  });
+
+  // Legs (animated)
+  ctx.fillStyle = '#d09020';
+  const legOffset = player.onGround ? Math.sin(player.frame * 1.5) * 4 : -3;
+  // Front legs
+  ctx.fillRect(px + (f === 1 ? 22 : 12), py + 32 + bobY, 5, 14 + legOffset);
+  ctx.fillRect(px + (f === 1 ? 15 : 18), py + 32 + bobY, 5, 14 - legOffset);
+  // Back legs
+  ctx.fillRect(px + (f === 1 ? 8 : 26), py + 30 + bobY, 5, 16 - legOffset);
+  ctx.fillRect(px + (f === 1 ? 2 : 32), py + 30 + bobY, 5, 16 + legOffset);
+
+  // Paws
+  ctx.fillStyle = '#f0c040';
+  ctx.fillRect(px + (f === 1 ? 22 : 12), py + 45 + bobY + legOffset, 6, 3);
+  ctx.fillRect(px + (f === 1 ? 15 : 18), py + 45 + bobY - legOffset, 6, 3);
+
+  // Tail
+  ctx.fillStyle = '#d09020';
+  const tailWag = Math.sin(Date.now() * 0.005) * 5;
+  ctx.fillRect(px + (f === 1 ? 0 : 36), py + 14 + bobY + tailWag, 4, 6);
+  ctx.fillRect(px + (f === 1 ? -3 : 39), py + 10 + bobY + tailWag, 4, 6);
+  // Tail tip (dark)
+  ctx.fillStyle = '#1a1a1a';
+  ctx.fillRect(px + (f === 1 ? -4 : 40), py + 8 + bobY + tailWag, 4, 5);
+
+  // Attack slash effect
+  if (player.attacking) {
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 2;
+    ctx.globalAlpha = alpha * (player.attackTimer / 12);
+    const slashX = px + (f === 1 ? 40 : -15);
+    ctx.beginPath();
+    ctx.arc(slashX + 15 * f, py + 20, 25, -0.5 * f, 0.8 * f);
+    ctx.stroke();
+    ctx.strokeStyle = '#ffff00';
+    ctx.beginPath();
+    ctx.arc(slashX + 10 * f, py + 25, 20, -0.3 * f, 0.6 * f);
+    ctx.stroke();
+  }
+
+  ctx.globalAlpha = 1;
+}
+
+function drawZombie(z) {
+  if (!z.alive) return;
+  const px = Math.floor(z.x - camera.x);
+  const py = Math.floor(z.y);
+  const f = z.facing;
+  const hurtFlash = z.hurt > 0 && z.hurt % 2 === 0;
+  const isBig = z.type === 'big';
+  const s = isBig ? 1.2 : 1;
+
+  // Body
+  ctx.fillStyle = hurtFlash ? '#ffffff' : (isBig ? '#3a5a3a' : '#4a6a4a');
+  ctx.fillRect(px + 6 * s, py + 10 * s, 22 * s, 24 * s);
+
+  // Head
+  ctx.fillStyle = hurtFlash ? '#ffffff' : '#5a7a5a';
+  ctx.fillRect(px + 8 * s, py, 18 * s, 16 * s);
+
+  // Eyes (red and glowing)
+  ctx.fillStyle = '#ff0000';
+  ctx.fillRect(px + (f === 1 ? 18 : 10) * s, py + 5 * s, 3 * s, 3 * s);
+  ctx.fillRect(px + (f === 1 ? 22 : 14) * s, py + 5 * s, 3 * s, 3 * s);
+
+  // Mouth
+  ctx.fillStyle = '#2a3a2a';
+  ctx.fillRect(px + 12 * s, py + 11 * s, 10 * s, 3 * s);
+
+  // Arms
+  ctx.fillStyle = hurtFlash ? '#ffffff' : '#5a7a5a';
+  const armReach = Math.sin(z.frame * 1.2) * 4;
+  ctx.fillRect(px + (f === 1 ? 26 : -4) * s, py + 12 * s + armReach, 6 * s, 18 * s);
+  ctx.fillRect(px + (f === 1 ? 28 : -6) * s, py + 14 * s - armReach, 6 * s, 18 * s);
+
+  // Legs
+  ctx.fillStyle = hurtFlash ? '#ffffff' : '#3a5a3a';
+  const legAnim = Math.sin(z.frame * 1.5) * 3;
+  ctx.fillRect(px + 10 * s, py + 32 * s, 6 * s, 14 * s + legAnim);
+  ctx.fillRect(px + 20 * s, py + 32 * s, 6 * s, 14 * s - legAnim);
+
+  // HP bar
+  if (z.hp < z.maxHp) {
+    const barW = 30 * s;
+    const barX = px + (z.w * s - barW) / 2;
+    ctx.fillStyle = '#440000';
+    ctx.fillRect(barX, py - 8, barW, 4);
+    ctx.fillStyle = '#ff0000';
+    ctx.fillRect(barX, py - 8, barW * (z.hp / z.maxHp), 4);
+  }
+}
+
+function drawBackground() {
+  const ld = levelData;
+
+  // Sky gradient
+  const grad = ctx.createLinearGradient(0, 0, 0, GROUND_Y + 50);
+  if (currentLevel === 1) {
+    grad.addColorStop(0, '#0a1a0a');
+    grad.addColorStop(1, '#1a3a1a');
+  } else if (currentLevel === 2) {
+    grad.addColorStop(0, '#0a0a1a');
+    grad.addColorStop(1, '#1a1a3a');
+  } else {
+    grad.addColorStop(0, '#1a0808');
+    grad.addColorStop(1, '#3a1a1a');
+  }
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  // Moon
+  ctx.fillStyle = '#ddeeff';
+  ctx.beginPath();
+  ctx.arc(700 - camera.x * 0.05, 60, 30, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = currentLevel === 3 ? '#3a1a1a' : '#1a1a2a';
+  ctx.beginPath();
+  ctx.arc(690 - camera.x * 0.05, 55, 26, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Stars
+  for (let i = 0; i < 50; i++) {
+    const sx = (i * 197 + 50) % canvas.width + Math.sin(Date.now() * 0.001 + i) * 0.5;
+    const sy = (i * 73 + 20) % (GROUND_Y - 50);
+    const brightness = 0.3 + Math.sin(Date.now() * 0.002 + i * 0.7) * 0.3;
+    ctx.fillStyle = `rgba(255,255,255,${brightness})`;
+    ctx.fillRect(sx, sy, 1.5, 1.5);
+  }
+
+  // Background decorations
+  if (currentLevel === 1 && ld.trees) {
+    ld.trees.forEach(t => {
+      const tx = t.x - camera.x * 0.6;
+      if (tx < -100 || tx > canvas.width + 100) return;
+      // Tree trunk
+      ctx.fillStyle = '#3a2a1a';
+      ctx.fillRect(tx - 5, GROUND_Y + 50 - t.h, 10, t.h);
+      // Canopy
+      ctx.fillStyle = '#1a4a1a';
+      ctx.beginPath();
+      ctx.arc(tx, GROUND_Y + 50 - t.h, 25, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#1a3a0a';
+      ctx.beginPath();
+      ctx.arc(tx - 8, GROUND_Y + 50 - t.h + 5, 18, 0, Math.PI * 2);
+      ctx.fill();
+    });
+  }
+
+  if (currentLevel === 2 && ld.gravestones) {
+    ld.gravestones.forEach(g => {
+      const gx = g.x - camera.x * 0.7;
+      if (gx < -50 || gx > canvas.width + 50) return;
+      ctx.fillStyle = '#5a5a6a';
+      ctx.fillRect(gx - 8, GROUND_Y + 50 - g.h, 16, g.h);
+      ctx.beginPath();
+      ctx.arc(gx, GROUND_Y + 50 - g.h, 8, Math.PI, 0);
+      ctx.fill();
+      // Cross
+      ctx.fillStyle = '#4a4a5a';
+      ctx.fillRect(gx - 1, GROUND_Y + 50 - g.h + 4, 2, 10);
+      ctx.fillRect(gx - 4, GROUND_Y + 50 - g.h + 7, 8, 2);
+    });
+  }
+
+  if (currentLevel === 3 && ld.torches) {
+    ld.torches.forEach(t => {
+      const tx = t.x - camera.x * 0.7;
+      if (tx < -50 || tx > canvas.width + 50) return;
+      t.flicker += 0.1;
+      // Pole
+      ctx.fillStyle = '#5a4a3a';
+      ctx.fillRect(tx - 2, GROUND_Y + 50 - 50, 4, 50);
+      // Flame
+      const flSize = 5 + Math.sin(t.flicker) * 2;
+      ctx.fillStyle = '#ff8800';
+      ctx.beginPath();
+      ctx.arc(tx, GROUND_Y + 50 - 55, flSize, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#ffcc00';
+      ctx.beginPath();
+      ctx.arc(tx, GROUND_Y + 50 - 57, flSize * 0.6, 0, Math.PI * 2);
+      ctx.fill();
+      // Glow
+      const glowGrad = ctx.createRadialGradient(tx, GROUND_Y + 50 - 55, 0, tx, GROUND_Y + 50 - 55, 40);
+      glowGrad.addColorStop(0, 'rgba(255,136,0,0.15)');
+      glowGrad.addColorStop(1, 'rgba(255,136,0,0)');
+      ctx.fillStyle = glowGrad;
+      ctx.fillRect(tx - 40, GROUND_Y + 50 - 95, 80, 80);
+    });
+  }
+
+  // Ground
+  ctx.fillStyle = ld.groundColor;
+  ctx.fillRect(0, GROUND_Y + 50, canvas.width, canvas.height - GROUND_Y - 50);
+
+  // Ground detail line
+  ctx.fillStyle = ld.groundColor.replace(/[0-9a-f]/g, (c) => {
+    const v = Math.min(15, parseInt(c, 16) + 2);
+    return v.toString(16);
+  });
+  ctx.fillRect(0, GROUND_Y + 50, canvas.width, 3);
+
+  // Platforms
+  ld.platforms.forEach(p => {
+    const px = p.x - camera.x;
+    if (px + p.w < 0 || px > canvas.width) return;
+    ctx.fillStyle = '#6a5a4a';
+    ctx.fillRect(px, p.y, p.w, p.h);
+    ctx.fillStyle = '#7a6a5a';
+    ctx.fillRect(px, p.y, p.w, 4);
+    // Support lines
+    ctx.fillStyle = '#5a4a3a';
+    ctx.fillRect(px + 5, p.y + p.h, 3, 8);
+    ctx.fillRect(px + p.w - 8, p.y + p.h, 3, 8);
+  });
+}
+
+function drawHUD() {
+  // HP bar
+  ctx.fillStyle = 'rgba(0,0,0,0.7)';
+  ctx.fillRect(15, 15, 204, 24);
+  ctx.fillStyle = '#440000';
+  ctx.fillRect(17, 17, 200, 20);
+  const hpRatio = player.hp / player.maxHp;
+  const hpColor = hpRatio > 0.5 ? '#44cc44' : hpRatio > 0.25 ? '#cccc44' : '#cc4444';
+  ctx.fillStyle = hpColor;
+  ctx.fillRect(17, 17, 200 * hpRatio, 20);
+  ctx.fillStyle = '#ffffff';
+  ctx.font = '12px "Courier New"';
+  ctx.fillText(`HP: ${player.hp}/${player.maxHp}`, 22, 32);
+
+  // Score
+  ctx.fillStyle = '#ffcc00';
+  ctx.font = '16px "Courier New"';
+  ctx.textAlign = 'right';
+  ctx.fillText(`SCORE: ${player.score}`, canvas.width - 20, 32);
+  ctx.textAlign = 'left';
+
+  // Level indicator
+  ctx.fillStyle = '#ffffff';
+  ctx.font = '14px "Courier New"';
+  ctx.fillText(`LEVEL ${currentLevel} - ${levelData.name}`, 15, 55);
+
+  // Zombie count
+  const alive = zombies.filter(z => z.alive).length;
+  ctx.fillStyle = '#ff6666';
+  ctx.fillText(`ZOMBIES: ${alive}`, 15, 75);
+
+  // Combo
+  if (player.combo > 1) {
+    ctx.fillStyle = `rgba(255,255,0,${0.5 + Math.sin(Date.now() * 0.01) * 0.5})`;
+    ctx.font = '20px "Courier New"';
+    ctx.fillText(`COMBO x${player.combo}!`, canvas.width / 2 - 60, 35);
+  }
+
+  // Level 3 - diamond indicator
+  if (currentLevel === 3 && diamond && !diamond.collected) {
+    const allDead = zombies.every(z => !z.alive);
+    if (!allDead) {
+      ctx.fillStyle = '#aaaaaa';
+      ctx.font = '12px "Courier New"';
+      ctx.textAlign = 'center';
+      ctx.fillText('Defeat all zombies to reveal the Leopard Diamond!', canvas.width / 2, canvas.height - 20);
+      ctx.textAlign = 'left';
+    } else {
+      ctx.fillStyle = '#00ffff';
+      ctx.font = '14px "Courier New"';
+      ctx.textAlign = 'center';
+      ctx.fillText('>>> THE LEOPARD DIAMOND AWAITS! >>>', canvas.width / 2, canvas.height - 20);
+      ctx.textAlign = 'left';
+    }
+  }
+}
+
+function drawDiamond() {
+  if (!diamond || diamond.collected) return;
+  const allDead = zombies.every(z => !z.alive);
+  if (!allDead) return;
+
+  const dx = diamond.x - camera.x;
+  const dy = diamond.y + Math.sin(diamond.glow) * 8;
+  const glow = 0.5 + Math.sin(diamond.glow * 3) * 0.3;
+
+  // Glow effect
+  const glowGrad = ctx.createRadialGradient(dx, dy, 0, dx, dy, 50);
+  glowGrad.addColorStop(0, `rgba(0,255,255,${glow * 0.4})`);
+  glowGrad.addColorStop(1, 'rgba(0,255,255,0)');
+  ctx.fillStyle = glowGrad;
+  ctx.fillRect(dx - 50, dy - 50, 100, 100);
+
+  // Diamond shape
+  ctx.fillStyle = '#00ffff';
+  ctx.beginPath();
+  ctx.moveTo(dx, dy - 18);
+  ctx.lineTo(dx + 14, dy);
+  ctx.lineTo(dx, dy + 18);
+  ctx.lineTo(dx - 14, dy);
+  ctx.closePath();
+  ctx.fill();
+
+  // Inner shine
+  ctx.fillStyle = '#88ffff';
+  ctx.beginPath();
+  ctx.moveTo(dx, dy - 10);
+  ctx.lineTo(dx + 7, dy);
+  ctx.lineTo(dx, dy + 10);
+  ctx.lineTo(dx - 7, dy);
+  ctx.closePath();
+  ctx.fill();
+
+  // Sparkle
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(dx - 1, dy - 22, 2, 6);
+  ctx.fillRect(dx - 1, dy + 16, 2, 6);
+  ctx.fillRect(dx - 18, dy - 1, 6, 2);
+  ctx.fillRect(dx + 12, dy - 1, 6, 2);
+}
+
+function drawParticles() {
+  particles.forEach(p => {
+    const alpha = p.life / p.maxLife;
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = p.color;
+    ctx.fillRect(p.x - camera.x, p.y, p.size, p.size);
+  });
+  ctx.globalAlpha = 1;
+}
+
+function drawFloatingTexts() {
+  floatingTexts.forEach(t => {
+    const alpha = t.life / 60;
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = t.color;
+    ctx.font = 'bold 14px "Courier New"';
+    ctx.textAlign = 'center';
+    ctx.fillText(t.text, t.x - camera.x, t.y);
+    ctx.textAlign = 'left';
+  });
+  ctx.globalAlpha = 1;
+}
+
+function drawHealthPickups() {
+  healthPickups.forEach(h => {
+    if (h.collected) return;
+    const hx = h.x - camera.x;
+    const hy = h.y + Math.sin(h.bobTimer) * 5;
+
+    // Green cross
+    ctx.fillStyle = '#44ff44';
+    ctx.fillRect(hx - 3, hy - 8, 6, 16);
+    ctx.fillRect(hx - 8, hy - 3, 16, 6);
+
+    // Glow
+    ctx.fillStyle = 'rgba(68,255,68,0.15)';
+    ctx.beginPath();
+    ctx.arc(hx, hy, 12, 0, Math.PI * 2);
+    ctx.fill();
+  });
+}
+
+function drawTitleScreen() {
+  // Background
+  ctx.fillStyle = '#0a0a0a';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  // Animated background particles
+  for (let i = 0; i < 30; i++) {
+    const x = (Date.now() * 0.02 * (i * 0.3 + 0.5) + i * 100) % canvas.width;
+    const y = (i * 47 + 10) % canvas.height;
+    ctx.fillStyle = `rgba(0,255,0,${0.1 + Math.sin(Date.now() * 0.001 + i) * 0.1})`;
+    ctx.fillRect(x, y, 2, 2);
+  }
+
+  // Title
+  ctx.fillStyle = '#e8a828';
+  ctx.font = 'bold 48px "Courier New"';
+  ctx.textAlign = 'center';
+  ctx.fillText('LEOPARD', canvas.width / 2, 160);
+  ctx.fillStyle = '#ff4444';
+  ctx.fillText('vs', canvas.width / 2, 210);
+  ctx.fillStyle = '#5a7a5a';
+  ctx.fillText('ZOMBIES', canvas.width / 2, 260);
+
+  // Diamond icon
+  const dx = canvas.width / 2, dy = 310;
+  ctx.fillStyle = '#00ffff';
+  ctx.beginPath();
+  ctx.moveTo(dx, dy - 12);
+  ctx.lineTo(dx + 10, dy);
+  ctx.lineTo(dx, dy + 12);
+  ctx.lineTo(dx - 10, dy);
+  ctx.closePath();
+  ctx.fill();
+
+  // Instructions
+  ctx.fillStyle = '#aaaaaa';
+  ctx.font = '16px "Courier New"';
+  ctx.fillText('Arrow Keys - Move & Jump', canvas.width / 2, 370);
+  ctx.fillText('Space - Attack', canvas.width / 2, 395);
+  ctx.fillText('Defeat zombies across 3 levels', canvas.width / 2, 430);
+  ctx.fillText('Capture the Leopard Diamond!', canvas.width / 2, 455);
+
+  // Start prompt
+  const blink = Math.sin(Date.now() * 0.005) > 0;
+  if (blink) {
+    ctx.fillStyle = '#ffcc00';
+    ctx.font = 'bold 20px "Courier New"';
+    ctx.fillText('PRESS ENTER TO START', canvas.width / 2, 505);
+  }
+
+  ctx.textAlign = 'left';
+}
+
+function drawLevelComplete() {
+  ctx.fillStyle = 'rgba(0,0,0,0.6)';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  ctx.fillStyle = '#ffcc00';
+  ctx.font = 'bold 36px "Courier New"';
+  ctx.textAlign = 'center';
+
+  if (currentLevel < 3) {
+    ctx.fillText(`LEVEL ${currentLevel} COMPLETE!`, canvas.width / 2, canvas.height / 2 - 20);
+    ctx.fillStyle = '#aaaaaa';
+    ctx.font = '18px "Courier New"';
+    ctx.fillText(`Advancing to Level ${currentLevel + 1}...`, canvas.width / 2, canvas.height / 2 + 30);
+  } else {
+    ctx.fillStyle = '#00ffff';
+    ctx.fillText('LEOPARD DIAMOND CAPTURED!', canvas.width / 2, canvas.height / 2 - 20);
+    ctx.fillStyle = '#aaaaaa';
+    ctx.font = '18px "Courier New"';
+    ctx.fillText('Victory is yours!', canvas.width / 2, canvas.height / 2 + 30);
+  }
+  ctx.textAlign = 'left';
+}
+
+function drawGameWin() {
+  ctx.fillStyle = '#0a0a1a';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  // Celebration particles
+  for (let i = 0; i < 40; i++) {
+    const x = (Date.now() * 0.03 * (i * 0.2 + 0.3) + i * 80) % canvas.width;
+    const y = (Date.now() * 0.02 * (i * 0.1 + 0.2) + i * 60) % canvas.height;
+    const colors = ['#ff0000', '#ffcc00', '#00ff00', '#00ffff', '#ff00ff'];
+    ctx.fillStyle = colors[i % colors.length];
+    ctx.fillRect(x, y, 3, 3);
+  }
+
+  // Diamond
+  const dx = canvas.width / 2, dy = 120;
+  const glow = Math.sin(Date.now() * 0.003);
+  const glowGrad = ctx.createRadialGradient(dx, dy, 0, dx, dy, 60);
+  glowGrad.addColorStop(0, 'rgba(0,255,255,0.3)');
+  glowGrad.addColorStop(1, 'rgba(0,255,255,0)');
+  ctx.fillStyle = glowGrad;
+  ctx.fillRect(dx - 60, dy - 60, 120, 120);
+
+  ctx.fillStyle = '#00ffff';
+  ctx.beginPath();
+  ctx.moveTo(dx, dy - 25 + glow * 3);
+  ctx.lineTo(dx + 20, dy);
+  ctx.lineTo(dx, dy + 25 - glow * 3);
+  ctx.lineTo(dx - 20, dy);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.fillStyle = '#ffcc00';
+  ctx.font = 'bold 42px "Courier New"';
+  ctx.textAlign = 'center';
+  ctx.fillText('VICTORY!', canvas.width / 2, 210);
+
+  ctx.fillStyle = '#ffffff';
+  ctx.font = '20px "Courier New"';
+  ctx.fillText('The Leopard Diamond is yours!', canvas.width / 2, 260);
+
+  ctx.fillStyle = '#e8a828';
+  ctx.font = 'bold 28px "Courier New"';
+  ctx.fillText(`FINAL SCORE: ${player.score}`, canvas.width / 2, 320);
+
+  ctx.fillStyle = '#aaaaaa';
+  ctx.font = '16px "Courier New"';
+  ctx.fillText('You fought through the Dark Forest,', canvas.width / 2, 380);
+  ctx.fillText('survived the Graveyard, and conquered', canvas.width / 2, 405);
+  ctx.fillText('the Zombie Fortress!', canvas.width / 2, 430);
+
+  const blink = Math.sin(Date.now() * 0.005) > 0;
+  if (blink) {
+    ctx.fillStyle = '#ffcc00';
+    ctx.font = 'bold 18px "Courier New"';
+    ctx.fillText('PRESS ENTER TO PLAY AGAIN', canvas.width / 2, 490);
+  }
+  ctx.textAlign = 'left';
+}
+
+function drawGameOver() {
+  ctx.fillStyle = 'rgba(80,0,0,0.7)';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  ctx.fillStyle = '#ff4444';
+  ctx.font = 'bold 48px "Courier New"';
+  ctx.textAlign = 'center';
+  ctx.fillText('GAME OVER', canvas.width / 2, canvas.height / 2 - 30);
+
+  ctx.fillStyle = '#aaaaaa';
+  ctx.font = '18px "Courier New"';
+  ctx.fillText(`Score: ${player.score}`, canvas.width / 2, canvas.height / 2 + 20);
+  ctx.fillText(`Reached Level ${currentLevel}`, canvas.width / 2, canvas.height / 2 + 50);
+
+  const blink = Math.sin(Date.now() * 0.005) > 0;
+  if (blink) {
+    ctx.fillStyle = '#ffcc00';
+    ctx.font = 'bold 18px "Courier New"';
+    ctx.fillText('PRESS ENTER TO RETRY', canvas.width / 2, canvas.height / 2 + 100);
+  }
+  ctx.textAlign = 'left';
+}
+
+// ============ MAIN RENDER ============
+function draw() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  if (gameState === 'title') {
+    drawTitleScreen();
+    return;
+  }
+
+  if (gameState === 'gameWin') {
+    drawGameWin();
+    return;
+  }
+
+  // Screen shake
+  ctx.save();
+  if (screenShake > 0) {
+    ctx.translate(
+      (Math.random() - 0.5) * screenShake * 2,
+      (Math.random() - 0.5) * screenShake * 2
+    );
+  }
+
+  drawBackground();
+  drawHealthPickups();
+  drawDiamond();
+
+  // Draw zombies
+  zombies.forEach(z => drawZombie(z));
+
+  // Draw player
+  drawLeopard(player.x - camera.x, player.y);
+
+  drawParticles();
+  drawFloatingTexts();
+
+  ctx.restore();
+
+  // Screen flash
+  if (screenFlash > 0) {
+    ctx.fillStyle = `rgba(255,255,255,${screenFlash * 0.06})`;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+  }
+
+  drawHUD();
+
+  if (gameState === 'levelComplete') drawLevelComplete();
+  if (gameState === 'gameOver') drawGameOver();
+}
+
+// ============ GAME LOOP ============
+function gameLoop() {
+  update();
+  draw();
+  requestAnimationFrame(gameLoop);
+}
+
+gameLoop();
+</script>
+</body>
+</html>
