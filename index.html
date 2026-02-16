@@ -41,15 +41,15 @@ let floatingTexts = [];
 let transitionTimer = 0;
 
 // ============ PLAYER ============
-const BASE_PLAYER_W = 44;  // 10% bigger than original 40
-const BASE_PLAYER_H = 55;  // 10% bigger than original 50
-const DRAW_SCALE = 1.1;    // 10% scale up for rendering
+const BASE_PLAYER_W = 48;  // 20% bigger than original 40
+const BASE_PLAYER_H = 60;  // 20% bigger than original 50
+const DRAW_SCALE = 1.2;    // 20% scale up for rendering
 
 const player = {
   x: 80, y: GROUND_Y, w: BASE_PLAYER_W, h: BASE_PLAYER_H,
   vx: 0, vy: 0,
-  speed: 4, jumpForce: -12,
-  baseSpeed: 4, baseJumpForce: -12, baseDamage: 15, baseCooldown: 20,
+  speed: 5, jumpForce: -15,
+  baseSpeed: 5, baseJumpForce: -15, baseDamage: 15, baseCooldown: 20,
   onGround: false,
   hp: 100, maxHp: 100,
   attacking: false, attackTimer: 0, attackCooldown: 0,
@@ -307,15 +307,6 @@ function initLevel(level) {
   boss = null;
   bossIntroTimer = 0;
 
-  if (level === 3) {
-    diamond = {
-      x: levelData.width - 150,
-      y: GROUND_Y - 30,
-      collected: false,
-      glow: 0
-    };
-  }
-
   spawnZombies();
   spawnHealthPickups();
   spawnPowerupCrates();
@@ -431,10 +422,19 @@ function update() {
   if (player.powerups.clawsOfSteel > 0) player.powerups.clawsOfSteel--;
   if (player.powerups.superFangs > 0) player.powerups.superFangs--;
 
-  // Player movement
-  player.vx = 0;
-  if (keys['ArrowLeft']) { player.vx = -player.speed; player.facing = -1; }
-  if (keys['ArrowRight']) { player.vx = player.speed; player.facing = 1; }
+  // Player movement - preserve momentum in air for platforming
+  if (player.onGround) {
+    // Instant ground control
+    player.vx = 0;
+    if (keys['ArrowLeft']) { player.vx = -player.speed; player.facing = -1; }
+    if (keys['ArrowRight']) { player.vx = player.speed; player.facing = 1; }
+  } else {
+    // Air control: keep momentum, steer gradually
+    let targetVx = 0;
+    if (keys['ArrowLeft']) { targetVx = -player.speed; player.facing = -1; }
+    if (keys['ArrowRight']) { targetVx = player.speed; player.facing = 1; }
+    player.vx += (targetVx - player.vx) * 0.12;
+  }
   if (keys['ArrowUp'] && player.onGround) {
     player.vy = getPlayerJumpForce();
     player.onGround = false;
@@ -547,6 +547,14 @@ function update() {
           spawnParticles(boss.x + boss.w / 2, boss.y + boss.h / 2, '#ff8800', 40, 15);
           spawnParticles(boss.x + boss.w / 2, boss.y + boss.h / 2, '#ffff00', 30, 12);
           spawnFloatingText(boss.x + boss.w/2, boss.y - 40, 'BOSS DEFEATED! +1000', '#ffff44');
+          // Spawn the diamond now that boss is dead
+          diamond = {
+            x: levelData.width - 150,
+            y: GROUND_Y - 30,
+            collected: false,
+            glow: 0
+          };
+          spawnFloatingText(levelData.width - 150, GROUND_Y - 60, 'THE LEOPARD DIAMOND APPEARS!', '#00ffff');
         }
       }
     }
@@ -581,27 +589,27 @@ function update() {
     const dist = player.x - z.x;
     const absDist = Math.abs(dist);
 
-    // Chase player when within range
+    // Chase player when within range - match player speed to stay in range
     if (absDist < 400) {
       z.facing = dist > 0 ? 1 : -1;
-      // Only apply chase movement if not overlapping (prevents jitter)
-      if (absDist > z.w * 0.5) {
-        z.vx += z.facing * z.speed * 0.3;
-        // Clamp speed
-        if (Math.abs(z.vx) > z.speed) z.vx = z.facing * z.speed;
+      // Accelerate toward player, allow zombies to overlap slightly
+      if (absDist > 10) {
+        z.vx += z.facing * z.speed * 0.4;
+        if (Math.abs(z.vx) > z.speed * 1.3) z.vx = z.facing * z.speed * 1.3;
       }
     } else {
       z.vx *= 0.9;
     }
 
-    // Zombie attack - use actual bounding box overlap
-    const zBox = { x: z.x - 5, y: z.y, w: z.w + 10, h: z.h };
+    // Zombie attack - wide hitbox to catch running players (zombie arms reach)
+    const reach = z.type === 'big' ? 20 : 15;
+    const zBox = { x: z.x - reach, y: z.y - 5, w: z.w + reach * 2, h: z.h + 10 };
     const pBox = { x: player.x, y: player.y, w: player.w, h: player.h };
     if (rectCollide(zBox, pBox)) {
-      z.attackTimer++;
-      if (z.attackTimer > 30) { // slightly faster attack windup
+      z.attackTimer += 2; // charge up faster
+      if (z.attackTimer > 20) { // quicker windup for more reliable hits
         if (player.invincible <= 0) {
-          const dmg = z.type === 'big' ? 18 : 10;
+          const dmg = z.type === 'big' ? 19 : 11; // 5% harder
           player.hp -= dmg;
           player.invincible = 30;
           // Use knockback system instead of vx (which gets overwritten)
@@ -615,14 +623,14 @@ function update() {
         z.attackTimer = 0;
       }
     } else {
-      z.attackTimer = Math.max(0, z.attackTimer - 2);
+      z.attackTimer = Math.max(0, z.attackTimer - 1);
     }
 
     // Zombie physics
     z.vy += GRAVITY;
     z.x += z.vx;
     z.y += z.vy;
-    z.vx *= 0.85;
+    z.vx *= 0.88; // less friction so zombies keep up better
 
     if (z.y >= GROUND_Y) { z.y = GROUND_Y; z.vy = 0; z.onGround = true; }
     z.x = Math.max(0, Math.min(z.x, ld.width - z.w));
@@ -686,7 +694,7 @@ function update() {
       const atkSpeed = boss.phase === 2 ? 20 : 30;
       if (boss.attackTimer > atkSpeed) {
         if (player.invincible <= 0) {
-          const dmg = boss.isCharging ? 30 : 20;
+          const dmg = boss.isCharging ? 32 : 21; // 5% harder
           player.hp -= dmg;
           player.invincible = 40;
           player.knockbackX = boss.facing * 12;
@@ -734,8 +742,8 @@ function update() {
     }
   });
 
-  // Diamond pickup (level 3 - only after boss is dead)
-  if (diamond && !diamond.collected && (!boss || !boss.alive)) {
+  // Diamond pickup (level 3 - diamond only exists after boss is dead)
+  if (diamond && !diamond.collected) {
     diamond.glow += 0.05;
     const dbox = { x: diamond.x - 15, y: diamond.y - 15, w: 30, h: 30 };
     const pbox = { x: player.x, y: player.y, w: player.w, h: player.h };
@@ -1249,7 +1257,6 @@ function drawHUD() {
 
 function drawDiamond() {
   if (!diamond || diamond.collected) return;
-  if (boss && boss.alive) return; // hidden during boss fight
 
   const dx = diamond.x - camera.x;
   const dy = diamond.y + Math.sin(diamond.glow) * 8;
