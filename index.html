@@ -32,7 +32,7 @@ const GRAVITY = 0.6;
 const GROUND_Y = 440;
 
 const keys = {};
-let gameState = 'title'; // title, playing, levelComplete, gameWin, gameOver
+let gameState = 'title'; // title, playing, bossIntro, bossFight, levelComplete, gameWin, gameOver
 let currentLevel = 1;
 let screenShake = 0;
 let screenFlash = 0;
@@ -41,18 +41,30 @@ let floatingTexts = [];
 let transitionTimer = 0;
 
 // ============ PLAYER ============
+const BASE_PLAYER_W = 44;  // 10% bigger than original 40
+const BASE_PLAYER_H = 55;  // 10% bigger than original 50
+const DRAW_SCALE = 1.1;    // 10% scale up for rendering
+
 const player = {
-  x: 80, y: GROUND_Y, w: 40, h: 50,
+  x: 80, y: GROUND_Y, w: BASE_PLAYER_W, h: BASE_PLAYER_H,
   vx: 0, vy: 0,
   speed: 4, jumpForce: -12,
+  baseSpeed: 4, baseJumpForce: -12, baseDamage: 15, baseCooldown: 20,
   onGround: false,
   hp: 100, maxHp: 100,
   attacking: false, attackTimer: 0, attackCooldown: 0,
-  facing: 1, // 1 = right, -1 = left
+  facing: 1,
   frame: 0, frameTimer: 0,
   invincible: 0,
   combo: 0, comboTimer: 0,
-  score: 0
+  score: 0,
+  knockbackX: 0, // separate knockback velocity
+  // Power-up state
+  powerups: {
+    jumpyBoots: 0,    // timer (frames remaining)
+    clawsOfSteel: 0,
+    superFangs: 0
+  }
 };
 
 // ============ CAMERA ============
@@ -160,11 +172,21 @@ function generateTorches(width) {
   return torches;
 }
 
-// ============ ZOMBIES & ITEMS ============
+// ============ ZOMBIES, ITEMS, BOSS, POWERUP CRATES ============
 let zombies = [];
 let healthPickups = [];
+let powerupCrates = [];
 let levelData = null;
 let diamond = null;
+let boss = null;
+let bossIntroTimer = 0;
+
+const POWERUP_TYPES = [
+  { id: 'jumpyBoots', name: 'JUMPY BOOTS', color: '#44ff88', desc: '+50% Jump Height', icon: 'boot' },
+  { id: 'clawsOfSteel', name: 'CLAWS OF STEEL', color: '#ff8844', desc: '2x Attack Damage', icon: 'claw' },
+  { id: 'superFangs', name: 'SUPER FANGS', color: '#ff44ff', desc: '2x Attack Speed', icon: 'fang' },
+];
+const POWERUP_DURATION = 600; // 10 seconds at 60fps
 
 function spawnZombies() {
   zombies = [];
@@ -185,7 +207,6 @@ function spawnZombies() {
       alive: true
     });
   }
-  // Make big zombies actually bigger and tougher
   zombies.forEach(z => {
     if (z.type === 'big') {
       z.w = 44; z.h = 56;
@@ -196,17 +217,69 @@ function spawnZombies() {
 }
 
 function spawnHealthPickups() {
+  // Place health pickups ON platforms only
   healthPickups = [];
   const ld = levelData;
-  const count = 4 + currentLevel;
+  const plats = [...ld.platforms];
+  // Shuffle platforms to pick random ones
+  for (let i = plats.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [plats[i], plats[j]] = [plats[j], plats[i]];
+  }
+  const count = Math.min(4 + currentLevel, plats.length);
   for (let i = 0; i < count; i++) {
+    const p = plats[i];
     healthPickups.push({
-      x: 200 + (i / count) * (ld.width - 400),
-      y: GROUND_Y - 10,
+      x: p.x + p.w / 2,
+      y: p.y - 12, // sitting on top of platform
       collected: false,
       bobTimer: Math.random() * Math.PI * 2
     });
   }
+}
+
+function spawnPowerupCrates() {
+  // Place crates on the HIGHEST platforms in each level
+  powerupCrates = [];
+  const ld = levelData;
+  // Sort platforms by Y (lowest Y = highest on screen)
+  const sorted = [...ld.platforms].sort((a, b) => a.y - b.y);
+  // Pick the top 3 highest platforms (or fewer if not enough)
+  const highPlats = sorted.slice(0, Math.min(3, sorted.length));
+
+  highPlats.forEach((p, i) => {
+    const type = POWERUP_TYPES[i % POWERUP_TYPES.length];
+    powerupCrates.push({
+      x: p.x + p.w / 2 - 12,
+      y: p.y - 28,
+      w: 24, h: 24,
+      hp: 3, // takes 3 hits to break
+      broken: false,
+      powerupType: type,
+      shakeTimer: 0
+    });
+  });
+}
+
+function spawnBoss() {
+  const ld = levelData;
+  boss = {
+    x: ld.width - 400, y: GROUND_Y - 20,
+    w: 70, h: 90,
+    vx: 0, vy: 0,
+    hp: 300, maxHp: 300,
+    speed: 1.0,
+    onGround: false,
+    facing: -1,
+    frame: 0, frameTimer: 0,
+    attackTimer: 0,
+    hurt: 0,
+    alive: true,
+    phase: 1, // gets faster at low HP
+    slamCooldown: 0,
+    chargeTimer: 0,
+    isCharging: false,
+  };
 }
 
 function initLevel(level) {
@@ -216,6 +289,7 @@ function initLevel(level) {
   player.y = GROUND_Y;
   player.vx = 0;
   player.vy = 0;
+  player.knockbackX = 0;
   player.hp = player.maxHp;
   player.attacking = false;
   player.attackTimer = 0;
@@ -223,10 +297,15 @@ function initLevel(level) {
   player.invincible = 0;
   player.facing = 1;
   player.combo = 0;
+  player.powerups.jumpyBoots = 0;
+  player.powerups.clawsOfSteel = 0;
+  player.powerups.superFangs = 0;
   camera.x = 0;
   particles = [];
   floatingTexts = [];
   diamond = null;
+  boss = null;
+  bossIntroTimer = 0;
 
   if (level === 3) {
     diamond = {
@@ -239,6 +318,7 @@ function initLevel(level) {
 
   spawnZombies();
   spawnHealthPickups();
+  spawnPowerupCrates();
   gameState = 'playing';
 }
 
@@ -278,12 +358,31 @@ function rectCollide(a, b) {
 }
 
 function getAttackBox() {
-  const reach = 50;
+  const reach = 55; // slightly bigger reach for bigger leopard
   if (player.facing === 1) {
     return { x: player.x + player.w, y: player.y - 5, w: reach, h: player.h + 5 };
   } else {
     return { x: player.x - reach, y: player.y - 5, w: reach, h: player.h + 5 };
   }
+}
+
+// ============ POWERUP HELPERS ============
+function getPlayerDamage() {
+  let dmg = player.baseDamage + player.combo * 3;
+  if (player.powerups.clawsOfSteel > 0) dmg *= 2;
+  return Math.floor(dmg);
+}
+
+function getPlayerCooldown() {
+  let cd = player.baseCooldown;
+  if (player.powerups.superFangs > 0) cd = Math.floor(cd / 2);
+  return cd;
+}
+
+function getPlayerJumpForce() {
+  let jf = player.baseJumpForce;
+  if (player.powerups.jumpyBoots > 0) jf *= 1.5;
+  return jf;
 }
 
 // ============ UPDATE ============
@@ -307,6 +406,14 @@ function update() {
     return;
   }
 
+  if (gameState === 'bossIntro') {
+    bossIntroTimer--;
+    if (bossIntroTimer <= 0) {
+      gameState = 'bossFight';
+    }
+    return;
+  }
+
   if (gameState === 'gameWin' || gameState === 'gameOver') {
     if (keys['Enter']) {
       gameState = 'title';
@@ -315,23 +422,30 @@ function update() {
     return;
   }
 
-  // --- PLAYING ---
+  // --- PLAYING or BOSSFIGHT ---
   const ld = levelData;
+  const inBossFight = gameState === 'bossFight';
+
+  // Powerup timers
+  if (player.powerups.jumpyBoots > 0) player.powerups.jumpyBoots--;
+  if (player.powerups.clawsOfSteel > 0) player.powerups.clawsOfSteel--;
+  if (player.powerups.superFangs > 0) player.powerups.superFangs--;
 
   // Player movement
   player.vx = 0;
   if (keys['ArrowLeft']) { player.vx = -player.speed; player.facing = -1; }
   if (keys['ArrowRight']) { player.vx = player.speed; player.facing = 1; }
   if (keys['ArrowUp'] && player.onGround) {
-    player.vy = player.jumpForce;
+    player.vy = getPlayerJumpForce();
     player.onGround = false;
   }
 
   // Attack
+  const cooldown = getPlayerCooldown();
   if (keys['Space'] && player.attackCooldown <= 0 && !player.attacking) {
     player.attacking = true;
     player.attackTimer = 12;
-    player.attackCooldown = 20;
+    player.attackCooldown = cooldown;
   }
 
   if (player.attacking) {
@@ -345,9 +459,13 @@ function update() {
     if (player.comboTimer <= 0) player.combo = 0;
   }
 
+  // Apply knockback decay
+  player.knockbackX *= 0.8;
+  if (Math.abs(player.knockbackX) < 0.3) player.knockbackX = 0;
+
   // Physics
   player.vy += GRAVITY;
-  player.x += player.vx;
+  player.x += player.vx + player.knockbackX;
   player.y += player.vy;
 
   // Ground collision
@@ -383,10 +501,11 @@ function update() {
   // Attack hits on zombies
   if (player.attacking && player.attackTimer === 10) {
     const atkBox = getAttackBox();
+    const dmg = getPlayerDamage();
+
     zombies.forEach(z => {
       if (!z.alive) return;
       if (rectCollide(atkBox, z)) {
-        const dmg = 15 + player.combo * 3;
         z.hp -= dmg;
         z.hurt = 8;
         z.vx = player.facing * 6;
@@ -406,9 +525,55 @@ function update() {
         }
       }
     });
+
+    // Attack hits on boss
+    if (boss && boss.alive) {
+      if (rectCollide(atkBox, boss)) {
+        boss.hp -= dmg;
+        boss.hurt = 8;
+        boss.vx = player.facing * 3;
+        player.combo++;
+        player.comboTimer = 90;
+
+        spawnParticles(boss.x + boss.w / 2, boss.y + boss.h / 2, '#ff4444', 12, 8);
+        spawnFloatingText(boss.x + boss.w/2, boss.y - 10, `-${dmg}`, '#ff6666');
+        screenShake = 6;
+
+        if (boss.hp <= 0) {
+          boss.alive = false;
+          player.score += 1000;
+          screenShake = 20;
+          screenFlash = 15;
+          spawnParticles(boss.x + boss.w / 2, boss.y + boss.h / 2, '#ff8800', 40, 15);
+          spawnParticles(boss.x + boss.w / 2, boss.y + boss.h / 2, '#ffff00', 30, 12);
+          spawnFloatingText(boss.x + boss.w/2, boss.y - 40, 'BOSS DEFEATED! +1000', '#ffff44');
+        }
+      }
+    }
+
+    // Attack hits on powerup crates
+    powerupCrates.forEach(c => {
+      if (c.broken) return;
+      if (rectCollide(atkBox, c)) {
+        c.hp--;
+        c.shakeTimer = 6;
+        spawnParticles(c.x + c.w/2, c.y + c.h/2, '#aa8844', 4, 4);
+        if (c.hp <= 0) {
+          c.broken = true;
+          // Apply the powerup
+          const ptype = c.powerupType;
+          player.powerups[ptype.id] = POWERUP_DURATION;
+          spawnParticles(c.x + c.w/2, c.y + c.h/2, ptype.color, 20, 10);
+          spawnFloatingText(c.x + c.w/2, c.y - 20, ptype.name, ptype.color);
+          spawnFloatingText(c.x + c.w/2, c.y - 5, ptype.desc, '#ffffff');
+          screenFlash = 5;
+          player.score += 150;
+        }
+      }
+    });
   }
 
-  // Zombie AI
+  // Zombie AI - uses bounding box overlap for attacks (fixes standing still bug)
   zombies.forEach(z => {
     if (!z.alive) return;
     if (z.hurt > 0) { z.hurt--; }
@@ -417,22 +582,30 @@ function update() {
     const absDist = Math.abs(dist);
 
     // Chase player when within range
-    if (absDist < 400 && absDist > 5) {
+    if (absDist < 400) {
       z.facing = dist > 0 ? 1 : -1;
-      z.vx = z.facing * z.speed;
+      // Only apply chase movement if not overlapping (prevents jitter)
+      if (absDist > z.w * 0.5) {
+        z.vx += z.facing * z.speed * 0.3;
+        // Clamp speed
+        if (Math.abs(z.vx) > z.speed) z.vx = z.facing * z.speed;
+      }
     } else {
-      z.vx *= 0.8;
+      z.vx *= 0.9;
     }
 
-    // Zombie attack
-    if (absDist < 45 && Math.abs(player.y - z.y) < 40) {
+    // Zombie attack - use actual bounding box overlap
+    const zBox = { x: z.x - 5, y: z.y, w: z.w + 10, h: z.h };
+    const pBox = { x: player.x, y: player.y, w: player.w, h: player.h };
+    if (rectCollide(zBox, pBox)) {
       z.attackTimer++;
-      if (z.attackTimer > 40) {
+      if (z.attackTimer > 30) { // slightly faster attack windup
         if (player.invincible <= 0) {
           const dmg = z.type === 'big' ? 18 : 10;
           player.hp -= dmg;
           player.invincible = 30;
-          player.vx = z.facing * -5;
+          // Use knockback system instead of vx (which gets overwritten)
+          player.knockbackX = z.facing * 8;
           player.vy = -4;
           screenShake = 8;
           screenFlash = 5;
@@ -442,7 +615,7 @@ function update() {
         z.attackTimer = 0;
       }
     } else {
-      z.attackTimer = Math.max(0, z.attackTimer - 1);
+      z.attackTimer = Math.max(0, z.attackTimer - 2);
     }
 
     // Zombie physics
@@ -459,6 +632,94 @@ function update() {
     if (z.frameTimer > 10) { z.frame = (z.frame + 1) % 4; z.frameTimer = 0; }
   });
 
+  // ===== BOSS AI =====
+  if (boss && boss.alive && inBossFight) {
+    if (boss.hurt > 0) boss.hurt--;
+
+    const dist = player.x - boss.x;
+    const absDist = Math.abs(dist);
+    boss.facing = dist > 0 ? 1 : -1;
+
+    // Phase 2 at 50% HP - gets faster and meaner
+    if (boss.hp < boss.maxHp * 0.5 && boss.phase === 1) {
+      boss.phase = 2;
+      boss.speed = 1.8;
+      spawnFloatingText(boss.x + boss.w/2, boss.y - 40, 'BOSS ENRAGED!', '#ff0000');
+      screenShake = 10;
+    }
+
+    // Charge attack
+    if (boss.slamCooldown > 0) boss.slamCooldown--;
+
+    if (!boss.isCharging && absDist < 500 && absDist > 150 && boss.slamCooldown <= 0) {
+      // Start charge
+      boss.isCharging = true;
+      boss.chargeTimer = 30;
+      boss.slamCooldown = 120 - (boss.phase === 2 ? 40 : 0);
+    }
+
+    if (boss.isCharging) {
+      boss.chargeTimer--;
+      if (boss.chargeTimer > 15) {
+        // Wind up - slight back movement
+        boss.vx = boss.facing * -1;
+      } else if (boss.chargeTimer > 0) {
+        // Charge forward
+        boss.vx = boss.facing * (boss.phase === 2 ? 8 : 6);
+        spawnParticles(boss.x + boss.w/2, boss.y + boss.h, '#888888', 2, 3);
+      } else {
+        boss.isCharging = false;
+      }
+    } else {
+      // Normal chase
+      if (absDist > boss.w * 0.5) {
+        boss.vx += boss.facing * boss.speed * 0.2;
+        if (Math.abs(boss.vx) > boss.speed) boss.vx = boss.facing * boss.speed;
+      }
+    }
+
+    // Boss melee attack
+    const bossBox = { x: boss.x - 8, y: boss.y, w: boss.w + 16, h: boss.h };
+    const pBox = { x: player.x, y: player.y, w: player.w, h: player.h };
+    if (rectCollide(bossBox, pBox)) {
+      boss.attackTimer++;
+      const atkSpeed = boss.phase === 2 ? 20 : 30;
+      if (boss.attackTimer > atkSpeed) {
+        if (player.invincible <= 0) {
+          const dmg = boss.isCharging ? 30 : 20;
+          player.hp -= dmg;
+          player.invincible = 40;
+          player.knockbackX = boss.facing * 12;
+          player.vy = -6;
+          screenShake = 12;
+          screenFlash = 8;
+          spawnParticles(player.x + player.w/2, player.y + player.h/2, '#ff0000', 10, 8);
+          spawnFloatingText(player.x + player.w/2, player.y - 10, `-${dmg}`, '#ff0000');
+        }
+        boss.attackTimer = 0;
+      }
+    } else {
+      boss.attackTimer = Math.max(0, boss.attackTimer - 1);
+    }
+
+    // Boss physics
+    boss.vy += GRAVITY;
+    boss.x += boss.vx;
+    boss.y += boss.vy;
+    boss.vx *= 0.9;
+
+    if (boss.y + boss.h >= GROUND_Y + boss.h) {
+      boss.y = GROUND_Y + boss.h - boss.h;
+      boss.vy = 0;
+      boss.onGround = true;
+    }
+    // Keep boss near end of level
+    boss.x = Math.max(ld.width - 800, Math.min(boss.x, ld.width - boss.w));
+
+    boss.frameTimer++;
+    if (boss.frameTimer > 8) { boss.frame = (boss.frame + 1) % 4; boss.frameTimer = 0; }
+  }
+
   // Health pickups
   healthPickups.forEach(h => {
     if (h.collected) return;
@@ -473,8 +734,8 @@ function update() {
     }
   });
 
-  // Diamond pickup (level 3)
-  if (diamond && !diamond.collected) {
+  // Diamond pickup (level 3 - only after boss is dead)
+  if (diamond && !diamond.collected && (!boss || !boss.alive)) {
     diamond.glow += 0.05;
     const dbox = { x: diamond.x - 15, y: diamond.y - 15, w: 30, h: 30 };
     const pbox = { x: player.x, y: player.y, w: player.w, h: player.h };
@@ -490,7 +751,7 @@ function update() {
     }
   }
 
-  // Check level completion (levels 1 & 2: kill all zombies)
+  // Check level completion
   if (currentLevel < 3) {
     const allDead = zombies.every(z => !z.alive);
     if (allDead) {
@@ -498,11 +759,18 @@ function update() {
       transitionTimer = 90;
       spawnFloatingText(player.x, player.y - 50, 'LEVEL CLEAR!', '#ffff00');
     }
-  } else {
-    // Level 3: kill all zombies to reveal diamond
+  } else if (gameState === 'playing') {
+    // Level 3: kill all regular zombies → boss spawns
     const allDead = zombies.every(z => !z.alive);
-    if (allDead && diamond && !diamond.collected) {
-      // Diamond is already there, just make it pulse more
+    if (allDead && !boss) {
+      spawnBoss();
+      gameState = 'bossIntro';
+      bossIntroTimer = 90;
+      screenShake = 15;
+    }
+  } else if (inBossFight) {
+    // Boss dead → diamond available
+    if (boss && !boss.alive && diamond && !diamond.collected) {
       diamond.glow += 0.02;
     }
   }
@@ -542,12 +810,18 @@ function update() {
 // ============ DRAW ============
 function drawLeopard(x, y) {
   const f = player.facing;
-  const px = Math.floor(x);
-  const py = Math.floor(y);
   const bobY = player.onGround ? Math.sin(player.frameTimer * 0.3) * 2 : 0;
   const alpha = player.invincible > 0 ? (player.invincible % 4 < 2 ? 0.4 : 1) : 1;
 
+  ctx.save();
   ctx.globalAlpha = alpha;
+  // Scale from the center-bottom of the leopard
+  ctx.translate(x + player.w / 2, y + player.h);
+  ctx.scale(DRAW_SCALE, DRAW_SCALE);
+  ctx.translate(-(player.w / 2), -player.h);
+
+  const px = 0;
+  const py = 0;
 
   // Body
   ctx.fillStyle = '#e8a828';
@@ -580,10 +854,8 @@ function drawLeopard(x, y) {
   // Legs (animated)
   ctx.fillStyle = '#d09020';
   const legOffset = player.onGround ? Math.sin(player.frame * 1.5) * 4 : -3;
-  // Front legs
   ctx.fillRect(px + (f === 1 ? 22 : 12), py + 32 + bobY, 5, 14 + legOffset);
   ctx.fillRect(px + (f === 1 ? 15 : 18), py + 32 + bobY, 5, 14 - legOffset);
-  // Back legs
   ctx.fillRect(px + (f === 1 ? 8 : 26), py + 30 + bobY, 5, 16 - legOffset);
   ctx.fillRect(px + (f === 1 ? 2 : 32), py + 30 + bobY, 5, 16 + legOffset);
 
@@ -597,9 +869,26 @@ function drawLeopard(x, y) {
   const tailWag = Math.sin(Date.now() * 0.005) * 5;
   ctx.fillRect(px + (f === 1 ? 0 : 36), py + 14 + bobY + tailWag, 4, 6);
   ctx.fillRect(px + (f === 1 ? -3 : 39), py + 10 + bobY + tailWag, 4, 6);
-  // Tail tip (dark)
   ctx.fillStyle = '#1a1a1a';
   ctx.fillRect(px + (f === 1 ? -4 : 40), py + 8 + bobY + tailWag, 4, 5);
+
+  // Powerup glow effects on leopard
+  if (player.powerups.jumpyBoots > 0) {
+    ctx.fillStyle = 'rgba(68,255,136,0.3)';
+    ctx.fillRect(px + 2, py + 40, 36, 8); // green glow on feet
+  }
+  if (player.powerups.clawsOfSteel > 0) {
+    ctx.fillStyle = 'rgba(255,136,68,0.4)';
+    // Claw marks near paws
+    ctx.fillRect(px + (f === 1 ? 34 : 1), py + 14 + bobY, 6, 2);
+    ctx.fillRect(px + (f === 1 ? 36 : -1), py + 17 + bobY, 6, 2);
+    ctx.fillRect(px + (f === 1 ? 34 : 1), py + 20 + bobY, 6, 2);
+  }
+  if (player.powerups.superFangs > 0) {
+    ctx.fillStyle = '#ff44ff';
+    ctx.fillRect(px + (f === 1 ? 33 : 5), py + 16 + bobY, 2, 4); // fang
+    ctx.fillRect(px + (f === 1 ? 36 : 2), py + 16 + bobY, 2, 4);
+  }
 
   // Attack slash effect
   if (player.attacking) {
@@ -610,13 +899,14 @@ function drawLeopard(x, y) {
     ctx.beginPath();
     ctx.arc(slashX + 15 * f, py + 20, 25, -0.5 * f, 0.8 * f);
     ctx.stroke();
-    ctx.strokeStyle = '#ffff00';
+    ctx.strokeStyle = player.powerups.clawsOfSteel > 0 ? '#ff8844' : '#ffff00';
+    ctx.lineWidth = player.powerups.clawsOfSteel > 0 ? 3 : 2;
     ctx.beginPath();
     ctx.arc(slashX + 10 * f, py + 25, 20, -0.3 * f, 0.6 * f);
     ctx.stroke();
   }
 
-  ctx.globalAlpha = 1;
+  ctx.restore();
 }
 
 function drawZombie(z) {
@@ -628,36 +918,29 @@ function drawZombie(z) {
   const isBig = z.type === 'big';
   const s = isBig ? 1.2 : 1;
 
-  // Body
   ctx.fillStyle = hurtFlash ? '#ffffff' : (isBig ? '#3a5a3a' : '#4a6a4a');
   ctx.fillRect(px + 6 * s, py + 10 * s, 22 * s, 24 * s);
 
-  // Head
   ctx.fillStyle = hurtFlash ? '#ffffff' : '#5a7a5a';
   ctx.fillRect(px + 8 * s, py, 18 * s, 16 * s);
 
-  // Eyes (red and glowing)
   ctx.fillStyle = '#ff0000';
   ctx.fillRect(px + (f === 1 ? 18 : 10) * s, py + 5 * s, 3 * s, 3 * s);
   ctx.fillRect(px + (f === 1 ? 22 : 14) * s, py + 5 * s, 3 * s, 3 * s);
 
-  // Mouth
   ctx.fillStyle = '#2a3a2a';
   ctx.fillRect(px + 12 * s, py + 11 * s, 10 * s, 3 * s);
 
-  // Arms
   ctx.fillStyle = hurtFlash ? '#ffffff' : '#5a7a5a';
   const armReach = Math.sin(z.frame * 1.2) * 4;
   ctx.fillRect(px + (f === 1 ? 26 : -4) * s, py + 12 * s + armReach, 6 * s, 18 * s);
   ctx.fillRect(px + (f === 1 ? 28 : -6) * s, py + 14 * s - armReach, 6 * s, 18 * s);
 
-  // Legs
   ctx.fillStyle = hurtFlash ? '#ffffff' : '#3a5a3a';
   const legAnim = Math.sin(z.frame * 1.5) * 3;
   ctx.fillRect(px + 10 * s, py + 32 * s, 6 * s, 14 * s + legAnim);
   ctx.fillRect(px + 20 * s, py + 32 * s, 6 * s, 14 * s - legAnim);
 
-  // HP bar
   if (z.hp < z.maxHp) {
     const barW = 30 * s;
     const barX = px + (z.w * s - barW) / 2;
@@ -668,10 +951,103 @@ function drawZombie(z) {
   }
 }
 
+function drawBoss() {
+  if (!boss || !boss.alive) return;
+  const px = Math.floor(boss.x - camera.x);
+  const py = Math.floor(boss.y);
+  const f = boss.facing;
+  const hurtFlash = boss.hurt > 0 && boss.hurt % 2 === 0;
+  const isPhase2 = boss.phase === 2;
+
+  // Shadow
+  ctx.fillStyle = 'rgba(0,0,0,0.3)';
+  ctx.beginPath();
+  ctx.ellipse(px + boss.w/2, py + boss.h + 2, boss.w/2, 6, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Body - massive
+  const bodyColor = hurtFlash ? '#ffffff' : (isPhase2 ? '#4a2a2a' : '#2a4a2a');
+  ctx.fillStyle = bodyColor;
+  ctx.fillRect(px + 8, py + 20, 54, 45);
+
+  // Head - huge
+  ctx.fillStyle = hurtFlash ? '#ffffff' : (isPhase2 ? '#5a3a3a' : '#3a5a3a');
+  ctx.fillRect(px + 10, py - 5, 50, 30);
+
+  // Crown / horns
+  ctx.fillStyle = isPhase2 ? '#ff4444' : '#888844';
+  ctx.fillRect(px + 15, py - 15, 8, 12);
+  ctx.fillRect(px + 47, py - 15, 8, 12);
+  ctx.fillRect(px + 30, py - 18, 10, 15);
+
+  // Eyes - large and menacing
+  ctx.fillStyle = isPhase2 ? '#ff0000' : '#ff4400';
+  const eyeSize = 5 + Math.sin(Date.now() * 0.005) * 1;
+  ctx.fillRect(px + (f === 1 ? 38 : 18), py + 3, eyeSize, eyeSize);
+  ctx.fillRect(px + (f === 1 ? 48 : 28), py + 3, eyeSize, eyeSize);
+  // Eye glow
+  ctx.fillStyle = `rgba(255,0,0,${0.3 + Math.sin(Date.now() * 0.01) * 0.2})`;
+  ctx.beginPath();
+  ctx.arc(px + (f === 1 ? 41 : 21), py + 5, 8, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Mouth
+  ctx.fillStyle = '#1a0a0a';
+  ctx.fillRect(px + 20, py + 18, 30, 6);
+  // Teeth
+  ctx.fillStyle = '#ccccaa';
+  for (let i = 0; i < 5; i++) {
+    ctx.fillRect(px + 22 + i * 6, py + 18, 3, 4);
+  }
+
+  // Arms - massive
+  ctx.fillStyle = hurtFlash ? '#ffffff' : (isPhase2 ? '#4a2a2a' : '#3a5a3a');
+  const armSwing = Math.sin(boss.frame * 1.0) * 6;
+  ctx.fillRect(px + (f === 1 ? 56 : -10), py + 22 + armSwing, 14, 35);
+  ctx.fillRect(px + (f === 1 ? 60 : -14), py + 26 - armSwing, 14, 35);
+  // Claws
+  ctx.fillStyle = '#aaaaaa';
+  ctx.fillRect(px + (f === 1 ? 60 : -6), py + 55 + armSwing, 3, 6);
+  ctx.fillRect(px + (f === 1 ? 64 : -10), py + 55 + armSwing, 3, 6);
+  ctx.fillRect(px + (f === 1 ? 68 : -14), py + 55 + armSwing, 3, 6);
+
+  // Legs
+  ctx.fillStyle = hurtFlash ? '#ffffff' : (isPhase2 ? '#3a1a1a' : '#2a3a2a');
+  const legAnim = Math.sin(boss.frame * 1.2) * 4;
+  ctx.fillRect(px + 15, py + 62, 12, 24 + legAnim);
+  ctx.fillRect(px + 43, py + 62, 12, 24 - legAnim);
+
+  // Charge effect
+  if (boss.isCharging && boss.chargeTimer <= 15) {
+    ctx.strokeStyle = `rgba(255,100,0,${0.5 + Math.sin(Date.now() * 0.02) * 0.3})`;
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(px + boss.w/2, py + boss.h/2, boss.w/2 + 10, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+
+  // HP bar
+  const barW = 80;
+  const barX = px + (boss.w - barW) / 2;
+  ctx.fillStyle = '#440000';
+  ctx.fillRect(barX, py - 25, barW, 8);
+  ctx.fillStyle = isPhase2 ? '#ff4400' : '#ff0000';
+  ctx.fillRect(barX, py - 25, barW * (boss.hp / boss.maxHp), 8);
+  ctx.strokeStyle = '#ffffff';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(barX, py - 25, barW, 8);
+
+  // Boss name
+  ctx.fillStyle = '#ff4444';
+  ctx.font = 'bold 10px "Courier New"';
+  ctx.textAlign = 'center';
+  ctx.fillText('ZOMBIE LORD', px + boss.w/2, py - 30);
+  ctx.textAlign = 'left';
+}
+
 function drawBackground() {
   const ld = levelData;
 
-  // Sky gradient
   const grad = ctx.createLinearGradient(0, 0, 0, GROUND_Y + 50);
   if (currentLevel === 1) {
     grad.addColorStop(0, '#0a1a0a');
@@ -710,10 +1086,8 @@ function drawBackground() {
     ld.trees.forEach(t => {
       const tx = t.x - camera.x * 0.6;
       if (tx < -100 || tx > canvas.width + 100) return;
-      // Tree trunk
       ctx.fillStyle = '#3a2a1a';
       ctx.fillRect(tx - 5, GROUND_Y + 50 - t.h, 10, t.h);
-      // Canopy
       ctx.fillStyle = '#1a4a1a';
       ctx.beginPath();
       ctx.arc(tx, GROUND_Y + 50 - t.h, 25, 0, Math.PI * 2);
@@ -734,7 +1108,6 @@ function drawBackground() {
       ctx.beginPath();
       ctx.arc(gx, GROUND_Y + 50 - g.h, 8, Math.PI, 0);
       ctx.fill();
-      // Cross
       ctx.fillStyle = '#4a4a5a';
       ctx.fillRect(gx - 1, GROUND_Y + 50 - g.h + 4, 2, 10);
       ctx.fillRect(gx - 4, GROUND_Y + 50 - g.h + 7, 8, 2);
@@ -746,10 +1119,8 @@ function drawBackground() {
       const tx = t.x - camera.x * 0.7;
       if (tx < -50 || tx > canvas.width + 50) return;
       t.flicker += 0.1;
-      // Pole
       ctx.fillStyle = '#5a4a3a';
       ctx.fillRect(tx - 2, GROUND_Y + 50 - 50, 4, 50);
-      // Flame
       const flSize = 5 + Math.sin(t.flicker) * 2;
       ctx.fillStyle = '#ff8800';
       ctx.beginPath();
@@ -759,7 +1130,6 @@ function drawBackground() {
       ctx.beginPath();
       ctx.arc(tx, GROUND_Y + 50 - 57, flSize * 0.6, 0, Math.PI * 2);
       ctx.fill();
-      // Glow
       const glowGrad = ctx.createRadialGradient(tx, GROUND_Y + 50 - 55, 0, tx, GROUND_Y + 50 - 55, 40);
       glowGrad.addColorStop(0, 'rgba(255,136,0,0.15)');
       glowGrad.addColorStop(1, 'rgba(255,136,0,0)');
@@ -772,7 +1142,6 @@ function drawBackground() {
   ctx.fillStyle = ld.groundColor;
   ctx.fillRect(0, GROUND_Y + 50, canvas.width, canvas.height - GROUND_Y - 50);
 
-  // Ground detail line
   ctx.fillStyle = ld.groundColor.replace(/[0-9a-f]/g, (c) => {
     const v = Math.min(15, parseInt(c, 16) + 2);
     return v.toString(16);
@@ -787,7 +1156,6 @@ function drawBackground() {
     ctx.fillRect(px, p.y, p.w, p.h);
     ctx.fillStyle = '#7a6a5a';
     ctx.fillRect(px, p.y, p.w, 4);
-    // Support lines
     ctx.fillStyle = '#5a4a3a';
     ctx.fillRect(px + 5, p.y + p.h, 3, 8);
     ctx.fillRect(px + p.w - 8, p.y + p.h, 3, 8);
@@ -806,7 +1174,7 @@ function drawHUD() {
   ctx.fillRect(17, 17, 200 * hpRatio, 20);
   ctx.fillStyle = '#ffffff';
   ctx.font = '12px "Courier New"';
-  ctx.fillText(`HP: ${player.hp}/${player.maxHp}`, 22, 32);
+  ctx.fillText(`HP: ${Math.ceil(player.hp)}/${player.maxHp}`, 22, 32);
 
   // Score
   ctx.fillStyle = '#ffcc00';
@@ -823,7 +1191,11 @@ function drawHUD() {
   // Zombie count
   const alive = zombies.filter(z => z.alive).length;
   ctx.fillStyle = '#ff6666';
-  ctx.fillText(`ZOMBIES: ${alive}`, 15, 75);
+  if (gameState === 'bossFight') {
+    ctx.fillText('BOSS FIGHT!', 15, 75);
+  } else {
+    ctx.fillText(`ZOMBIES: ${alive}`, 15, 75);
+  }
 
   // Combo
   if (player.combo > 1) {
@@ -832,42 +1204,63 @@ function drawHUD() {
     ctx.fillText(`COMBO x${player.combo}!`, canvas.width / 2 - 60, 35);
   }
 
-  // Level 3 - diamond indicator
-  if (currentLevel === 3 && diamond && !diamond.collected) {
-    const allDead = zombies.every(z => !z.alive);
-    if (!allDead) {
-      ctx.fillStyle = '#aaaaaa';
-      ctx.font = '12px "Courier New"';
-      ctx.textAlign = 'center';
-      ctx.fillText('Defeat all zombies to reveal the Leopard Diamond!', canvas.width / 2, canvas.height - 20);
-      ctx.textAlign = 'left';
-    } else {
+  // Active powerups display
+  let puY = 95;
+  if (player.powerups.jumpyBoots > 0) {
+    const t = player.powerups.jumpyBoots;
+    ctx.fillStyle = '#44ff88';
+    ctx.font = '11px "Courier New"';
+    ctx.fillText(`JUMPY BOOTS [${Math.ceil(t/60)}s]`, 15, puY);
+    puY += 14;
+  }
+  if (player.powerups.clawsOfSteel > 0) {
+    const t = player.powerups.clawsOfSteel;
+    ctx.fillStyle = '#ff8844';
+    ctx.font = '11px "Courier New"';
+    ctx.fillText(`CLAWS OF STEEL [${Math.ceil(t/60)}s]`, 15, puY);
+    puY += 14;
+  }
+  if (player.powerups.superFangs > 0) {
+    const t = player.powerups.superFangs;
+    ctx.fillStyle = '#ff44ff';
+    ctx.font = '11px "Courier New"';
+    ctx.fillText(`SUPER FANGS [${Math.ceil(t/60)}s]`, 15, puY);
+    puY += 14;
+  }
+
+  // Level 3 hints
+  if (currentLevel === 3) {
+    ctx.textAlign = 'center';
+    if (gameState === 'playing') {
+      const allDead = zombies.every(z => !z.alive);
+      if (!allDead) {
+        ctx.fillStyle = '#aaaaaa';
+        ctx.font = '12px "Courier New"';
+        ctx.fillText('Defeat all zombies to face the Zombie Lord!', canvas.width / 2, canvas.height - 20);
+      }
+    } else if (gameState === 'bossFight' && boss && !boss.alive && diamond && !diamond.collected) {
       ctx.fillStyle = '#00ffff';
       ctx.font = '14px "Courier New"';
-      ctx.textAlign = 'center';
       ctx.fillText('>>> THE LEOPARD DIAMOND AWAITS! >>>', canvas.width / 2, canvas.height - 20);
-      ctx.textAlign = 'left';
     }
+    ctx.textAlign = 'left';
   }
 }
 
 function drawDiamond() {
   if (!diamond || diamond.collected) return;
-  const allDead = zombies.every(z => !z.alive);
-  if (!allDead) return;
+  if (boss && boss.alive) return; // hidden during boss fight
 
   const dx = diamond.x - camera.x;
   const dy = diamond.y + Math.sin(diamond.glow) * 8;
   const glow = 0.5 + Math.sin(diamond.glow * 3) * 0.3;
 
-  // Glow effect
   const glowGrad = ctx.createRadialGradient(dx, dy, 0, dx, dy, 50);
   glowGrad.addColorStop(0, `rgba(0,255,255,${glow * 0.4})`);
   glowGrad.addColorStop(1, 'rgba(0,255,255,0)');
   ctx.fillStyle = glowGrad;
   ctx.fillRect(dx - 50, dy - 50, 100, 100);
 
-  // Diamond shape
   ctx.fillStyle = '#00ffff';
   ctx.beginPath();
   ctx.moveTo(dx, dy - 18);
@@ -877,7 +1270,6 @@ function drawDiamond() {
   ctx.closePath();
   ctx.fill();
 
-  // Inner shine
   ctx.fillStyle = '#88ffff';
   ctx.beginPath();
   ctx.moveTo(dx, dy - 10);
@@ -887,7 +1279,6 @@ function drawDiamond() {
   ctx.closePath();
   ctx.fill();
 
-  // Sparkle
   ctx.fillStyle = '#ffffff';
   ctx.fillRect(dx - 1, dy - 22, 2, 6);
   ctx.fillRect(dx - 1, dy + 16, 2, 6);
@@ -924,12 +1315,10 @@ function drawHealthPickups() {
     const hx = h.x - camera.x;
     const hy = h.y + Math.sin(h.bobTimer) * 5;
 
-    // Green cross
     ctx.fillStyle = '#44ff44';
     ctx.fillRect(hx - 3, hy - 8, 6, 16);
     ctx.fillRect(hx - 8, hy - 3, 16, 6);
 
-    // Glow
     ctx.fillStyle = 'rgba(68,255,68,0.15)';
     ctx.beginPath();
     ctx.arc(hx, hy, 12, 0, Math.PI * 2);
@@ -937,12 +1326,73 @@ function drawHealthPickups() {
   });
 }
 
+function drawPowerupCrates() {
+  powerupCrates.forEach(c => {
+    if (c.broken) return;
+    const cx = c.x - camera.x + (c.shakeTimer > 0 ? (Math.random() - 0.5) * 4 : 0);
+    const cy = c.y;
+    if (c.shakeTimer > 0) c.shakeTimer--;
+
+    // Wooden crate
+    ctx.fillStyle = '#8a6a3a';
+    ctx.fillRect(cx, cy, c.w, c.h);
+    ctx.fillStyle = '#6a4a2a';
+    ctx.fillRect(cx, cy, c.w, 3);
+    ctx.fillRect(cx, cy + c.h - 3, c.w, 3);
+    ctx.fillRect(cx, cy, 3, c.h);
+    ctx.fillRect(cx + c.w - 3, cy, 3, c.h);
+    // Cross plank
+    ctx.fillStyle = '#7a5a2a';
+    ctx.fillRect(cx + 3, cy + c.h/2 - 1, c.w - 6, 3);
+    ctx.fillRect(cx + c.w/2 - 1, cy + 3, 3, c.h - 6);
+
+    // Question mark / powerup icon hint
+    ctx.fillStyle = c.powerupType.color;
+    ctx.font = 'bold 12px "Courier New"';
+    ctx.textAlign = 'center';
+    ctx.fillText('?', cx + c.w/2, cy + c.h/2 + 4);
+    ctx.textAlign = 'left';
+
+    // Glow
+    ctx.fillStyle = `rgba(${c.powerupType.color === '#44ff88' ? '68,255,136' : c.powerupType.color === '#ff8844' ? '255,136,68' : '255,68,255'},${0.1 + Math.sin(Date.now() * 0.003) * 0.05})`;
+    ctx.beginPath();
+    ctx.arc(cx + c.w/2, cy + c.h/2, 18, 0, Math.PI * 2);
+    ctx.fill();
+
+    // HP pips
+    for (let i = 0; i < c.hp; i++) {
+      ctx.fillStyle = '#ffcc00';
+      ctx.fillRect(cx + 4 + i * 7, cy - 6, 5, 3);
+    }
+  });
+}
+
+function drawBossIntro() {
+  ctx.fillStyle = `rgba(0,0,0,${0.3 + Math.sin(Date.now() * 0.005) * 0.15})`;
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  ctx.fillStyle = '#ff4444';
+  ctx.font = 'bold 36px "Courier New"';
+  ctx.textAlign = 'center';
+
+  const shake = Math.sin(Date.now() * 0.02) * 3;
+  ctx.fillText('WARNING!', canvas.width / 2 + shake, canvas.height / 2 - 40);
+
+  ctx.fillStyle = '#ffffff';
+  ctx.font = '20px "Courier New"';
+  ctx.fillText('THE ZOMBIE LORD APPROACHES!', canvas.width / 2, canvas.height / 2 + 10);
+
+  ctx.fillStyle = '#aaaaaa';
+  ctx.font = '14px "Courier New"';
+  ctx.fillText('Defeat the boss to claim the Leopard Diamond', canvas.width / 2, canvas.height / 2 + 50);
+
+  ctx.textAlign = 'left';
+}
+
 function drawTitleScreen() {
-  // Background
   ctx.fillStyle = '#0a0a0a';
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-  // Animated background particles
   for (let i = 0; i < 30; i++) {
     const x = (Date.now() * 0.02 * (i * 0.3 + 0.5) + i * 100) % canvas.width;
     const y = (i * 47 + 10) % canvas.height;
@@ -950,18 +1400,16 @@ function drawTitleScreen() {
     ctx.fillRect(x, y, 2, 2);
   }
 
-  // Title
   ctx.fillStyle = '#e8a828';
   ctx.font = 'bold 48px "Courier New"';
   ctx.textAlign = 'center';
-  ctx.fillText('LEOPARD', canvas.width / 2, 160);
+  ctx.fillText('LEOPARD', canvas.width / 2, 150);
   ctx.fillStyle = '#ff4444';
-  ctx.fillText('vs', canvas.width / 2, 210);
+  ctx.fillText('vs', canvas.width / 2, 200);
   ctx.fillStyle = '#5a7a5a';
-  ctx.fillText('ZOMBIES', canvas.width / 2, 260);
+  ctx.fillText('ZOMBIES', canvas.width / 2, 250);
 
-  // Diamond icon
-  const dx = canvas.width / 2, dy = 310;
+  const dx = canvas.width / 2, dy = 295;
   ctx.fillStyle = '#00ffff';
   ctx.beginPath();
   ctx.moveTo(dx, dy - 12);
@@ -971,15 +1419,14 @@ function drawTitleScreen() {
   ctx.closePath();
   ctx.fill();
 
-  // Instructions
   ctx.fillStyle = '#aaaaaa';
   ctx.font = '16px "Courier New"';
-  ctx.fillText('Arrow Keys - Move & Jump', canvas.width / 2, 370);
-  ctx.fillText('Space - Attack', canvas.width / 2, 395);
+  ctx.fillText('Arrow Keys - Move & Jump', canvas.width / 2, 345);
+  ctx.fillText('Space - Attack', canvas.width / 2, 370);
+  ctx.fillText('Break crates on platforms for power-ups!', canvas.width / 2, 400);
   ctx.fillText('Defeat zombies across 3 levels', canvas.width / 2, 430);
   ctx.fillText('Capture the Leopard Diamond!', canvas.width / 2, 455);
 
-  // Start prompt
   const blink = Math.sin(Date.now() * 0.005) > 0;
   if (blink) {
     ctx.fillStyle = '#ffcc00';
@@ -1017,7 +1464,6 @@ function drawGameWin() {
   ctx.fillStyle = '#0a0a1a';
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-  // Celebration particles
   for (let i = 0; i < 40; i++) {
     const x = (Date.now() * 0.03 * (i * 0.2 + 0.3) + i * 80) % canvas.width;
     const y = (Date.now() * 0.02 * (i * 0.1 + 0.2) + i * 60) % canvas.height;
@@ -1026,7 +1472,6 @@ function drawGameWin() {
     ctx.fillRect(x, y, 3, 3);
   }
 
-  // Diamond
   const dx = canvas.width / 2, dy = 120;
   const glow = Math.sin(Date.now() * 0.003);
   const glowGrad = ctx.createRadialGradient(dx, dy, 0, dx, dy, 60);
@@ -1060,8 +1505,8 @@ function drawGameWin() {
   ctx.fillStyle = '#aaaaaa';
   ctx.font = '16px "Courier New"';
   ctx.fillText('You fought through the Dark Forest,', canvas.width / 2, 380);
-  ctx.fillText('survived the Graveyard, and conquered', canvas.width / 2, 405);
-  ctx.fillText('the Zombie Fortress!', canvas.width / 2, 430);
+  ctx.fillText('survived the Graveyard, conquered the', canvas.width / 2, 405);
+  ctx.fillText('Zombie Fortress, and defeated the Zombie Lord!', canvas.width / 2, 430);
 
   const blink = Math.sin(Date.now() * 0.005) > 0;
   if (blink) {
@@ -1120,12 +1565,11 @@ function draw() {
 
   drawBackground();
   drawHealthPickups();
+  drawPowerupCrates();
   drawDiamond();
 
-  // Draw zombies
   zombies.forEach(z => drawZombie(z));
-
-  // Draw player
+  drawBoss();
   drawLeopard(player.x - camera.x, player.y);
 
   drawParticles();
@@ -1133,7 +1577,6 @@ function draw() {
 
   ctx.restore();
 
-  // Screen flash
   if (screenFlash > 0) {
     ctx.fillStyle = `rgba(255,255,255,${screenFlash * 0.06})`;
     ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -1141,6 +1584,7 @@ function draw() {
 
   drawHUD();
 
+  if (gameState === 'bossIntro') drawBossIntro();
   if (gameState === 'levelComplete') drawLevelComplete();
   if (gameState === 'gameOver') drawGameOver();
 }
