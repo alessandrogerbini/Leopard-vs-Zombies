@@ -4,7 +4,7 @@ import { getLevelData } from './levels.js';
 import { rectCollide, getAttackBox, spawnParticles, spawnFloatingText, getPlayerDamage, getPlayerCooldown, getPlayerJumpForce } from './utils.js';
 import { spawnZombies, spawnBoss, updateZombieAI, updateBossAI } from './enemies.js';
 import { spawnHealthPickups, spawnPowerupCrates, updateHealthPickups, updateDiamond, updatePortal } from './items.js';
-import { initRenderer, getCtx, drawLeopard, drawZombie, drawBoss, drawBackground, drawHealthPickups, drawPowerupCrates, drawPortal, drawDiamond, drawParticles, drawFloatingTexts, drawHUD, drawBossIntro, drawTitleScreen, drawLevelComplete, drawGameWin, drawGameOver } from './renderer.js';
+import { initRenderer, getCtx, drawLeopard, drawZombie, drawBoss, drawBackground, drawHealthPickups, drawPowerupCrates, drawPortal, drawDiamond, drawParticles, drawFloatingTexts, drawHUD, drawBossIntro, drawDying, drawTitleScreen, drawLevelComplete, drawGameWin, drawGameOver } from './renderer.js';
 
 const canvas = document.getElementById('game');
 initRenderer(canvas);
@@ -47,7 +47,7 @@ function initLevel(level) {
 
 function update() {
   if (state.gameState === 'title') {
-    if (keys['Enter']) initLevel(1);
+    if (keys['Enter']) { player.lives = 3; initLevel(1); }
     return;
   }
 
@@ -67,7 +67,20 @@ function update() {
   }
 
   if (state.gameState === 'gameWin' || state.gameState === 'gameOver') {
-    if (keys['Enter']) { state.gameState = 'title'; player.score = 0; }
+    if (keys['Enter']) { state.gameState = 'title'; player.score = 0; player.lives = 3; }
+    return;
+  }
+
+  if (state.gameState === 'dying') {
+    state.deathTimer--;
+    if (state.deathTimer <= 0) {
+      if (player.lives > 0) {
+        initLevel(state.currentLevel);
+        spawnFloatingText(player.x, player.y - 40, `${player.lives} LIVES LEFT`, '#ffcc00');
+      } else {
+        state.gameState = 'gameOver';
+      }
+    }
     return;
   }
 
@@ -228,8 +241,15 @@ function update() {
     state.diamond.glow += 0.02;
   }
 
-  // Game over
-  if (player.hp <= 0) { player.hp = 0; state.gameState = 'gameOver'; state.screenShake = 15; }
+  // Death / lives
+  if (player.hp <= 0) {
+    player.hp = 0;
+    player.lives--;
+    state.screenShake = 15;
+    state.gameState = 'dying';
+    state.deathTimer = 90;
+    spawnParticles(player.x + player.w/2, player.y + player.h/2, '#ff0000', 20, 10);
+  }
 
   // Camera
   const targetX = player.x - canvas.width / 3;
@@ -275,6 +295,7 @@ function draw() {
 
   drawHUD();
   if (state.gameState === 'bossIntro') drawBossIntro();
+  if (state.gameState === 'dying') drawDying();
   if (state.gameState === 'levelComplete') drawLevelComplete();
   if (state.gameState === 'gameOver') drawGameOver();
 }

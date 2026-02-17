@@ -23,6 +23,7 @@ export const state = {
   diamond: null,
   boss: null,
   bossIntroTimer: 0,
+  deathTimer: 0,
   portal: null,
 };
 
@@ -38,7 +39,7 @@ export const player = {
   frame: 0, frameTimer: 0,
   invincible: 0,
   combo: 0, comboTimer: 0,
-  score: 0,
+  score: 0, lives: 3,
   knockbackX: 0,
   powerups: {
     jumpyBoots: 0,

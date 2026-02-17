@@ -12,8 +12,9 @@ export function getCtx() { return ctx; }
 
 export function drawLeopard(x, y) {
   const f = player.facing;
-  const bobY = player.onGround ? Math.sin(player.frameTimer * 0.3) * 2 : 0;
   const alpha = player.invincible > 0 ? (player.invincible % 4 < 2 ? 0.4 : 1) : 1;
+  const bounceY = player.onGround && Math.abs(player.vx) > 0.5 ? Math.sin(player.frameTimer * 0.4) * 1.5 : 0;
+  const wheelSpin = player.frameTimer * 0.5;
 
   ctx.save();
   ctx.globalAlpha = alpha;
@@ -23,70 +24,118 @@ export function drawLeopard(x, y) {
 
   const px = 0, py = 0;
 
+  // === RACE CAR ===
+  // Car body (lower half)
+  ctx.fillStyle = '#cc2222';
+  ctx.fillRect(px - 4, py + 30 + bounceY, 48, 16);
+  // Front bumper
+  ctx.fillStyle = '#aa1a1a';
+  ctx.fillRect(px + (f === 1 ? 40 : -8), py + 32 + bounceY, 12, 12);
+  // Rear bumper
+  ctx.fillStyle = '#aa1a1a';
+  ctx.fillRect(px + (f === 1 ? -8 : 40), py + 34 + bounceY, 8, 10);
+  // Windshield
+  ctx.fillStyle = '#88ccff';
+  ctx.fillRect(px + (f === 1 ? 28 : 6), py + 22 + bounceY, 10, 10);
+  // Car top / cockpit area
+  ctx.fillStyle = '#dd3333';
+  ctx.fillRect(px + 6, py + 24 + bounceY, 28, 8);
+  // Racing stripe
+  ctx.fillStyle = '#ffcc00';
+  ctx.fillRect(px + (f === 1 ? -4 : 40), py + 36 + bounceY, 48, 3);
+  // Headlight
+  ctx.fillStyle = '#ffff88';
+  ctx.fillRect(px + (f === 1 ? 44 : -4), py + 34 + bounceY, 4, 4);
+  // Taillight
+  ctx.fillStyle = '#ff4444';
+  ctx.fillRect(px + (f === 1 ? -6 : 44), py + 34 + bounceY, 3, 4);
+
+  // Wheels
+  ctx.fillStyle = '#222222';
+  const w1x = px + 6, w2x = px + 32, wy = py + 44 + bounceY;
+  ctx.beginPath(); ctx.arc(w1x, wy, 6, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc(w2x, wy, 6, 0, Math.PI * 2); ctx.fill();
+  // Wheel rims
+  ctx.fillStyle = '#888888';
+  ctx.beginPath(); ctx.arc(w1x, wy, 3, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc(w2x, wy, 3, 0, Math.PI * 2); ctx.fill();
+  // Wheel spokes (animated)
+  ctx.strokeStyle = '#aaaaaa'; ctx.lineWidth = 1;
+  for (let i = 0; i < 3; i++) {
+    const angle = wheelSpin + i * (Math.PI * 2 / 3);
+    ctx.beginPath(); ctx.moveTo(w1x, wy); ctx.lineTo(w1x + Math.cos(angle) * 5, wy + Math.sin(angle) * 5); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(w2x, wy); ctx.lineTo(w2x + Math.cos(angle) * 5, wy + Math.sin(angle) * 5); ctx.stroke();
+  }
+
+  // Exhaust particles when moving
+  if (Math.abs(player.vx) > 0.5 && player.onGround) {
+    const ex = px + (f === 1 ? -8 : 48);
+    ctx.fillStyle = `rgba(150,150,150,${0.3 + Math.random() * 0.3})`;
+    ctx.beginPath(); ctx.arc(ex + (Math.random() - 0.5) * 4, wy - 4 + (Math.random() - 0.5) * 4, 2 + Math.random() * 2, 0, Math.PI * 2); ctx.fill();
+  }
+
+  // === LEOPARD (sitting in car) ===
+  // Body (torso above car)
   ctx.fillStyle = '#e8a828';
-  ctx.fillRect(px + (f === 1 ? 5 : 10), py + 15 + bobY, 25, 18);
-  ctx.fillRect(px + (f === 1 ? 22 : 2), py + 5 + bobY, 16, 16);
-
+  ctx.fillRect(px + (f === 1 ? 12 : 14), py + 12 + bounceY, 18, 14);
+  // Head
+  ctx.fillRect(px + (f === 1 ? 22 : 6), py + 2 + bounceY, 14, 14);
+  // Ears
   ctx.fillStyle = '#d09020';
-  ctx.fillRect(px + (f === 1 ? 24 : 6), py + 2 + bobY, 5, 5);
-  ctx.fillRect(px + (f === 1 ? 31 : 12), py + 2 + bobY, 5, 5);
-
+  ctx.fillRect(px + (f === 1 ? 24 : 8), py - 1 + bounceY, 4, 4);
+  ctx.fillRect(px + (f === 1 ? 30 : 14), py - 1 + bounceY, 4, 4);
+  // Eyes
   ctx.fillStyle = '#00ff00';
-  ctx.fillRect(px + (f === 1 ? 30 : 8), py + 10 + bobY, 3, 3);
+  ctx.fillRect(px + (f === 1 ? 29 : 10), py + 6 + bounceY, 3, 3);
+  // Nose
   ctx.fillStyle = '#ff6688';
-  ctx.fillRect(px + (f === 1 ? 35 : 3), py + 14 + bobY, 2, 2);
-
+  ctx.fillRect(px + (f === 1 ? 33 : 6), py + 10 + bounceY, 2, 2);
+  // Spots
   ctx.fillStyle = '#c08018';
-  [[8, 17], [15, 20], [22, 17], [12, 24], [20, 25]].forEach(([sx, sy]) => {
-    ctx.fillRect(px + (f === 1 ? sx : 40 - sx - 3), py + sy + bobY, 3, 3);
+  [[14, 14], [18, 16], [24, 15]].forEach(([sx, sy]) => {
+    ctx.fillRect(px + (f === 1 ? sx : 38 - sx - 2), py + sy + bounceY, 2, 2);
   });
-
+  // Paws on steering area
   ctx.fillStyle = '#d09020';
-  const legOffset = player.onGround ? Math.sin(player.frame * 1.5) * 4 : -3;
-  ctx.fillRect(px + (f === 1 ? 22 : 12), py + 32 + bobY, 5, 14 + legOffset);
-  ctx.fillRect(px + (f === 1 ? 15 : 18), py + 32 + bobY, 5, 14 - legOffset);
-  ctx.fillRect(px + (f === 1 ? 8 : 26), py + 30 + bobY, 5, 16 - legOffset);
-  ctx.fillRect(px + (f === 1 ? 2 : 32), py + 30 + bobY, 5, 16 + legOffset);
-
-  ctx.fillStyle = '#f0c040';
-  ctx.fillRect(px + (f === 1 ? 22 : 12), py + 45 + bobY + legOffset, 6, 3);
-  ctx.fillRect(px + (f === 1 ? 15 : 18), py + 45 + bobY - legOffset, 6, 3);
-
+  ctx.fillRect(px + (f === 1 ? 26 : 10), py + 24 + bounceY, 5, 4);
+  ctx.fillRect(px + (f === 1 ? 20 : 16), py + 24 + bounceY, 5, 4);
+  // Tail sticking up behind
+  const tailWag = Math.sin(Date.now() * 0.005) * 4;
   ctx.fillStyle = '#d09020';
-  const tailWag = Math.sin(Date.now() * 0.005) * 5;
-  ctx.fillRect(px + (f === 1 ? 0 : 36), py + 14 + bobY + tailWag, 4, 6);
-  ctx.fillRect(px + (f === 1 ? -3 : 39), py + 10 + bobY + tailWag, 4, 6);
+  ctx.fillRect(px + (f === 1 ? 8 : 32), py + 8 + bounceY + tailWag, 3, 8);
   ctx.fillStyle = '#1a1a1a';
-  ctx.fillRect(px + (f === 1 ? -4 : 40), py + 8 + bobY + tailWag, 4, 5);
+  ctx.fillRect(px + (f === 1 ? 7 : 33), py + 4 + bounceY + tailWag, 3, 5);
 
+  // Powerup visuals
   if (player.powerups.jumpyBoots > 0) {
     ctx.fillStyle = 'rgba(68,255,136,0.3)';
-    ctx.fillRect(px + 2, py + 40, 36, 8);
+    ctx.fillRect(px - 4, py + 42 + bounceY, 48, 6);
   }
   if (player.powerups.clawsOfSteel > 0) {
     ctx.fillStyle = 'rgba(255,136,68,0.4)';
-    ctx.fillRect(px + (f === 1 ? 34 : 1), py + 14 + bobY, 6, 2);
-    ctx.fillRect(px + (f === 1 ? 36 : -1), py + 17 + bobY, 6, 2);
-    ctx.fillRect(px + (f === 1 ? 34 : 1), py + 20 + bobY, 6, 2);
+    ctx.fillRect(px + (f === 1 ? 34 : 1), py + 10 + bounceY, 5, 2);
+    ctx.fillRect(px + (f === 1 ? 36 : -1), py + 13 + bounceY, 5, 2);
+    ctx.fillRect(px + (f === 1 ? 34 : 1), py + 16 + bounceY, 5, 2);
   }
   if (player.powerups.superFangs > 0) {
     ctx.fillStyle = '#ff44ff';
-    ctx.fillRect(px + (f === 1 ? 33 : 5), py + 16 + bobY, 2, 4);
-    ctx.fillRect(px + (f === 1 ? 36 : 2), py + 16 + bobY, 2, 4);
+    ctx.fillRect(px + (f === 1 ? 32 : 8), py + 12 + bounceY, 2, 3);
+    ctx.fillRect(px + (f === 1 ? 35 : 5), py + 12 + bounceY, 2, 3);
   }
 
+  // Attack slash effect
   if (player.attacking) {
     ctx.strokeStyle = '#ffffff';
     ctx.lineWidth = 2;
     ctx.globalAlpha = alpha * (player.attackTimer / 12);
-    const slashX = px + (f === 1 ? 40 : -15);
+    const slashX = px + (f === 1 ? 42 : -15);
     ctx.beginPath();
-    ctx.arc(slashX + 15 * f, py + 20, 25, -0.5 * f, 0.8 * f);
+    ctx.arc(slashX + 15 * f, py + 16, 25, -0.5 * f, 0.8 * f);
     ctx.stroke();
     ctx.strokeStyle = player.powerups.clawsOfSteel > 0 ? '#ff8844' : '#ffff00';
     ctx.lineWidth = player.powerups.clawsOfSteel > 0 ? 3 : 2;
     ctx.beginPath();
-    ctx.arc(slashX + 10 * f, py + 25, 20, -0.3 * f, 0.6 * f);
+    ctx.arc(slashX + 10 * f, py + 20, 20, -0.3 * f, 0.6 * f);
     ctx.stroke();
   }
 
@@ -431,6 +480,12 @@ export function drawHUD() {
   ctx.fillStyle = '#ffffff'; ctx.font = '12px "Courier New"';
   ctx.fillText(`HP: ${Math.ceil(player.hp)}/${player.maxHp}`, 22, 32);
 
+  // Lives display
+  ctx.fillStyle = '#ffcc00'; ctx.font = '14px "Courier New"';
+  for (let i = 0; i < player.lives; i++) {
+    ctx.fillText('\u2764', 230 + i * 18, 32);
+  }
+
   ctx.fillStyle = '#ffcc00'; ctx.font = '16px "Courier New"'; ctx.textAlign = 'right';
   ctx.fillText(`SCORE: ${player.score}`, canvas.width - 20, 32); ctx.textAlign = 'left';
 
@@ -476,6 +531,24 @@ export function drawHUD() {
   }
 }
 
+export function drawDying() {
+  const t = state.deathTimer;
+  ctx.fillStyle = `rgba(100,0,0,${0.5 * (1 - t / 90)})`;
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.fillStyle = '#ff4444'; ctx.font = 'bold 30px "Courier New"'; ctx.textAlign = 'center';
+  ctx.fillText('YOU DIED!', canvas.width / 2, canvas.height / 2 - 20);
+  if (player.lives > 0) {
+    ctx.fillStyle = '#ffcc00'; ctx.font = '18px "Courier New"';
+    ctx.fillText(`${player.lives} ${player.lives === 1 ? 'LIFE' : 'LIVES'} REMAINING`, canvas.width / 2, canvas.height / 2 + 20);
+    ctx.fillStyle = '#aaaaaa'; ctx.font = '14px "Courier New"';
+    ctx.fillText('Restarting level...', canvas.width / 2, canvas.height / 2 + 50);
+  } else {
+    ctx.fillStyle = '#ff6666'; ctx.font = '18px "Courier New"';
+    ctx.fillText('NO LIVES LEFT', canvas.width / 2, canvas.height / 2 + 20);
+  }
+  ctx.textAlign = 'left';
+}
+
 export function drawBossIntro() {
   ctx.fillStyle = `rgba(0,0,0,${0.3 + Math.sin(Date.now() * 0.005) * 0.15})`;
   ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -507,10 +580,10 @@ export function drawTitleScreen() {
   ctx.closePath(); ctx.fill();
 
   ctx.fillStyle = '#aaaaaa'; ctx.font = '16px "Courier New"';
-  ctx.fillText('Arrow Keys - Move & Jump', canvas.width / 2, 345);
+  ctx.fillText('Arrow Keys - Drive & Jump', canvas.width / 2, 345);
   ctx.fillText('Space - Attack', canvas.width / 2, 370);
   ctx.fillText('Break crates on platforms for power-ups!', canvas.width / 2, 400);
-  ctx.fillText('Defeat zombies across 3 levels', canvas.width / 2, 430);
+  ctx.fillText('3 Lives - Defeat zombies across 3 levels', canvas.width / 2, 430);
   ctx.fillText('Capture the Leopard Diamond!', canvas.width / 2, 455);
 
   if (Math.sin(Date.now() * 0.005) > 0) {
