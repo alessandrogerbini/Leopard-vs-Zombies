@@ -28,7 +28,7 @@ const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
 
 // ============ GAME STATE ============
-const GRAVITY = 0.6;
+const GRAVITY = 0.51; // 15% less gravity
 const GROUND_Y = 440;
 
 const keys = {};
@@ -48,8 +48,8 @@ const DRAW_SCALE = 1.2;    // 20% scale up for rendering
 const player = {
   x: 80, y: GROUND_Y, w: BASE_PLAYER_W, h: BASE_PLAYER_H,
   vx: 0, vy: 0,
-  speed: 5, jumpForce: -15,
-  baseSpeed: 5, baseJumpForce: -15, baseDamage: 15, baseCooldown: 20,
+  speed: 3.75, jumpForce: -15,
+  baseSpeed: 3.75, baseJumpForce: -15, baseDamage: 15, baseCooldown: 20,
   onGround: false,
   hp: 100, maxHp: 100,
   attacking: false, attackTimer: 0, attackCooldown: 0,
@@ -80,7 +80,7 @@ function getLevelData(level) {
       groundColor: '#2d4a2d',
       zombieCount: 12,
       zombieHp: 30,
-      zombieSpeed: 1.2,
+      zombieSpeed: 1.08,
       platforms: [
         { x: 400, y: 360, w: 120, h: 16 },
         { x: 700, y: 300, w: 100, h: 16 },
@@ -100,7 +100,7 @@ function getLevelData(level) {
       groundColor: '#3a3a4a',
       zombieCount: 18,
       zombieHp: 45,
-      zombieSpeed: 1.5,
+      zombieSpeed: 1.35,
       platforms: [
         { x: 300, y: 370, w: 100, h: 16 },
         { x: 550, y: 300, w: 80, h: 16 },
@@ -124,7 +124,7 @@ function getLevelData(level) {
       groundColor: '#4a2a2a',
       zombieCount: 25,
       zombieHp: 60,
-      zombieSpeed: 1.8,
+      zombieSpeed: 1.62,
       platforms: [
         { x: 300, y: 360, w: 100, h: 16 },
         { x: 550, y: 290, w: 80, h: 16 },
