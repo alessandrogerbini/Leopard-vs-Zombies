@@ -53,7 +53,7 @@ export function getLevelData(level) {
       groundColor: '#3a3a4a',
       zombieCount: 18,
       zombieHp: 45,
-      zombieSpeed: 1.15,
+      zombieSpeed: 0.86,
       platforms: [
         { x: 300, y: 370, w: 100, h: 16 },
         { x: 550, y: 300, w: 80, h: 16 },
