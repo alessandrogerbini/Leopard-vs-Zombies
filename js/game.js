@@ -101,7 +101,7 @@ function update() {
     let targetVx = 0;
     if (keys['ArrowLeft']) { targetVx = -player.speed; player.facing = -1; }
     if (keys['ArrowRight']) { targetVx = player.speed; player.facing = 1; }
-    player.vx += (targetVx - player.vx) * 0.12;
+    player.vx += (targetVx - player.vx) * 0.22;
   }
   if (keys['ArrowUp'] && player.onGround) {
     player.vy = getPlayerJumpForce();

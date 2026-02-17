@@ -4,7 +4,7 @@ export const GROUND_Y = 440;
 
 export const BASE_PLAYER_W = 48;
 export const BASE_PLAYER_H = 60;
-export const DRAW_SCALE = 1.2;
+export const DRAW_SCALE = 1.62;
 
 export const keys = {};
 

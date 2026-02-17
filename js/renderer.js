@@ -20,122 +20,180 @@ export function drawLeopard(x, y) {
   ctx.globalAlpha = alpha;
   ctx.translate(x + player.w / 2, y + player.h);
   ctx.scale(DRAW_SCALE, DRAW_SCALE);
-  ctx.translate(-(player.w / 2), -player.h);
+  ctx.translate(-(player.w / 2), -player.h + 9);
 
-  const px = 0, py = 0;
-
-  // === RACE CAR ===
-  // Car body (lower half)
-  ctx.fillStyle = '#cc2222';
-  ctx.fillRect(px - 4, py + 30 + bounceY, 48, 16);
-  // Front bumper
-  ctx.fillStyle = '#aa1a1a';
-  ctx.fillRect(px + (f === 1 ? 40 : -8), py + 32 + bounceY, 12, 12);
-  // Rear bumper
-  ctx.fillStyle = '#aa1a1a';
-  ctx.fillRect(px + (f === 1 ? -8 : 40), py + 34 + bounceY, 8, 10);
-  // Windshield
-  ctx.fillStyle = '#88ccff';
-  ctx.fillRect(px + (f === 1 ? 28 : 6), py + 22 + bounceY, 10, 10);
-  // Car top / cockpit area
-  ctx.fillStyle = '#dd3333';
-  ctx.fillRect(px + 6, py + 24 + bounceY, 28, 8);
-  // Racing stripe
-  ctx.fillStyle = '#ffcc00';
-  ctx.fillRect(px + (f === 1 ? -4 : 40), py + 36 + bounceY, 48, 3);
-  // Headlight
-  ctx.fillStyle = '#ffff88';
-  ctx.fillRect(px + (f === 1 ? 44 : -4), py + 34 + bounceY, 4, 4);
-  // Taillight
-  ctx.fillStyle = '#ff4444';
-  ctx.fillRect(px + (f === 1 ? -6 : 44), py + 34 + bounceY, 3, 4);
-
-  // Wheels
-  ctx.fillStyle = '#222222';
-  const w1x = px + 6, w2x = px + 32, wy = py + 44 + bounceY;
-  ctx.beginPath(); ctx.arc(w1x, wy, 6, 0, Math.PI * 2); ctx.fill();
-  ctx.beginPath(); ctx.arc(w2x, wy, 6, 0, Math.PI * 2); ctx.fill();
-  // Wheel rims
-  ctx.fillStyle = '#888888';
-  ctx.beginPath(); ctx.arc(w1x, wy, 3, 0, Math.PI * 2); ctx.fill();
-  ctx.beginPath(); ctx.arc(w2x, wy, 3, 0, Math.PI * 2); ctx.fill();
-  // Wheel spokes (animated)
-  ctx.strokeStyle = '#aaaaaa'; ctx.lineWidth = 1;
-  for (let i = 0; i < 3; i++) {
-    const angle = wheelSpin + i * (Math.PI * 2 / 3);
-    ctx.beginPath(); ctx.moveTo(w1x, wy); ctx.lineTo(w1x + Math.cos(angle) * 5, wy + Math.sin(angle) * 5); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(w2x, wy); ctx.lineTo(w2x + Math.cos(angle) * 5, wy + Math.sin(angle) * 5); ctx.stroke();
+  // Draw everything facing right, then flip via scale if facing left
+  ctx.save();
+  if (f === -1) {
+    ctx.translate(player.w / 2, 0);
+    ctx.scale(-1, 1);
+    ctx.translate(-player.w / 2, 0);
   }
 
-  // Exhaust particles when moving
+  const px = 0, py = 0;
+  const by = bounceY;
+
+  // === RACE CAR ===
+  // Car body main
+  ctx.fillStyle = '#cc2222';
+  ctx.fillRect(px - 4, py + 30 + by, 50, 16);
+
+  // Front splitter (low aero piece under front)
+  ctx.fillStyle = '#222222';
+  ctx.fillRect(px + 40, py + 44 + by, 14, 3);
+  ctx.fillStyle = '#444444';
+  ctx.fillRect(px + 42, py + 43 + by, 10, 2);
+
+  // Front bumper / nose
+  ctx.fillStyle = '#bb1a1a';
+  ctx.fillRect(px + 42, py + 31 + by, 12, 13);
+  ctx.fillStyle = '#cc2222';
+  ctx.fillRect(px + 44, py + 29 + by, 6, 4);
+
+  // Rear section
+  ctx.fillStyle = '#aa1a1a';
+  ctx.fillRect(px - 8, py + 32 + by, 10, 12);
+
+  // Spoiler - vertical posts
+  ctx.fillStyle = '#333333';
+  ctx.fillRect(px - 6, py + 18 + by, 2, 14);
+  ctx.fillRect(px + 2, py + 18 + by, 2, 14);
+  // Spoiler wing
+  ctx.fillStyle = '#cc2222';
+  ctx.fillRect(px - 8, py + 16 + by, 14, 4);
+  ctx.fillStyle = '#ffcc00';
+  ctx.fillRect(px - 8, py + 19 + by, 14, 2);
+
+  // Windshield (angled look)
+  ctx.fillStyle = '#88ccff';
+  ctx.fillRect(px + 30, py + 22 + by, 10, 10);
+  ctx.fillStyle = '#66aadd';
+  ctx.fillRect(px + 32, py + 22 + by, 2, 10);
+
+  // Cockpit roof
+  ctx.fillStyle = '#dd3333';
+  ctx.fillRect(px + 8, py + 24 + by, 24, 8);
+
+  // Racing stripe (centered on car body)
+  ctx.fillStyle = '#ffcc00';
+  ctx.fillRect(px - 4, py + 36 + by, 50, 3);
+
+  // Side intake vent
+  ctx.fillStyle = '#880000';
+  ctx.fillRect(px + 20, py + 32 + by, 8, 3);
+  ctx.fillStyle = '#666666';
+  for (let i = 0; i < 3; i++) ctx.fillRect(px + 21 + i * 3, py + 32 + by, 1, 3);
+
+  // Headlights (dual)
+  ctx.fillStyle = '#ffff88';
+  ctx.fillRect(px + 48, py + 33 + by, 4, 3);
+  ctx.fillStyle = '#ffffcc';
+  ctx.fillRect(px + 48, py + 37 + by, 4, 3);
+
+  // Taillights
+  ctx.fillStyle = '#ff2222';
+  ctx.fillRect(px - 8, py + 33 + by, 3, 3);
+  ctx.fillStyle = '#ff6600';
+  ctx.fillRect(px - 8, py + 37 + by, 3, 3);
+
+  // Wheels
+  ctx.fillStyle = '#1a1a1a';
+  const w1x = px + 6, w2x = px + 36, wy = py + 45 + by;
+  ctx.beginPath(); ctx.arc(w1x, wy, 6, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc(w2x, wy, 6, 0, Math.PI * 2); ctx.fill();
+  // Tire tread
+  ctx.strokeStyle = '#333333'; ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.arc(w1x, wy, 5.5, 0, Math.PI * 2); ctx.stroke();
+  ctx.beginPath(); ctx.arc(w2x, wy, 5.5, 0, Math.PI * 2); ctx.stroke();
+  // Rims
+  ctx.fillStyle = '#999999';
+  ctx.beginPath(); ctx.arc(w1x, wy, 3, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc(w2x, wy, 3, 0, Math.PI * 2); ctx.fill();
+  // Center caps
+  ctx.fillStyle = '#cccccc';
+  ctx.beginPath(); ctx.arc(w1x, wy, 1.2, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc(w2x, wy, 1.2, 0, Math.PI * 2); ctx.fill();
+  // Spokes (animated)
+  ctx.strokeStyle = '#bbbbbb'; ctx.lineWidth = 0.8;
+  for (let i = 0; i < 5; i++) {
+    const angle = wheelSpin + i * (Math.PI * 2 / 5);
+    const cx1 = Math.cos(angle), sy1 = Math.sin(angle);
+    ctx.beginPath(); ctx.moveTo(w1x + cx1 * 1.2, wy + sy1 * 1.2); ctx.lineTo(w1x + cx1 * 3, wy + sy1 * 3); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(w2x + cx1 * 1.2, wy + sy1 * 1.2); ctx.lineTo(w2x + cx1 * 3, wy + sy1 * 3); ctx.stroke();
+  }
+
+  // Exhaust when moving
   if (Math.abs(player.vx) > 0.5 && player.onGround) {
-    const ex = px + (f === 1 ? -8 : 48);
-    ctx.fillStyle = `rgba(150,150,150,${0.3 + Math.random() * 0.3})`;
-    ctx.beginPath(); ctx.arc(ex + (Math.random() - 0.5) * 4, wy - 4 + (Math.random() - 0.5) * 4, 2 + Math.random() * 2, 0, Math.PI * 2); ctx.fill();
+    for (let i = 0; i < 2; i++) {
+      ctx.fillStyle = `rgba(150,150,150,${0.2 + Math.random() * 0.3})`;
+      ctx.beginPath(); ctx.arc(px - 10 + (Math.random() - 0.5) * 6, wy - 3 + (Math.random() - 0.5) * 4, 1.5 + Math.random() * 2.5, 0, Math.PI * 2); ctx.fill();
+    }
   }
 
   // === LEOPARD (sitting in car) ===
-  // Body (torso above car)
+  // Body (torso)
   ctx.fillStyle = '#e8a828';
-  ctx.fillRect(px + (f === 1 ? 12 : 14), py + 12 + bounceY, 18, 14);
+  ctx.fillRect(px + 14, py + 12 + by, 18, 14);
   // Head
-  ctx.fillRect(px + (f === 1 ? 22 : 6), py + 2 + bounceY, 14, 14);
+  ctx.fillRect(px + 24, py + 2 + by, 14, 14);
   // Ears
   ctx.fillStyle = '#d09020';
-  ctx.fillRect(px + (f === 1 ? 24 : 8), py - 1 + bounceY, 4, 4);
-  ctx.fillRect(px + (f === 1 ? 30 : 14), py - 1 + bounceY, 4, 4);
+  ctx.fillRect(px + 26, py - 1 + by, 4, 4);
+  ctx.fillRect(px + 32, py - 1 + by, 4, 4);
   // Eyes
   ctx.fillStyle = '#00ff00';
-  ctx.fillRect(px + (f === 1 ? 29 : 10), py + 6 + bounceY, 3, 3);
+  ctx.fillRect(px + 31, py + 6 + by, 3, 3);
   // Nose
   ctx.fillStyle = '#ff6688';
-  ctx.fillRect(px + (f === 1 ? 33 : 6), py + 10 + bounceY, 2, 2);
+  ctx.fillRect(px + 35, py + 10 + by, 2, 2);
   // Spots
   ctx.fillStyle = '#c08018';
-  [[14, 14], [18, 16], [24, 15]].forEach(([sx, sy]) => {
-    ctx.fillRect(px + (f === 1 ? sx : 38 - sx - 2), py + sy + bounceY, 2, 2);
-  });
+  ctx.fillRect(px + 16, py + 14 + by, 2, 2);
+  ctx.fillRect(px + 20, py + 16 + by, 2, 2);
+  ctx.fillRect(px + 26, py + 15 + by, 2, 2);
   // Paws on steering area
   ctx.fillStyle = '#d09020';
-  ctx.fillRect(px + (f === 1 ? 26 : 10), py + 24 + bounceY, 5, 4);
-  ctx.fillRect(px + (f === 1 ? 20 : 16), py + 24 + bounceY, 5, 4);
+  ctx.fillRect(px + 28, py + 24 + by, 5, 4);
+  ctx.fillRect(px + 22, py + 24 + by, 5, 4);
   // Tail sticking up behind
   const tailWag = Math.sin(Date.now() * 0.005) * 4;
   ctx.fillStyle = '#d09020';
-  ctx.fillRect(px + (f === 1 ? 8 : 32), py + 8 + bounceY + tailWag, 3, 8);
+  ctx.fillRect(px + 10, py + 8 + by + tailWag, 3, 8);
   ctx.fillStyle = '#1a1a1a';
-  ctx.fillRect(px + (f === 1 ? 7 : 33), py + 4 + bounceY + tailWag, 3, 5);
+  ctx.fillRect(px + 9, py + 4 + by + tailWag, 3, 5);
 
   // Powerup visuals
   if (player.powerups.jumpyBoots > 0) {
     ctx.fillStyle = 'rgba(68,255,136,0.3)';
-    ctx.fillRect(px - 4, py + 42 + bounceY, 48, 6);
+    ctx.fillRect(px - 4, py + 43 + by, 50, 6);
   }
   if (player.powerups.clawsOfSteel > 0) {
     ctx.fillStyle = 'rgba(255,136,68,0.4)';
-    ctx.fillRect(px + (f === 1 ? 34 : 1), py + 10 + bounceY, 5, 2);
-    ctx.fillRect(px + (f === 1 ? 36 : -1), py + 13 + bounceY, 5, 2);
-    ctx.fillRect(px + (f === 1 ? 34 : 1), py + 16 + bounceY, 5, 2);
+    ctx.fillRect(px + 36, py + 10 + by, 5, 2);
+    ctx.fillRect(px + 38, py + 13 + by, 5, 2);
+    ctx.fillRect(px + 36, py + 16 + by, 5, 2);
   }
   if (player.powerups.superFangs > 0) {
     ctx.fillStyle = '#ff44ff';
-    ctx.fillRect(px + (f === 1 ? 32 : 8), py + 12 + bounceY, 2, 3);
-    ctx.fillRect(px + (f === 1 ? 35 : 5), py + 12 + bounceY, 2, 3);
+    ctx.fillRect(px + 34, py + 12 + by, 2, 3);
+    ctx.fillRect(px + 37, py + 12 + by, 2, 3);
   }
 
-  // Attack slash effect
+  ctx.restore(); // undo the facing flip
+
+  // Attack slash effect (drawn in screen-relative space so it faces correctly)
   if (player.attacking) {
     ctx.strokeStyle = '#ffffff';
     ctx.lineWidth = 2;
     ctx.globalAlpha = alpha * (player.attackTimer / 12);
-    const slashX = px + (f === 1 ? 42 : -15);
+    const slashX = (f === 1 ? 42 : -15);
     ctx.beginPath();
-    ctx.arc(slashX + 15 * f, py + 16, 25, -0.5 * f, 0.8 * f);
+    ctx.arc(slashX + 15 * f, 16, 25, -0.5 * f, 0.8 * f);
     ctx.stroke();
     ctx.strokeStyle = player.powerups.clawsOfSteel > 0 ? '#ff8844' : '#ffff00';
     ctx.lineWidth = player.powerups.clawsOfSteel > 0 ? 3 : 2;
     ctx.beginPath();
-    ctx.arc(slashX + 10 * f, py + 20, 20, -0.3 * f, 0.6 * f);
+    ctx.arc(slashX + 10 * f, 20, 20, -0.3 * f, 0.6 * f);
     ctx.stroke();
   }
 
