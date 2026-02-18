@@ -3,8 +3,8 @@ import { GRAVITY, GROUND_Y, keys, state, player, camera, POWERUP_DURATION } from
 import { getLevelData } from './levels.js';
 import { rectCollide, getAttackBox, spawnParticles, spawnFloatingText, getPlayerDamage, getPlayerCooldown, getPlayerJumpForce } from './utils.js';
 import { spawnZombies, spawnBoss, updateZombieAI, updateBossAI } from './enemies.js';
-import { spawnHealthPickups, spawnPowerupCrates, updateHealthPickups, updateDiamond, updatePortal } from './items.js';
-import { initRenderer, getCtx, drawLeopard, drawZombie, drawBoss, drawBackground, drawHealthPickups, drawPowerupCrates, drawPortal, drawDiamond, drawParticles, drawFloatingTexts, drawHUD, drawBossIntro, drawDying, drawTitleScreen, drawLevelComplete, drawGameWin, drawGameOver, drawProjectiles } from './renderer.js';
+import { spawnHealthPickups, spawnPowerupCrates, spawnArmorCrates, spawnGlassesCrates, spawnSneakersCrates, updateHealthPickups, updateDiamond, updatePortal, updateArmorPickups, updateGlassesPickups, updateSneakersPickups } from './items.js';
+import { initRenderer, getCtx, drawLeopard, drawZombie, drawBoss, drawBackground, drawHealthPickups, drawPowerupCrates, drawArmorCrates, drawArmorPickups, drawGlassesCrates, drawGlassesPickups, drawSneakersCrates, drawSneakersPickups, drawPortal, drawDiamond, drawParticles, drawFloatingTexts, drawHUD, drawBossIntro, drawDying, drawTitleScreen, drawLevelComplete, drawGameWin, drawGameOver, drawProjectiles } from './renderer.js';
 
 const canvas = document.getElementById('game');
 initRenderer(canvas);
@@ -34,6 +34,7 @@ function initLevel(level) {
   player.powerups.raceCar = 0;
   player.powerups.bananaCannon = 0;
   player.powerups.litterBox = 0;
+  player.powerups.wings = 0;
   camera.x = 0;
   state.particles = [];
   state.floatingTexts = [];
@@ -46,12 +47,15 @@ function initLevel(level) {
   spawnZombies();
   spawnHealthPickups();
   spawnPowerupCrates();
+  spawnArmorCrates();
+  spawnGlassesCrates();
+  spawnSneakersCrates();
   state.gameState = 'playing';
 }
 
 function update() {
   if (state.gameState === 'title') {
-    if (keys['Enter']) { player.lives = 3; initLevel(1); }
+    if (keys['Enter']) { player.lives = 3; player.items.armor = null; player.items.glasses = false; player.items.sneakers = false; initLevel(1); }
     return;
   }
 
@@ -71,7 +75,7 @@ function update() {
   }
 
   if (state.gameState === 'gameWin' || state.gameState === 'gameOver') {
-    if (keys['Enter']) { state.gameState = 'title'; player.score = 0; player.lives = 3; }
+    if (keys['Enter']) { state.gameState = 'title'; player.score = 0; player.lives = 3; player.items.armor = null; player.items.glasses = false; player.items.sneakers = false; }
     return;
   }
 
@@ -98,9 +102,22 @@ function update() {
   if (player.powerups.raceCar > 0) player.powerups.raceCar--;
   if (player.powerups.bananaCannon > 0) player.powerups.bananaCannon--;
   if (player.powerups.litterBox > 0) player.powerups.litterBox--;
+  if (player.powerups.wings > 0) player.powerups.wings--;
 
   // Player movement
-  if (player.onGround) {
+  if (player.powerups.wings > 0) {
+    // Flight mode: smooth movement in all directions
+    const flySpeed = player.speed * 1.1;
+    let targetVx = 0;
+    let targetVy = 0;
+    if (keys['ArrowLeft']) { targetVx = -flySpeed; player.facing = -1; }
+    if (keys['ArrowRight']) { targetVx = flySpeed; player.facing = 1; }
+    if (keys['ArrowUp']) { targetVy = -flySpeed; }
+    if (keys['ArrowDown']) { targetVy = flySpeed; }
+    // Smooth deceleration for floaty flight feel
+    player.vx += (targetVx - player.vx) * 0.15;
+    player.vy += (targetVy - player.vy) * 0.15;
+  } else if (player.onGround) {
     player.vx = 0;
     if (keys['ArrowLeft']) { player.vx = -player.speed; player.facing = -1; }
     if (keys['ArrowRight']) { player.vx = player.speed; player.facing = 1; }
@@ -110,7 +127,7 @@ function update() {
     if (keys['ArrowRight']) { targetVx = player.speed; player.facing = 1; }
     player.vx += (targetVx - player.vx) * 0.55;
   }
-  if (keys['ArrowUp'] && player.onGround) {
+  if (player.powerups.wings <= 0 && keys['ArrowUp'] && player.onGround) {
     player.vy = getPlayerJumpForce();
     player.onGround = false;
   }
@@ -157,22 +174,37 @@ function update() {
   if (Math.abs(player.knockbackX) < 0.3) player.knockbackX = 0;
 
   // Physics
-  player.vy += GRAVITY;
+  if (player.powerups.wings <= 0) {
+    let grav = GRAVITY;
+    if (player.items.sneakers && !player.onGround && Math.abs(player.vy) < 4) {
+      grav *= 0.5; // 50% less gravity near apex = more hangtime
+    }
+    player.vy += grav;
+  }
   player.x += player.vx + player.knockbackX;
   player.y += player.vy;
 
-  if (player.y >= GROUND_Y) { player.y = GROUND_Y; player.vy = 0; player.onGround = true; }
+  // Clamp vertical bounds (don't fly above y=0 or below ground)
+  if (player.powerups.wings > 0) {
+    if (player.y < 0) { player.y = 0; player.vy = 0; }
+    if (player.y >= GROUND_Y) { player.y = GROUND_Y; player.vy = 0; }
+    player.onGround = false;
+  } else {
+    if (player.y >= GROUND_Y) { player.y = GROUND_Y; player.vy = 0; player.onGround = true; }
+  }
 
-  player.onGround = player.y >= GROUND_Y;
-  ld.platforms.forEach(p => {
-    if (player.vy >= 0 &&
-        player.x + player.w > p.x && player.x < p.x + p.w &&
-        player.y + player.h >= p.y && player.y + player.h <= p.y + p.h + 10) {
-      player.y = p.y - player.h;
-      player.vy = 0;
-      player.onGround = true;
-    }
-  });
+  player.onGround = player.powerups.wings > 0 ? false : player.y >= GROUND_Y;
+  if (player.powerups.wings <= 0) {
+    ld.platforms.forEach(p => {
+      if (player.vy >= 0 &&
+          player.x + player.w > p.x && player.x < p.x + p.w &&
+          player.y + player.h >= p.y && player.y + player.h <= p.y + p.h + 10) {
+        player.y = p.y - player.h;
+        player.vy = 0;
+        player.onGround = true;
+      }
+    });
+  }
 
   player.x = Math.max(0, Math.min(player.x, ld.width - player.w));
 
@@ -239,6 +271,112 @@ function update() {
           spawnFloatingText(c.x + c.w/2, c.y - 20, ptype.name, ptype.color);
           spawnFloatingText(c.x + c.w/2, c.y - 5, ptype.desc, '#ffffff');
           state.screenFlash = 5; player.score += 150;
+
+          // Trap crate: ~20% chance zombies burst out
+          if (Math.random() < 0.2) {
+            const trapCount = 1 + Math.floor(Math.random() * 2); // 1-2 zombies
+            const ld2 = state.levelData;
+            for (let ti = 0; ti < trapCount; ti++) {
+              state.zombies.push({
+                x: c.x + (ti === 0 ? -20 : 20), y: c.y, w: 36, h: 48,
+                vx: (ti === 0 ? -3 : 3), vy: -5,
+                hp: ld2.zombieHp, maxHp: ld2.zombieHp,
+                speed: ld2.zombieSpeed * (0.8 + Math.random() * 0.4),
+                onGround: false,
+                facing: ti === 0 ? -1 : 1,
+                frame: 0, frameTimer: 0,
+                attackTimer: 0,
+                hurt: 0,
+                type: Math.random() < 0.3 ? 'big' : 'normal',
+                alive: true
+              });
+              // Upgrade big zombies like spawnZombies does
+              const nz = state.zombies[state.zombies.length - 1];
+              if (nz.type === 'big') {
+                nz.w = 44; nz.h = 56;
+                nz.hp *= 1.8; nz.maxHp = nz.hp;
+                nz.speed *= 0.7;
+              }
+            }
+            // Dramatic visuals: bigger particle burst in red/green
+            spawnParticles(c.x + c.w/2, c.y + c.h/2, '#ff0000', 25, 14);
+            spawnParticles(c.x + c.w/2, c.y + c.h/2, '#4a6a4a', 15, 12);
+            spawnFloatingText(c.x + c.w/2, c.y - 40, 'AMBUSH!', '#ff2222');
+            state.screenShake = 12;
+            state.screenFlash = 10;
+          }
+        }
+      }
+    });
+
+    // Armor crate hits
+    state.armorCrates.forEach(c => {
+      if (c.broken) return;
+      if (rectCollide(atkBox, c)) {
+        c.hp--; c.shakeTimer = 6;
+        spawnParticles(c.x + c.w/2, c.y + c.h/2, '#8888aa', 4, 4);
+        if (c.hp <= 0) {
+          c.broken = true;
+          spawnParticles(c.x + c.w/2, c.y + c.h/2, c.armorType.color, 20, 10);
+          spawnFloatingText(c.x + c.w/2, c.y - 20, c.armorType.name, c.armorType.color);
+          state.screenFlash = 5;
+          // Spawn floating armor pickup that rises above the crate
+          state.armorPickups.push({
+            x: c.x + c.w/2,
+            y: c.y,
+            armorType: c.armorType,
+            equipped: false,
+            bobTimer: 0,
+            glowTimer: 0
+          });
+        }
+      }
+    });
+
+    // Glasses crate hits
+    state.glassesCrates.forEach(c => {
+      if (c.broken) return;
+      if (rectCollide(atkBox, c)) {
+        c.hp--; c.shakeTimer = 6;
+        spawnParticles(c.x + c.w/2, c.y + c.h/2, '#8888aa', 4, 4);
+        if (c.hp <= 0) {
+          c.broken = true;
+          spawnParticles(c.x + c.w/2, c.y + c.h/2, c.glassesType.color, 20, 10);
+          spawnFloatingText(c.x + c.w/2, c.y - 20, c.glassesType.name, c.glassesType.color);
+          state.screenFlash = 5;
+          // Spawn floating glasses pickup that rises above the crate
+          state.glassesPickups.push({
+            x: c.x + c.w/2,
+            y: c.y,
+            glassesType: c.glassesType,
+            equipped: false,
+            bobTimer: 0,
+            glowTimer: 0
+          });
+        }
+      }
+    });
+
+    // Sneakers crate hits
+    state.sneakersCrates.forEach(c => {
+      if (c.broken) return;
+      if (rectCollide(atkBox, c)) {
+        c.hp--; c.shakeTimer = 6;
+        spawnParticles(c.x + c.w/2, c.y + c.h/2, '#8888aa', 4, 4);
+        if (c.hp <= 0) {
+          c.broken = true;
+          spawnParticles(c.x + c.w/2, c.y + c.h/2, c.sneakersType.color, 20, 10);
+          spawnFloatingText(c.x + c.w/2, c.y - 20, c.sneakersType.name, c.sneakersType.color);
+          state.screenFlash = 5;
+          // Spawn floating sneakers pickup that rises above the crate
+          state.sneakersPickups.push({
+            x: c.x + c.w/2,
+            y: c.y,
+            sneakersType: c.sneakersType,
+            equipped: false,
+            bobTimer: 0,
+            glowTimer: 0
+          });
         }
       }
     });
@@ -294,6 +432,9 @@ function update() {
   updateHealthPickups();
   updateDiamond();
   updatePortal();
+  updateArmorPickups();
+  updateGlassesPickups();
+  updateSneakersPickups();
 
   // Update projectiles
   state.projectiles = state.projectiles.filter(proj => {
@@ -428,6 +569,12 @@ function draw() {
   drawBackground();
   drawHealthPickups();
   drawPowerupCrates();
+  drawArmorCrates();
+  drawArmorPickups();
+  drawGlassesCrates();
+  drawGlassesPickups();
+  drawSneakersCrates();
+  drawSneakersPickups();
   drawPortal();
   drawDiamond();
   state.zombies.forEach(z => drawZombie(z));

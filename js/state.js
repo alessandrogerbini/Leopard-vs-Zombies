@@ -26,6 +26,12 @@ export const state = {
   deathTimer: 0,
   portal: null,
   projectiles: [],
+  armorCrates: [],
+  armorPickups: [],
+  glassesCrates: [],
+  glassesPickups: [],
+  sneakersCrates: [],
+  sneakersPickups: [],
 };
 
 export const player = {
@@ -48,7 +54,13 @@ export const player = {
     superFangs: 0,
     raceCar: 0,
     bananaCannon: 0,
-    litterBox: 0
+    litterBox: 0,
+    wings: 0
+  },
+  items: {
+    armor: null,  // null, 'leather', or 'chainmail'
+    glasses: false, // aviator glasses - see powerup crate contents
+    sneakers: false // high-top sneakers - 50% more jump hangtime
   }
 };
 
@@ -61,5 +73,19 @@ export const POWERUP_TYPES = [
   { id: 'raceCar', name: 'RACE CAR', color: '#cc2222', desc: 'Jet Fire + Speed!', icon: 'car' },
   { id: 'bananaCannon', name: 'BANANA CANNON', color: '#ffdd00', desc: 'Ranged Boomerang!', icon: 'banana' },
   { id: 'litterBox', name: 'LITTER BOX', color: '#aa8844', desc: 'Rear AOE Attack!', icon: 'litter' },
+  { id: 'wings', name: 'ANGEL WINGS', color: '#aaddff', desc: 'Fly Anywhere!', icon: 'wings' },
 ];
 export const POWERUP_DURATION = 750;
+
+export const ARMOR_TYPES = [
+  { id: 'leather', name: 'LEATHER ARMOR', color: '#b08040', desc: 'Light Protection', tier: 1, level: 2 },
+  { id: 'chainmail', name: 'CHAINMAIL ARMOR', color: '#aaaacc', desc: 'Medium Protection', tier: 2, level: 3 },
+];
+
+export const GLASSES_TYPE = {
+  id: 'aviator', name: 'AVIATOR GLASSES', color: '#ffaa00', desc: 'See Crate Contents!', level: 1
+};
+
+export const SNEAKERS_TYPE = {
+  id: 'hightops', name: 'HIGH-TOP SNEAKERS', color: '#ff4444', desc: '+50% Jump Hangtime!', level: 2
+};

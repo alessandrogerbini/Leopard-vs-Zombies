@@ -1,5 +1,5 @@
 // All drawing functions
-import { GROUND_Y, DRAW_SCALE, state, player, camera } from './state.js';
+import { GROUND_Y, DRAW_SCALE, state, player, camera, ARMOR_TYPES, GLASSES_TYPE, SNEAKERS_TYPE } from './state.js';
 
 let canvas, ctx;
 
@@ -233,55 +233,130 @@ export function drawLeopard(x, y) {
 
   } else {
     // === WALKING LEOPARD ON ALL FOURS ===
-    // Body (horizontal)
+    const runSpeed = Math.abs(player.vx) > 0.5;
+    const legTime = Date.now() * (runSpeed ? 0.012 : 0.004);
+    const legSwing = Math.sin(legTime) * (runSpeed ? 7 : 2);
+
+    // Tail (drawn first, behind body)
+    const tailWag = Math.sin(Date.now() * 0.006) * 5;
+    const tailCurl = Math.sin(Date.now() * 0.004) * 3;
     ctx.fillStyle = '#e8a828';
-    ctx.fillRect(px + 6, py + 20 + by, 30, 14);
-    // Head
-    ctx.fillRect(px + 30, py + 10 + by, 14, 14);
-    // Snout
-    ctx.fillRect(px + 42, py + 16 + by, 5, 6);
-    // Ears
+    ctx.fillRect(px + 2, py + 17 + by + tailWag, 6, 4);
     ctx.fillStyle = '#d09020';
-    ctx.fillRect(px + 32, py + 7 + by, 4, 4);
-    ctx.fillRect(px + 38, py + 7 + by, 4, 4);
-    // Eyes
-    ctx.fillStyle = '#00ff00';
-    ctx.fillRect(px + 37, py + 14 + by, 3, 3);
+    ctx.fillRect(px - 3, py + 14 + by + tailWag * 1.2, 6, 4);
+    ctx.fillRect(px - 7, py + 11 + by + tailWag * 1.4 + tailCurl, 5, 3);
+    ctx.fillStyle = '#1a1a1a';
+    ctx.fillRect(px - 10, py + 9 + by + tailWag * 1.5 + tailCurl, 4, 3);
+
+    // Back legs (behind body)
+    const backLeg1 = legSwing;
+    const backLeg2 = -legSwing;
+    ctx.fillStyle = '#c89020';
+    // Back leg 1 (far)
+    ctx.fillRect(px + 9, py + 32 + by, 5, 12 + backLeg1);
+    ctx.fillStyle = '#b88018';
+    ctx.fillRect(px + 8, py + 43 + by + backLeg1, 6, 3);
+    // Back leg 2 (near)
+    ctx.fillStyle = '#d09820';
+    ctx.fillRect(px + 15, py + 32 + by, 5, 12 + backLeg2);
+    ctx.fillStyle = '#c08818';
+    ctx.fillRect(px + 14, py + 43 + by + backLeg2, 6, 3);
+
+    // Body (horizontal, muscular torso)
+    ctx.fillStyle = '#e8a828';
+    ctx.fillRect(px + 6, py + 19 + by, 32, 15);
+    // Slight hump at shoulders
+    ctx.fillRect(px + 24, py + 17 + by, 12, 4);
+    // Belly (lighter underside)
+    ctx.fillStyle = '#f0c858';
+    ctx.fillRect(px + 10, py + 30 + by, 24, 4);
+
+    // Leopard rosette spots on body
+    ctx.fillStyle = '#c08018';
+    ctx.fillRect(px + 10, py + 21 + by, 3, 3);
+    ctx.fillRect(px + 15, py + 24 + by, 3, 2);
+    ctx.fillRect(px + 21, py + 21 + by, 3, 3);
+    ctx.fillRect(px + 26, py + 24 + by, 2, 2);
+    ctx.fillRect(px + 31, py + 21 + by, 2, 3);
+    ctx.fillRect(px + 18, py + 28 + by, 2, 2);
+    ctx.fillRect(px + 24, py + 28 + by, 2, 2);
+    // Rosette outlines (darker rings around some spots)
+    ctx.fillStyle = '#a06810';
+    ctx.fillRect(px + 9, py + 20 + by, 1, 5);
+    ctx.fillRect(px + 13, py + 20 + by, 1, 5);
+    ctx.fillRect(px + 20, py + 20 + by, 1, 5);
+    ctx.fillRect(px + 24, py + 20 + by, 1, 5);
+
+    // Front legs (in front of body)
+    const frontLeg1 = -legSwing;
+    const frontLeg2 = legSwing;
+    ctx.fillStyle = '#e8a828';
+    // Front leg 1 (far)
+    ctx.fillRect(px + 28, py + 32 + by, 5, 12 + frontLeg1);
+    ctx.fillStyle = '#d09020';
+    ctx.fillRect(px + 27, py + 43 + by + frontLeg1, 6, 3);
+    // Front leg 2 (near)
+    ctx.fillStyle = '#e8a828';
+    ctx.fillRect(px + 34, py + 32 + by, 5, 12 + frontLeg2);
+    ctx.fillStyle = '#d09020';
+    ctx.fillRect(px + 33, py + 43 + by + frontLeg2, 6, 3);
+
+    // Neck
+    ctx.fillStyle = '#e8a828';
+    ctx.fillRect(px + 34, py + 14 + by, 6, 10);
+
+    // Head (rounder, more cat-like)
+    ctx.fillStyle = '#e8a828';
+    ctx.fillRect(px + 32, py + 8 + by, 14, 13);
+    ctx.fillRect(px + 34, py + 6 + by, 10, 3);
+    // Cheeks (wider lower face)
+    ctx.fillRect(px + 31, py + 14 + by, 16, 4);
+    // Snout
+    ctx.fillStyle = '#f0c050';
+    ctx.fillRect(px + 43, py + 14 + by, 5, 5);
     // Nose
     ctx.fillStyle = '#ff6688';
-    ctx.fillRect(px + 44, py + 18 + by, 2, 2);
-    // Spots on body
+    ctx.fillRect(px + 45, py + 15 + by, 3, 2);
+    // Mouth line
     ctx.fillStyle = '#c08018';
-    ctx.fillRect(px + 10, py + 22 + by, 3, 3);
-    ctx.fillRect(px + 16, py + 24 + by, 3, 3);
-    ctx.fillRect(px + 22, py + 22 + by, 3, 3);
-    ctx.fillRect(px + 28, py + 25 + by, 2, 2);
-    ctx.fillRect(px + 33, py + 13 + by, 2, 2);
-    // Belly
-    ctx.fillStyle = '#f0c050';
-    ctx.fillRect(px + 10, py + 30 + by, 22, 4);
-    // Legs (animated)
-    const legAnim = Math.sin(player.frameTimer * 0.4) * 5;
-    ctx.fillStyle = '#e8a828';
-    // Front legs
-    ctx.fillRect(px + 28, py + 32 + by, 5, 14 + legAnim);
-    ctx.fillRect(px + 34, py + 32 + by, 5, 14 - legAnim);
-    // Back legs
-    ctx.fillRect(px + 8, py + 32 + by, 5, 14 - legAnim);
-    ctx.fillRect(px + 14, py + 32 + by, 5, 14 + legAnim);
-    // Paws
+    ctx.fillRect(px + 44, py + 18 + by, 3, 1);
+
+    // Ears (triangular)
     ctx.fillStyle = '#d09020';
-    ctx.fillRect(px + 27, py + 45 + by + legAnim, 7, 3);
-    ctx.fillRect(px + 33, py + 45 + by - legAnim, 7, 3);
-    ctx.fillRect(px + 7, py + 45 + by - legAnim, 7, 3);
-    ctx.fillRect(px + 13, py + 45 + by + legAnim, 7, 3);
-    // Tail
-    const tailWag = Math.sin(Date.now() * 0.005) * 4;
-    ctx.fillStyle = '#d09020';
-    ctx.fillRect(px + 2, py + 15 + by + tailWag, 6, 4);
-    ctx.fillRect(px - 2, py + 12 + by + tailWag * 1.2, 6, 4);
-    ctx.fillStyle = '#1a1a1a';
-    ctx.fillRect(px - 4, py + 10 + by + tailWag * 1.3, 4, 4);
+    ctx.fillRect(px + 33, py + 4 + by, 5, 5);
+    ctx.fillRect(px + 40, py + 4 + by, 5, 5);
+    // Inner ear
+    ctx.fillStyle = '#e8a0a0';
+    ctx.fillRect(px + 34, py + 5 + by, 3, 3);
+    ctx.fillRect(px + 41, py + 5 + by, 3, 3);
+
+    // Eyes (bright green, feline)
+    ctx.fillStyle = '#00dd00';
+    ctx.fillRect(px + 37, py + 10 + by, 4, 3);
+    ctx.fillRect(px + 43, py + 10 + by, 3, 3);
+    // Pupils (vertical slit)
+    ctx.fillStyle = '#000000';
+    ctx.fillRect(px + 38, py + 10 + by, 2, 3);
+    ctx.fillRect(px + 44, py + 10 + by, 1, 3);
+    // Eye shine
+    ctx.fillStyle = '#aaffaa';
+    ctx.fillRect(px + 37, py + 10 + by, 1, 1);
+    ctx.fillRect(px + 43, py + 10 + by, 1, 1);
+
+    // Whiskers
+    ctx.strokeStyle = '#f0d080';
+    ctx.lineWidth = 0.5;
+    ctx.beginPath();
+    ctx.moveTo(px + 45, py + 16 + by); ctx.lineTo(px + 52, py + 14 + by);
+    ctx.moveTo(px + 45, py + 17 + by); ctx.lineTo(px + 53, py + 17 + by);
+    ctx.moveTo(px + 45, py + 18 + by); ctx.lineTo(px + 52, py + 20 + by);
+    ctx.stroke();
+
+    // Head spots
+    ctx.fillStyle = '#c08018';
+    ctx.fillRect(px + 34, py + 8 + by, 2, 2);
+    ctx.fillRect(px + 39, py + 6 + by, 2, 2);
+    ctx.fillRect(px + 44, py + 8 + by, 2, 2);
   }
 
   // Powerup visuals
@@ -299,6 +374,312 @@ export function drawLeopard(x, y) {
     ctx.fillStyle = '#ff44ff';
     ctx.fillRect(px + 34, py + 12 + by, 2, 3);
     ctx.fillRect(px + 37, py + 12 + by, 2, 3);
+  }
+
+  // Armor overlay (drawn on top of leopard body)
+  if (player.items.armor && player.powerups.raceCar <= 0 && player.powerups.litterBox <= 0) {
+    if (player.items.armor === 'leather') {
+      // Leather armor - brown/tan armor pieces on body and head
+      // Chest plate
+      ctx.fillStyle = 'rgba(160,110,50,0.75)';
+      ctx.fillRect(px + 10, py + 20 + by, 26, 12);
+      // Shoulder guards
+      ctx.fillStyle = '#b08040';
+      ctx.fillRect(px + 8, py + 18 + by, 8, 6);
+      ctx.fillRect(px + 28, py + 18 + by, 8, 6);
+      // Leather straps
+      ctx.fillStyle = '#8a6030';
+      ctx.fillRect(px + 14, py + 19 + by, 2, 14);
+      ctx.fillRect(px + 28, py + 19 + by, 2, 14);
+      // Belt
+      ctx.fillStyle = '#8a6030';
+      ctx.fillRect(px + 8, py + 30 + by, 28, 3);
+      // Belt buckle
+      ctx.fillStyle = '#ccaa44';
+      ctx.fillRect(px + 20, py + 30 + by, 4, 3);
+      // Head guard (small leather cap)
+      ctx.fillStyle = 'rgba(160,110,50,0.6)';
+      ctx.fillRect(px + 34, py + 7 + by, 10, 5);
+      // Leg guards
+      ctx.fillStyle = 'rgba(140,95,40,0.6)';
+      ctx.fillRect(px + 28, py + 33 + by, 6, 8);
+      ctx.fillRect(px + 34, py + 33 + by, 6, 8);
+      ctx.fillRect(px + 9, py + 33 + by, 6, 8);
+      ctx.fillRect(px + 15, py + 33 + by, 6, 8);
+      // Stitching details
+      ctx.fillStyle = '#6a4020';
+      for (let i = 0; i < 4; i++) {
+        ctx.fillRect(px + 12 + i * 6, py + 25 + by, 1, 1);
+      }
+    } else if (player.items.armor === 'chainmail') {
+      // Chainmail armor - silver chain mesh overlay on body
+      // Full chest chainmail
+      ctx.fillStyle = 'rgba(170,170,200,0.65)';
+      ctx.fillRect(px + 8, py + 18 + by, 30, 16);
+      // Chain mesh pattern (grid of small dots)
+      ctx.fillStyle = 'rgba(200,200,220,0.7)';
+      for (let iy = 0; iy < 6; iy++) {
+        for (let ix = 0; ix < 10; ix++) {
+          const ox = (iy % 2) * 1.5;
+          ctx.fillRect(px + 9 + ix * 3 + ox, py + 19 + iy * 2.5 + by, 1.5, 1.5);
+        }
+      }
+      // Silver shoulder pauldrons
+      ctx.fillStyle = '#aaaacc';
+      ctx.fillRect(px + 6, py + 16 + by, 10, 7);
+      ctx.fillRect(px + 28, py + 16 + by, 10, 7);
+      // Pauldron shine
+      ctx.fillStyle = 'rgba(220,220,240,0.5)';
+      ctx.fillRect(px + 7, py + 17 + by, 4, 2);
+      ctx.fillRect(px + 29, py + 17 + by, 4, 2);
+      // Metal belt
+      ctx.fillStyle = '#9999bb';
+      ctx.fillRect(px + 6, py + 31 + by, 32, 3);
+      // Belt segments
+      ctx.fillStyle = '#bbbbdd';
+      for (let i = 0; i < 5; i++) {
+        ctx.fillRect(px + 8 + i * 6, py + 31 + by, 3, 3);
+      }
+      // Head guard (chainmail coif)
+      ctx.fillStyle = 'rgba(170,170,200,0.55)';
+      ctx.fillRect(px + 32, py + 6 + by, 12, 8);
+      // Coif mesh dots
+      ctx.fillStyle = 'rgba(200,200,220,0.6)';
+      for (let iy = 0; iy < 3; iy++) {
+        for (let ix = 0; ix < 4; ix++) {
+          ctx.fillRect(px + 33 + ix * 3, py + 7 + iy * 2.5 + by, 1, 1);
+        }
+      }
+      // Leg chain guards
+      ctx.fillStyle = 'rgba(160,160,190,0.55)';
+      ctx.fillRect(px + 28, py + 33 + by, 6, 10);
+      ctx.fillRect(px + 34, py + 33 + by, 6, 10);
+      ctx.fillRect(px + 9, py + 33 + by, 6, 10);
+      ctx.fillRect(px + 15, py + 33 + by, 6, 10);
+      // Metallic glint animation
+      const glintPos = (Date.now() * 0.005) % 30;
+      ctx.fillStyle = 'rgba(255,255,255,0.3)';
+      ctx.fillRect(px + 9 + glintPos, py + 20 + by, 2, 2);
+    }
+  }
+
+  // Aviator glasses overlay (drawn on top of leopard face)
+  if (player.items.glasses) {
+    if (player.powerups.raceCar > 0) {
+      // Glasses on race car leopard - head at px+24, eyes at px+31, py+6
+      // Frame bridge
+      ctx.fillStyle = '#cc8800';
+      ctx.fillRect(px + 28, py + 6 + by, 8, 2);
+      // Left lens
+      ctx.fillStyle = 'rgba(100,60,0,0.6)';
+      ctx.fillRect(px + 26, py + 5 + by, 6, 4);
+      ctx.fillStyle = '#ddaa22';
+      ctx.fillRect(px + 26, py + 5 + by, 6, 1);
+      ctx.fillRect(px + 26, py + 5 + by, 1, 4);
+      ctx.fillRect(px + 31, py + 5 + by, 1, 4);
+      // Right lens
+      ctx.fillStyle = 'rgba(100,60,0,0.6)';
+      ctx.fillRect(px + 33, py + 5 + by, 5, 4);
+      ctx.fillStyle = '#ddaa22';
+      ctx.fillRect(px + 33, py + 5 + by, 5, 1);
+      ctx.fillRect(px + 33, py + 5 + by, 1, 4);
+      ctx.fillRect(px + 37, py + 5 + by, 1, 4);
+      // Lens glint
+      ctx.fillStyle = 'rgba(255,255,200,0.4)';
+      ctx.fillRect(px + 27, py + 5 + by, 2, 1);
+      ctx.fillRect(px + 34, py + 5 + by, 2, 1);
+    } else if (player.powerups.litterBox > 0) {
+      // Glasses on litter box leopard - head at px+24, eyes at px+31, py+10
+      ctx.fillStyle = '#cc8800';
+      ctx.fillRect(px + 28, py + 10 + by, 8, 2);
+      // Left lens
+      ctx.fillStyle = 'rgba(100,60,0,0.6)';
+      ctx.fillRect(px + 26, py + 9 + by, 6, 4);
+      ctx.fillStyle = '#ddaa22';
+      ctx.fillRect(px + 26, py + 9 + by, 6, 1);
+      ctx.fillRect(px + 26, py + 9 + by, 1, 4);
+      ctx.fillRect(px + 31, py + 9 + by, 1, 4);
+      // Right lens
+      ctx.fillStyle = 'rgba(100,60,0,0.6)';
+      ctx.fillRect(px + 33, py + 9 + by, 5, 4);
+      ctx.fillStyle = '#ddaa22';
+      ctx.fillRect(px + 33, py + 9 + by, 5, 1);
+      ctx.fillRect(px + 33, py + 9 + by, 1, 4);
+      ctx.fillRect(px + 37, py + 9 + by, 1, 4);
+      // Lens glint
+      ctx.fillStyle = 'rgba(255,255,200,0.4)';
+      ctx.fillRect(px + 27, py + 9 + by, 2, 1);
+      ctx.fillRect(px + 34, py + 9 + by, 2, 1);
+    } else {
+      // Glasses on walking leopard - eyes at px+37,py+10 and px+43,py+10
+      // Frame bridge (between lenses)
+      ctx.fillStyle = '#cc8800';
+      ctx.fillRect(px + 40, py + 10 + by, 3, 2);
+      // Left lens (over left eye area)
+      ctx.fillStyle = 'rgba(100,60,0,0.6)';
+      ctx.fillRect(px + 35, py + 9 + by, 6, 5);
+      // Left lens frame
+      ctx.fillStyle = '#ddaa22';
+      ctx.fillRect(px + 35, py + 9 + by, 6, 1);
+      ctx.fillRect(px + 35, py + 13 + by, 6, 1);
+      ctx.fillRect(px + 35, py + 9 + by, 1, 5);
+      ctx.fillRect(px + 40, py + 9 + by, 1, 5);
+      // Right lens (over right eye area)
+      ctx.fillStyle = 'rgba(100,60,0,0.6)';
+      ctx.fillRect(px + 42, py + 9 + by, 5, 5);
+      // Right lens frame
+      ctx.fillStyle = '#ddaa22';
+      ctx.fillRect(px + 42, py + 9 + by, 5, 1);
+      ctx.fillRect(px + 42, py + 13 + by, 5, 1);
+      ctx.fillRect(px + 42, py + 9 + by, 1, 5);
+      ctx.fillRect(px + 46, py + 9 + by, 1, 5);
+      // Temple arm (extends back from frame)
+      ctx.fillStyle = '#cc8800';
+      ctx.fillRect(px + 34, py + 10 + by, 2, 2);
+      // Lens glint (reflection)
+      ctx.fillStyle = 'rgba(255,255,200,0.4)';
+      ctx.fillRect(px + 36, py + 9 + by, 2, 1);
+      ctx.fillRect(px + 43, py + 9 + by, 2, 1);
+    }
+  }
+
+  // High-Top Sneakers overlay (drawn on leopard paws)
+  if (player.items.sneakers && player.powerups.raceCar <= 0 && player.powerups.litterBox <= 0) {
+    const runSpeed = Math.abs(player.vx) > 0.5;
+    const legTime = Date.now() * (runSpeed ? 0.012 : 0.004);
+    const legSwing = Math.sin(legTime) * (runSpeed ? 7 : 2);
+    const backLeg1 = legSwing;
+    const backLeg2 = -legSwing;
+    const frontLeg1 = -legSwing;
+    const frontLeg2 = legSwing;
+
+    // Back left paw sneaker
+    const bl_x = px + 7, bl_y = py + 42 + by + backLeg1;
+    ctx.fillStyle = '#dd2222';
+    ctx.fillRect(bl_x, bl_y, 7, 4);
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(bl_x, bl_y + 4, 8, 2);
+    ctx.fillRect(bl_x, bl_y - 1, 3, 2);
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(bl_x + 3, bl_y + 1, 1, 1);
+
+    // Back right paw sneaker
+    const br_x = px + 13, br_y = py + 42 + by + backLeg2;
+    ctx.fillStyle = '#dd2222';
+    ctx.fillRect(br_x, br_y, 7, 4);
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(br_x, br_y + 4, 8, 2);
+    ctx.fillRect(br_x, br_y - 1, 3, 2);
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(br_x + 3, br_y + 1, 1, 1);
+
+    // Front left paw sneaker
+    const fl_x = px + 26, fl_y = py + 42 + by + frontLeg1;
+    ctx.fillStyle = '#dd2222';
+    ctx.fillRect(fl_x, fl_y, 7, 4);
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(fl_x, fl_y + 4, 8, 2);
+    ctx.fillRect(fl_x, fl_y - 1, 3, 2);
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(fl_x + 3, fl_y + 1, 1, 1);
+
+    // Front right paw sneaker
+    const fr_x = px + 32, fr_y = py + 42 + by + frontLeg2;
+    ctx.fillStyle = '#dd2222';
+    ctx.fillRect(fr_x, fr_y, 7, 4);
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(fr_x, fr_y + 4, 8, 2);
+    ctx.fillRect(fr_x, fr_y - 1, 3, 2);
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(fr_x + 3, fr_y + 1, 1, 1);
+  }
+
+  // Angel Wings rendering
+  if (player.powerups.wings > 0) {
+    const wingFlap = Math.sin(Date.now() * 0.008) * 0.4;
+    const wingX = px + 12; // attach near the back/middle of the body
+    const wingY = py + 16 + by;
+
+    ctx.save();
+    ctx.translate(wingX, wingY);
+
+    // Left wing (extends upward-left from back)
+    ctx.save();
+    ctx.rotate(-0.6 + wingFlap);
+    // Main wing shape
+    ctx.fillStyle = 'rgba(200,230,255,0.85)';
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.quadraticCurveTo(-18, -22, -8, -36);
+    ctx.quadraticCurveTo(-2, -28, 2, -18);
+    ctx.closePath();
+    ctx.fill();
+    // Feather details
+    ctx.fillStyle = 'rgba(220,240,255,0.9)';
+    ctx.beginPath();
+    ctx.moveTo(0, -2);
+    ctx.quadraticCurveTo(-14, -18, -5, -30);
+    ctx.quadraticCurveTo(-1, -22, 1, -14);
+    ctx.closePath();
+    ctx.fill();
+    // Inner highlight feather
+    ctx.fillStyle = 'rgba(255,255,255,0.7)';
+    ctx.beginPath();
+    ctx.moveTo(0, -4);
+    ctx.quadraticCurveTo(-8, -14, -2, -22);
+    ctx.quadraticCurveTo(0, -16, 1, -10);
+    ctx.closePath();
+    ctx.fill();
+    // Feather edge lines
+    ctx.strokeStyle = 'rgba(170,210,240,0.6)';
+    ctx.lineWidth = 0.5;
+    ctx.beginPath();
+    ctx.moveTo(-2, -6); ctx.lineTo(-12, -20);
+    ctx.moveTo(-1, -10); ctx.lineTo(-10, -26);
+    ctx.moveTo(0, -3); ctx.lineTo(-16, -16);
+    ctx.stroke();
+    ctx.restore();
+
+    // Right wing (extends upward-right from back)
+    ctx.save();
+    ctx.rotate(0.6 - wingFlap);
+    ctx.fillStyle = 'rgba(200,230,255,0.85)';
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.quadraticCurveTo(18, -22, 8, -36);
+    ctx.quadraticCurveTo(2, -28, -2, -18);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = 'rgba(220,240,255,0.9)';
+    ctx.beginPath();
+    ctx.moveTo(0, -2);
+    ctx.quadraticCurveTo(14, -18, 5, -30);
+    ctx.quadraticCurveTo(1, -22, -1, -14);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = 'rgba(255,255,255,0.7)';
+    ctx.beginPath();
+    ctx.moveTo(0, -4);
+    ctx.quadraticCurveTo(8, -14, 2, -22);
+    ctx.quadraticCurveTo(0, -16, -1, -10);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(170,210,240,0.6)';
+    ctx.lineWidth = 0.5;
+    ctx.beginPath();
+    ctx.moveTo(2, -6); ctx.lineTo(12, -20);
+    ctx.moveTo(1, -10); ctx.lineTo(10, -26);
+    ctx.moveTo(0, -3); ctx.lineTo(16, -16);
+    ctx.stroke();
+    ctx.restore();
+
+    // Glow effect around wings
+    ctx.fillStyle = `rgba(170,221,255,${0.08 + Math.sin(Date.now() * 0.005) * 0.04})`;
+    ctx.beginPath();
+    ctx.arc(0, -10, 24, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.restore();
   }
 
   ctx.restore(); // undo the facing flip
@@ -648,6 +1029,390 @@ export function drawPowerupCrates() {
     for (let i = 0; i < c.hp; i++) {
       ctx.fillStyle = '#ffcc00'; ctx.fillRect(cx + 4 + i * 7, cy - 6, 5, 3);
     }
+
+    // Aviator glasses reveal: show powerup name/icon above unbroken crate
+    if (player.items.glasses) {
+      const revealBob = Math.sin(Date.now() * 0.004) * 2;
+      // Powerup name label
+      ctx.fillStyle = c.powerupType.color;
+      ctx.font = 'bold 9px "Courier New"';
+      ctx.textAlign = 'center';
+      ctx.fillText(c.powerupType.name, cx + c.w/2, cy - 12 + revealBob);
+      // Small glasses icon indicator
+      ctx.fillStyle = 'rgba(255,170,0,0.5)';
+      ctx.fillRect(cx + c.w/2 - 5, cy - 20 + revealBob, 10, 3);
+      ctx.textAlign = 'left';
+    }
+  });
+}
+
+export function drawArmorCrates() {
+  state.armorCrates.forEach(c => {
+    if (c.broken) return;
+    const cx = c.x - camera.x + (c.shakeTimer > 0 ? (Math.random() - 0.5) * 4 : 0);
+    const cy = c.y;
+    if (c.shakeTimer > 0) c.shakeTimer--;
+
+    // Metallic crate body (distinct from powerup crates)
+    ctx.fillStyle = '#6a6a7a'; ctx.fillRect(cx, cy, c.w, c.h);
+    // Metal border
+    ctx.fillStyle = '#4a4a5a';
+    ctx.fillRect(cx, cy, c.w, 3); ctx.fillRect(cx, cy + c.h - 3, c.w, 3);
+    ctx.fillRect(cx, cy, 3, c.h); ctx.fillRect(cx + c.w - 3, cy, 3, c.h);
+    // Metal cross bands
+    ctx.fillStyle = '#8a8a9a';
+    ctx.fillRect(cx + 3, cy + c.h/2 - 1, c.w - 6, 3);
+    ctx.fillRect(cx + c.w/2 - 1, cy + 3, 3, c.h - 6);
+    // Corner rivets
+    ctx.fillStyle = '#aaaa88';
+    ctx.fillRect(cx + 4, cy + 4, 3, 3);
+    ctx.fillRect(cx + c.w - 7, cy + 4, 3, 3);
+    ctx.fillRect(cx + 4, cy + c.h - 7, 3, 3);
+    ctx.fillRect(cx + c.w - 7, cy + c.h - 7, 3, 3);
+
+    // Armor shield icon instead of "?"
+    const icx = cx + c.w/2;
+    const icy = cy + c.h/2;
+    ctx.fillStyle = c.armorType.color;
+    ctx.beginPath();
+    ctx.moveTo(icx, icy - 7);
+    ctx.lineTo(icx + 6, icy - 4);
+    ctx.lineTo(icx + 5, icy + 4);
+    ctx.lineTo(icx, icy + 7);
+    ctx.lineTo(icx - 5, icy + 4);
+    ctx.lineTo(icx - 6, icy - 4);
+    ctx.closePath();
+    ctx.fill();
+
+    // Metallic glow
+    const glowAlpha = 0.1 + Math.sin(Date.now() * 0.003) * 0.05;
+    ctx.fillStyle = `rgba(180,180,210,${glowAlpha})`;
+    ctx.beginPath(); ctx.arc(icx, icy, 20, 0, Math.PI * 2); ctx.fill();
+
+    // HP pips
+    for (let i = 0; i < c.hp; i++) {
+      ctx.fillStyle = '#ccccdd'; ctx.fillRect(cx + 4 + i * 8, cy - 6, 6, 3);
+    }
+  });
+}
+
+export function drawArmorPickups() {
+  state.armorPickups.forEach(ap => {
+    if (ap.equipped) return;
+    const ax = ap.x - camera.x;
+    const floatY = ap.y - 40 + Math.sin(ap.bobTimer) * 6;
+
+    // Halo glow effect
+    const glowPulse = 0.3 + Math.sin(ap.glowTimer * 2) * 0.15;
+    const haloGrad = ctx.createRadialGradient(ax, floatY, 0, ax, floatY, 35);
+    haloGrad.addColorStop(0, `rgba(255,255,200,${glowPulse})`);
+    haloGrad.addColorStop(0.5, `rgba(255,255,150,${glowPulse * 0.5})`);
+    haloGrad.addColorStop(1, 'rgba(255,255,100,0)');
+    ctx.fillStyle = haloGrad;
+    ctx.fillRect(ax - 40, floatY - 40, 80, 80);
+
+    // Halo ring
+    ctx.strokeStyle = `rgba(255,255,200,${0.4 + Math.sin(ap.glowTimer * 3) * 0.2})`;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.ellipse(ax, floatY - 14, 14, 4, 0, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // Draw the armor item itself
+    if (ap.armorType.id === 'leather') {
+      // Leather armor piece floating
+      ctx.fillStyle = '#b08040';
+      // Chest piece shape
+      ctx.fillRect(ax - 10, floatY - 8, 20, 16);
+      ctx.fillStyle = '#8a6030';
+      ctx.fillRect(ax - 10, floatY - 8, 20, 3);
+      ctx.fillRect(ax - 10, floatY + 5, 20, 3);
+      // Shoulder pads
+      ctx.fillStyle = '#c09050';
+      ctx.fillRect(ax - 13, floatY - 6, 6, 8);
+      ctx.fillRect(ax + 7, floatY - 6, 6, 8);
+      // Strap detail
+      ctx.fillStyle = '#6a4020';
+      ctx.fillRect(ax - 1, floatY - 8, 2, 16);
+      // Buckle
+      ctx.fillStyle = '#ccaa44';
+      ctx.fillRect(ax - 2, floatY + 2, 4, 3);
+    } else if (ap.armorType.id === 'chainmail') {
+      // Chainmail armor piece floating
+      ctx.fillStyle = '#aaaacc';
+      ctx.fillRect(ax - 10, floatY - 8, 20, 16);
+      // Chain mesh pattern
+      ctx.fillStyle = '#ccccdd';
+      for (let iy = 0; iy < 5; iy++) {
+        for (let ix = 0; ix < 7; ix++) {
+          const ox = (iy % 2) * 1.5;
+          ctx.fillRect(ax - 9 + ix * 3 + ox, floatY - 7 + iy * 3, 1.5, 1.5);
+        }
+      }
+      // Silver shoulder guards
+      ctx.fillStyle = '#bbbbdd';
+      ctx.fillRect(ax - 13, floatY - 6, 6, 8);
+      ctx.fillRect(ax + 7, floatY - 6, 6, 8);
+      // Shine
+      ctx.fillStyle = 'rgba(220,220,255,0.4)';
+      ctx.fillRect(ax - 8, floatY - 6, 6, 2);
+    }
+
+    // "Press E to equip" text
+    const textBob = Math.sin(Date.now() * 0.004) * 2;
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 11px "Courier New"';
+    ctx.textAlign = 'center';
+    ctx.fillText('Press E to equip', ax, floatY + 26 + textBob);
+    // Armor name
+    ctx.fillStyle = ap.armorType.color;
+    ctx.font = 'bold 10px "Courier New"';
+    ctx.fillText(ap.armorType.name, ax, floatY - 20);
+    ctx.textAlign = 'left';
+  });
+}
+
+export function drawGlassesCrates() {
+  state.glassesCrates.forEach(c => {
+    if (c.broken) return;
+    const cx = c.x - camera.x + (c.shakeTimer > 0 ? (Math.random() - 0.5) * 4 : 0);
+    const cy = c.y;
+    if (c.shakeTimer > 0) c.shakeTimer--;
+
+    // Metallic crate body (similar to armor crates but with golden tint)
+    ctx.fillStyle = '#7a7060'; ctx.fillRect(cx, cy, c.w, c.h);
+    // Metal border
+    ctx.fillStyle = '#5a5040';
+    ctx.fillRect(cx, cy, c.w, 3); ctx.fillRect(cx, cy + c.h - 3, c.w, 3);
+    ctx.fillRect(cx, cy, 3, c.h); ctx.fillRect(cx + c.w - 3, cy, 3, c.h);
+    // Metal cross bands
+    ctx.fillStyle = '#8a8070';
+    ctx.fillRect(cx + 3, cy + c.h/2 - 1, c.w - 6, 3);
+    ctx.fillRect(cx + c.w/2 - 1, cy + 3, 3, c.h - 6);
+    // Corner rivets
+    ctx.fillStyle = '#ccaa44';
+    ctx.fillRect(cx + 4, cy + 4, 3, 3);
+    ctx.fillRect(cx + c.w - 7, cy + 4, 3, 3);
+    ctx.fillRect(cx + 4, cy + c.h - 7, 3, 3);
+    ctx.fillRect(cx + c.w - 7, cy + c.h - 7, 3, 3);
+
+    // Sunglasses icon instead of "?" - two small lens shapes
+    const icx = cx + c.w/2;
+    const icy = cy + c.h/2;
+    ctx.fillStyle = GLASSES_TYPE.color;
+    // Left lens
+    ctx.fillRect(icx - 7, icy - 2, 5, 4);
+    // Right lens
+    ctx.fillRect(icx + 2, icy - 2, 5, 4);
+    // Bridge
+    ctx.fillRect(icx - 2, icy - 1, 4, 2);
+    // Temple arms
+    ctx.fillRect(icx - 8, icy - 1, 2, 2);
+    ctx.fillRect(icx + 7, icy - 1, 2, 2);
+
+    // Golden glow
+    const glowAlpha = 0.1 + Math.sin(Date.now() * 0.003) * 0.05;
+    ctx.fillStyle = `rgba(255,170,0,${glowAlpha})`;
+    ctx.beginPath(); ctx.arc(icx, icy, 20, 0, Math.PI * 2); ctx.fill();
+
+    // HP pips
+    for (let i = 0; i < c.hp; i++) {
+      ctx.fillStyle = '#ccccdd'; ctx.fillRect(cx + 4 + i * 8, cy - 6, 6, 3);
+    }
+  });
+}
+
+export function drawGlassesPickups() {
+  state.glassesPickups.forEach(gp => {
+    if (gp.equipped) return;
+    const gx = gp.x - camera.x;
+    const floatY = gp.y - 40 + Math.sin(gp.bobTimer) * 6;
+
+    // Halo glow effect
+    const glowPulse = 0.3 + Math.sin(gp.glowTimer * 2) * 0.15;
+    const haloGrad = ctx.createRadialGradient(gx, floatY, 0, gx, floatY, 35);
+    haloGrad.addColorStop(0, `rgba(255,220,100,${glowPulse})`);
+    haloGrad.addColorStop(0.5, `rgba(255,200,50,${glowPulse * 0.5})`);
+    haloGrad.addColorStop(1, 'rgba(255,170,0,0)');
+    ctx.fillStyle = haloGrad;
+    ctx.fillRect(gx - 40, floatY - 40, 80, 80);
+
+    // Halo ring
+    ctx.strokeStyle = `rgba(255,220,100,${0.4 + Math.sin(gp.glowTimer * 3) * 0.2})`;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.ellipse(gx, floatY - 14, 14, 4, 0, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // Draw aviator glasses item floating
+    // Left lens
+    ctx.fillStyle = 'rgba(120,70,0,0.7)';
+    ctx.fillRect(gx - 12, floatY - 4, 10, 7);
+    ctx.fillStyle = '#ddaa22';
+    ctx.fillRect(gx - 12, floatY - 4, 10, 1);
+    ctx.fillRect(gx - 12, floatY + 2, 10, 1);
+    ctx.fillRect(gx - 12, floatY - 4, 1, 7);
+    ctx.fillRect(gx - 3, floatY - 4, 1, 7);
+    // Right lens
+    ctx.fillStyle = 'rgba(120,70,0,0.7)';
+    ctx.fillRect(gx + 2, floatY - 4, 10, 7);
+    ctx.fillStyle = '#ddaa22';
+    ctx.fillRect(gx + 2, floatY - 4, 10, 1);
+    ctx.fillRect(gx + 2, floatY + 2, 10, 1);
+    ctx.fillRect(gx + 2, floatY - 4, 1, 7);
+    ctx.fillRect(gx + 11, floatY - 4, 1, 7);
+    // Bridge
+    ctx.fillStyle = '#cc8800';
+    ctx.fillRect(gx - 2, floatY - 2, 4, 3);
+    // Temple arms
+    ctx.fillStyle = '#cc8800';
+    ctx.fillRect(gx - 15, floatY - 2, 4, 2);
+    ctx.fillRect(gx + 12, floatY - 2, 4, 2);
+    // Lens glint
+    ctx.fillStyle = 'rgba(255,255,200,0.5)';
+    ctx.fillRect(gx - 10, floatY - 3, 3, 1);
+    ctx.fillRect(gx + 4, floatY - 3, 3, 1);
+
+    // "Press E to equip" text
+    const textBob = Math.sin(Date.now() * 0.004) * 2;
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 11px "Courier New"';
+    ctx.textAlign = 'center';
+    ctx.fillText('Press E to equip', gx, floatY + 26 + textBob);
+    // Item name
+    ctx.fillStyle = GLASSES_TYPE.color;
+    ctx.font = 'bold 10px "Courier New"';
+    ctx.fillText(GLASSES_TYPE.name, gx, floatY - 20);
+    ctx.textAlign = 'left';
+  });
+}
+
+export function drawSneakersCrates() {
+  state.sneakersCrates.forEach(c => {
+    if (c.broken) return;
+    const cx = c.x - camera.x + (c.shakeTimer > 0 ? (Math.random() - 0.5) * 4 : 0);
+    const cy = c.y;
+    if (c.shakeTimer > 0) c.shakeTimer--;
+
+    // Metallic crate body (similar to armor crates but with red tint)
+    ctx.fillStyle = '#6a6070'; ctx.fillRect(cx, cy, c.w, c.h);
+    // Metal border
+    ctx.fillStyle = '#4a4050';
+    ctx.fillRect(cx, cy, c.w, 3); ctx.fillRect(cx, cy + c.h - 3, c.w, 3);
+    ctx.fillRect(cx, cy, 3, c.h); ctx.fillRect(cx + c.w - 3, cy, 3, c.h);
+    // Metal cross bands
+    ctx.fillStyle = '#8a7080';
+    ctx.fillRect(cx + 3, cy + c.h/2 - 1, c.w - 6, 3);
+    ctx.fillRect(cx + c.w/2 - 1, cy + 3, 3, c.h - 6);
+    // Corner rivets
+    ctx.fillStyle = '#ff6644';
+    ctx.fillRect(cx + 4, cy + 4, 3, 3);
+    ctx.fillRect(cx + c.w - 7, cy + 4, 3, 3);
+    ctx.fillRect(cx + 4, cy + c.h - 7, 3, 3);
+    ctx.fillRect(cx + c.w - 7, cy + c.h - 7, 3, 3);
+
+    // Sneaker icon - small shoe shape
+    const icx = cx + c.w/2;
+    const icy = cy + c.h/2;
+    ctx.fillStyle = SNEAKERS_TYPE.color;
+    // Shoe body
+    ctx.fillRect(icx - 6, icy - 2, 12, 5);
+    // High-top ankle part
+    ctx.fillRect(icx - 6, icy - 5, 5, 4);
+    // Sole
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(icx - 7, icy + 3, 14, 2);
+    // Lace detail
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(icx - 3, icy - 1, 1, 1);
+    ctx.fillRect(icx - 1, icy - 2, 1, 1);
+
+    // Red glow
+    const glowAlpha = 0.1 + Math.sin(Date.now() * 0.003) * 0.05;
+    ctx.fillStyle = `rgba(255,68,68,${glowAlpha})`;
+    ctx.beginPath(); ctx.arc(icx, icy, 20, 0, Math.PI * 2); ctx.fill();
+
+    // HP pips
+    for (let i = 0; i < c.hp; i++) {
+      ctx.fillStyle = '#ccccdd'; ctx.fillRect(cx + 4 + i * 8, cy - 6, 6, 3);
+    }
+  });
+}
+
+export function drawSneakersPickups() {
+  state.sneakersPickups.forEach(sp => {
+    if (sp.equipped) return;
+    const sx = sp.x - camera.x;
+    const floatY = sp.y - 40 + Math.sin(sp.bobTimer) * 6;
+
+    // Halo glow effect
+    const glowPulse = 0.3 + Math.sin(sp.glowTimer * 2) * 0.15;
+    const haloGrad = ctx.createRadialGradient(sx, floatY, 0, sx, floatY, 35);
+    haloGrad.addColorStop(0, `rgba(255,100,100,${glowPulse})`);
+    haloGrad.addColorStop(0.5, `rgba(255,68,68,${glowPulse * 0.5})`);
+    haloGrad.addColorStop(1, 'rgba(255,68,68,0)');
+    ctx.fillStyle = haloGrad;
+    ctx.fillRect(sx - 40, floatY - 40, 80, 80);
+
+    // Halo ring
+    ctx.strokeStyle = `rgba(255,200,200,${0.4 + Math.sin(sp.glowTimer * 3) * 0.2})`;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.ellipse(sx, floatY - 14, 14, 4, 0, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // Draw high-top sneaker floating
+    // Left sneaker
+    const lx = sx - 14, ly = floatY - 6;
+    // Shoe body (red)
+    ctx.fillStyle = '#dd2222';
+    ctx.fillRect(lx, ly, 12, 8);
+    // High-top part
+    ctx.fillRect(lx, ly - 4, 6, 5);
+    // Sole (white)
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(lx - 1, ly + 8, 14, 3);
+    // Toe cap (white)
+    ctx.fillStyle = '#eeeeee';
+    ctx.fillRect(lx + 9, ly + 4, 3, 4);
+    // Laces
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(lx + 3, ly + 1, 1, 1);
+    ctx.fillRect(lx + 5, ly, 1, 1);
+    ctx.fillRect(lx + 3, ly + 3, 1, 1);
+    ctx.fillRect(lx + 5, ly + 2, 1, 1);
+    // Ankle trim
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(lx, ly - 4, 6, 2);
+
+    // Right sneaker
+    const rx = sx + 2, ry = floatY - 6;
+    ctx.fillStyle = '#dd2222';
+    ctx.fillRect(rx, ry, 12, 8);
+    ctx.fillRect(rx + 6, ry - 4, 6, 5);
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(rx - 1, ry + 8, 14, 3);
+    ctx.fillStyle = '#eeeeee';
+    ctx.fillRect(rx, ry + 4, 3, 4);
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(rx + 7, ry + 1, 1, 1);
+    ctx.fillRect(rx + 9, ry, 1, 1);
+    ctx.fillRect(rx + 7, ry + 3, 1, 1);
+    ctx.fillRect(rx + 9, ry + 2, 1, 1);
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(rx + 6, ry - 4, 6, 2);
+
+    // "Press E to equip" text
+    const textBob = Math.sin(Date.now() * 0.004) * 2;
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 11px "Courier New"';
+    ctx.textAlign = 'center';
+    ctx.fillText('Press E to equip', sx, floatY + 26 + textBob);
+    // Item name
+    ctx.fillStyle = SNEAKERS_TYPE.color;
+    ctx.font = 'bold 10px "Courier New"';
+    ctx.fillText(SNEAKERS_TYPE.name, sx, floatY - 20);
+    ctx.textAlign = 'left';
   });
 }
 
@@ -836,6 +1601,31 @@ export function drawHUD() {
     ctx.fillStyle = '#aa8844'; ctx.font = '11px "Courier New"';
     ctx.fillText(`LITTER BOX [${Math.ceil(player.powerups.litterBox/60)}s]`, 15, puY); puY += 14;
   }
+  if (player.powerups.wings > 0) {
+    ctx.fillStyle = '#aaddff'; ctx.font = '11px "Courier New"';
+    ctx.fillText(`ANGEL WINGS [${Math.ceil(player.powerups.wings/60)}s]`, 15, puY); puY += 14;
+  }
+
+  // Armor display (permanent item)
+  if (player.items.armor) {
+    const armorInfo = ARMOR_TYPES.find(a => a.id === player.items.armor);
+    if (armorInfo) {
+      ctx.fillStyle = armorInfo.color; ctx.font = 'bold 11px "Courier New"';
+      ctx.fillText(`${armorInfo.name} [EQUIPPED]`, 15, puY); puY += 14;
+    }
+  }
+
+  // Glasses display (permanent item)
+  if (player.items.glasses) {
+    ctx.fillStyle = GLASSES_TYPE.color; ctx.font = 'bold 11px "Courier New"';
+    ctx.fillText(`${GLASSES_TYPE.name} [EQUIPPED]`, 15, puY); puY += 14;
+  }
+
+  // Sneakers display (permanent item)
+  if (player.items.sneakers) {
+    ctx.fillStyle = SNEAKERS_TYPE.color; ctx.font = 'bold 11px "Courier New"';
+    ctx.fillText(`${SNEAKERS_TYPE.name} [EQUIPPED]`, 15, puY); puY += 14;
+  }
 
   if (state.currentLevel === 3) {
     ctx.textAlign = 'center';
@@ -902,8 +1692,8 @@ export function drawTitleScreen() {
 
   ctx.fillStyle = '#aaaaaa'; ctx.font = '16px "Courier New"';
   ctx.fillText('Arrow Keys - Move & Jump', canvas.width / 2, 345);
-  ctx.fillText('Space - Attack', canvas.width / 2, 370);
-  ctx.fillText('Break crates on platforms for power-ups!', canvas.width / 2, 400);
+  ctx.fillText('Space - Attack | E - Equip Items', canvas.width / 2, 370);
+  ctx.fillText('Break crates for power-ups & armor!', canvas.width / 2, 400);
   ctx.fillText('3 Lives - Defeat zombies across 3 levels', canvas.width / 2, 430);
   ctx.fillText('Capture the Leopard Diamond!', canvas.width / 2, 455);
 
