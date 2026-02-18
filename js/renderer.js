@@ -33,134 +33,256 @@ export function drawLeopard(x, y) {
   const px = 0, py = 0;
   const by = bounceY;
 
-  // === RACE CAR ===
-  // Car body main
-  ctx.fillStyle = '#cc2222';
-  ctx.fillRect(px - 4, py + 30 + by, 50, 16);
+  if (player.powerups.raceCar > 0) {
+    // === RACE CAR ===
+    // Car body main
+    ctx.fillStyle = '#cc2222';
+    ctx.fillRect(px - 4, py + 30 + by, 50, 16);
 
-  // Front splitter (low aero piece under front)
-  ctx.fillStyle = '#222222';
-  ctx.fillRect(px + 40, py + 44 + by, 14, 3);
-  ctx.fillStyle = '#444444';
-  ctx.fillRect(px + 42, py + 43 + by, 10, 2);
+    // Front splitter (low aero piece under front)
+    ctx.fillStyle = '#222222';
+    ctx.fillRect(px + 40, py + 44 + by, 14, 3);
+    ctx.fillStyle = '#444444';
+    ctx.fillRect(px + 42, py + 43 + by, 10, 2);
 
-  // Front bumper / nose
-  ctx.fillStyle = '#bb1a1a';
-  ctx.fillRect(px + 42, py + 31 + by, 12, 13);
-  ctx.fillStyle = '#cc2222';
-  ctx.fillRect(px + 44, py + 29 + by, 6, 4);
+    // Front bumper / nose
+    ctx.fillStyle = '#bb1a1a';
+    ctx.fillRect(px + 42, py + 31 + by, 12, 13);
+    ctx.fillStyle = '#cc2222';
+    ctx.fillRect(px + 44, py + 29 + by, 6, 4);
 
-  // Rear section
-  ctx.fillStyle = '#aa1a1a';
-  ctx.fillRect(px - 8, py + 32 + by, 10, 12);
+    // Rear section
+    ctx.fillStyle = '#aa1a1a';
+    ctx.fillRect(px - 8, py + 32 + by, 10, 12);
 
-  // Spoiler - vertical posts
-  ctx.fillStyle = '#333333';
-  ctx.fillRect(px - 6, py + 18 + by, 2, 14);
-  ctx.fillRect(px + 2, py + 18 + by, 2, 14);
-  // Spoiler wing
-  ctx.fillStyle = '#cc2222';
-  ctx.fillRect(px - 8, py + 16 + by, 14, 4);
-  ctx.fillStyle = '#ffcc00';
-  ctx.fillRect(px - 8, py + 19 + by, 14, 2);
+    // Spoiler - vertical posts
+    ctx.fillStyle = '#333333';
+    ctx.fillRect(px - 6, py + 18 + by, 2, 14);
+    ctx.fillRect(px + 2, py + 18 + by, 2, 14);
+    // Spoiler wing
+    ctx.fillStyle = '#cc2222';
+    ctx.fillRect(px - 8, py + 16 + by, 14, 4);
+    ctx.fillStyle = '#ffcc00';
+    ctx.fillRect(px - 8, py + 19 + by, 14, 2);
 
-  // Windshield (angled look)
-  ctx.fillStyle = '#88ccff';
-  ctx.fillRect(px + 30, py + 22 + by, 10, 10);
-  ctx.fillStyle = '#66aadd';
-  ctx.fillRect(px + 32, py + 22 + by, 2, 10);
+    // Windshield (angled look)
+    ctx.fillStyle = '#88ccff';
+    ctx.fillRect(px + 30, py + 22 + by, 10, 10);
+    ctx.fillStyle = '#66aadd';
+    ctx.fillRect(px + 32, py + 22 + by, 2, 10);
 
-  // Cockpit roof
-  ctx.fillStyle = '#dd3333';
-  ctx.fillRect(px + 8, py + 24 + by, 24, 8);
+    // Cockpit roof
+    ctx.fillStyle = '#dd3333';
+    ctx.fillRect(px + 8, py + 24 + by, 24, 8);
 
-  // Racing stripe (centered on car body)
-  ctx.fillStyle = '#ffcc00';
-  ctx.fillRect(px - 4, py + 36 + by, 50, 3);
+    // Racing stripe (centered on car body)
+    ctx.fillStyle = '#ffcc00';
+    ctx.fillRect(px - 4, py + 36 + by, 50, 3);
 
-  // Side intake vent
-  ctx.fillStyle = '#880000';
-  ctx.fillRect(px + 20, py + 32 + by, 8, 3);
-  ctx.fillStyle = '#666666';
-  for (let i = 0; i < 3; i++) ctx.fillRect(px + 21 + i * 3, py + 32 + by, 1, 3);
+    // Side intake vent
+    ctx.fillStyle = '#880000';
+    ctx.fillRect(px + 20, py + 32 + by, 8, 3);
+    ctx.fillStyle = '#666666';
+    for (let i = 0; i < 3; i++) ctx.fillRect(px + 21 + i * 3, py + 32 + by, 1, 3);
 
-  // Headlights (dual)
-  ctx.fillStyle = '#ffff88';
-  ctx.fillRect(px + 48, py + 33 + by, 4, 3);
-  ctx.fillStyle = '#ffffcc';
-  ctx.fillRect(px + 48, py + 37 + by, 4, 3);
+    // Headlights (dual)
+    ctx.fillStyle = '#ffff88';
+    ctx.fillRect(px + 48, py + 33 + by, 4, 3);
+    ctx.fillStyle = '#ffffcc';
+    ctx.fillRect(px + 48, py + 37 + by, 4, 3);
 
-  // Taillights
-  ctx.fillStyle = '#ff2222';
-  ctx.fillRect(px - 8, py + 33 + by, 3, 3);
-  ctx.fillStyle = '#ff6600';
-  ctx.fillRect(px - 8, py + 37 + by, 3, 3);
+    // Taillights
+    ctx.fillStyle = '#ff2222';
+    ctx.fillRect(px - 8, py + 33 + by, 3, 3);
+    ctx.fillStyle = '#ff6600';
+    ctx.fillRect(px - 8, py + 37 + by, 3, 3);
 
-  // Wheels
-  ctx.fillStyle = '#1a1a1a';
-  const w1x = px + 6, w2x = px + 36, wy = py + 45 + by;
-  ctx.beginPath(); ctx.arc(w1x, wy, 6, 0, Math.PI * 2); ctx.fill();
-  ctx.beginPath(); ctx.arc(w2x, wy, 6, 0, Math.PI * 2); ctx.fill();
-  // Tire tread
-  ctx.strokeStyle = '#333333'; ctx.lineWidth = 1.5;
-  ctx.beginPath(); ctx.arc(w1x, wy, 5.5, 0, Math.PI * 2); ctx.stroke();
-  ctx.beginPath(); ctx.arc(w2x, wy, 5.5, 0, Math.PI * 2); ctx.stroke();
-  // Rims
-  ctx.fillStyle = '#999999';
-  ctx.beginPath(); ctx.arc(w1x, wy, 3, 0, Math.PI * 2); ctx.fill();
-  ctx.beginPath(); ctx.arc(w2x, wy, 3, 0, Math.PI * 2); ctx.fill();
-  // Center caps
-  ctx.fillStyle = '#cccccc';
-  ctx.beginPath(); ctx.arc(w1x, wy, 1.2, 0, Math.PI * 2); ctx.fill();
-  ctx.beginPath(); ctx.arc(w2x, wy, 1.2, 0, Math.PI * 2); ctx.fill();
-  // Spokes (animated)
-  ctx.strokeStyle = '#bbbbbb'; ctx.lineWidth = 0.8;
-  for (let i = 0; i < 5; i++) {
-    const angle = wheelSpin + i * (Math.PI * 2 / 5);
-    const cx1 = Math.cos(angle), sy1 = Math.sin(angle);
-    ctx.beginPath(); ctx.moveTo(w1x + cx1 * 1.2, wy + sy1 * 1.2); ctx.lineTo(w1x + cx1 * 3, wy + sy1 * 3); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(w2x + cx1 * 1.2, wy + sy1 * 1.2); ctx.lineTo(w2x + cx1 * 3, wy + sy1 * 3); ctx.stroke();
-  }
-
-  // Exhaust when moving
-  if (Math.abs(player.vx) > 0.5 && player.onGround) {
-    for (let i = 0; i < 2; i++) {
-      ctx.fillStyle = `rgba(150,150,150,${0.2 + Math.random() * 0.3})`;
-      ctx.beginPath(); ctx.arc(px - 10 + (Math.random() - 0.5) * 6, wy - 3 + (Math.random() - 0.5) * 4, 1.5 + Math.random() * 2.5, 0, Math.PI * 2); ctx.fill();
+    // Wheels
+    ctx.fillStyle = '#1a1a1a';
+    const w1x = px + 6, w2x = px + 36, wy = py + 45 + by;
+    ctx.beginPath(); ctx.arc(w1x, wy, 6, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(w2x, wy, 6, 0, Math.PI * 2); ctx.fill();
+    // Tire tread
+    ctx.strokeStyle = '#333333'; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.arc(w1x, wy, 5.5, 0, Math.PI * 2); ctx.stroke();
+    ctx.beginPath(); ctx.arc(w2x, wy, 5.5, 0, Math.PI * 2); ctx.stroke();
+    // Rims
+    ctx.fillStyle = '#999999';
+    ctx.beginPath(); ctx.arc(w1x, wy, 3, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(w2x, wy, 3, 0, Math.PI * 2); ctx.fill();
+    // Center caps
+    ctx.fillStyle = '#cccccc';
+    ctx.beginPath(); ctx.arc(w1x, wy, 1.2, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(w2x, wy, 1.2, 0, Math.PI * 2); ctx.fill();
+    // Spokes (animated)
+    ctx.strokeStyle = '#bbbbbb'; ctx.lineWidth = 0.8;
+    for (let i = 0; i < 5; i++) {
+      const angle = wheelSpin + i * (Math.PI * 2 / 5);
+      const cx1 = Math.cos(angle), sy1 = Math.sin(angle);
+      ctx.beginPath(); ctx.moveTo(w1x + cx1 * 1.2, wy + sy1 * 1.2); ctx.lineTo(w1x + cx1 * 3, wy + sy1 * 3); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(w2x + cx1 * 1.2, wy + sy1 * 1.2); ctx.lineTo(w2x + cx1 * 3, wy + sy1 * 3); ctx.stroke();
     }
-  }
 
-  // === LEOPARD (sitting in car) ===
-  // Body (torso)
-  ctx.fillStyle = '#e8a828';
-  ctx.fillRect(px + 14, py + 12 + by, 18, 14);
-  // Head
-  ctx.fillRect(px + 24, py + 2 + by, 14, 14);
-  // Ears
-  ctx.fillStyle = '#d09020';
-  ctx.fillRect(px + 26, py - 1 + by, 4, 4);
-  ctx.fillRect(px + 32, py - 1 + by, 4, 4);
-  // Eyes
-  ctx.fillStyle = '#00ff00';
-  ctx.fillRect(px + 31, py + 6 + by, 3, 3);
-  // Nose
-  ctx.fillStyle = '#ff6688';
-  ctx.fillRect(px + 35, py + 10 + by, 2, 2);
-  // Spots
-  ctx.fillStyle = '#c08018';
-  ctx.fillRect(px + 16, py + 14 + by, 2, 2);
-  ctx.fillRect(px + 20, py + 16 + by, 2, 2);
-  ctx.fillRect(px + 26, py + 15 + by, 2, 2);
-  // Paws on steering area
-  ctx.fillStyle = '#d09020';
-  ctx.fillRect(px + 28, py + 24 + by, 5, 4);
-  ctx.fillRect(px + 22, py + 24 + by, 5, 4);
-  // Tail sticking up behind
-  const tailWag = Math.sin(Date.now() * 0.005) * 4;
-  ctx.fillStyle = '#d09020';
-  ctx.fillRect(px + 10, py + 8 + by + tailWag, 3, 8);
-  ctx.fillStyle = '#1a1a1a';
-  ctx.fillRect(px + 9, py + 4 + by + tailWag, 3, 5);
+    // Exhaust when moving
+    if (Math.abs(player.vx) > 0.5 && player.onGround) {
+      for (let i = 0; i < 2; i++) {
+        ctx.fillStyle = `rgba(150,150,150,${0.2 + Math.random() * 0.3})`;
+        ctx.beginPath(); ctx.arc(px - 10 + (Math.random() - 0.5) * 6, wy - 3 + (Math.random() - 0.5) * 4, 1.5 + Math.random() * 2.5, 0, Math.PI * 2); ctx.fill();
+      }
+    }
+
+    // === LEOPARD (sitting in car) ===
+    // Body (torso)
+    ctx.fillStyle = '#e8a828';
+    ctx.fillRect(px + 14, py + 12 + by, 18, 14);
+    // Head
+    ctx.fillRect(px + 24, py + 2 + by, 14, 14);
+    // Ears
+    ctx.fillStyle = '#d09020';
+    ctx.fillRect(px + 26, py - 1 + by, 4, 4);
+    ctx.fillRect(px + 32, py - 1 + by, 4, 4);
+    // Eyes
+    ctx.fillStyle = '#00ff00';
+    ctx.fillRect(px + 31, py + 6 + by, 3, 3);
+    // Nose
+    ctx.fillStyle = '#ff6688';
+    ctx.fillRect(px + 35, py + 10 + by, 2, 2);
+    // Spots
+    ctx.fillStyle = '#c08018';
+    ctx.fillRect(px + 16, py + 14 + by, 2, 2);
+    ctx.fillRect(px + 20, py + 16 + by, 2, 2);
+    ctx.fillRect(px + 26, py + 15 + by, 2, 2);
+    // Paws on steering area
+    ctx.fillStyle = '#d09020';
+    ctx.fillRect(px + 28, py + 24 + by, 5, 4);
+    ctx.fillRect(px + 22, py + 24 + by, 5, 4);
+    // Tail sticking up behind
+    const tailWagCar = Math.sin(Date.now() * 0.005) * 4;
+    ctx.fillStyle = '#d09020';
+    ctx.fillRect(px + 10, py + 8 + by + tailWagCar, 3, 8);
+    ctx.fillStyle = '#1a1a1a';
+    ctx.fillRect(px + 9, py + 4 + by + tailWagCar, 3, 5);
+
+    // Jet fire (behind car, opposite of facing)
+    const jetX = f === 1 ? px - 10 : px + 48;
+    for (let i = 0; i < 5; i++) {
+      const flicker = Math.random();
+      const size = 3 + Math.random() * 5;
+      ctx.fillStyle = `rgba(${255},${Math.floor(100 + flicker * 155)},0,${0.5 + flicker * 0.5})`;
+      ctx.beginPath();
+      ctx.arc(jetX + (Math.random() - 0.5) * 12, py + 35 + by + (Math.random() - 0.5) * 8, size, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    // Inner white-hot core
+    for (let i = 0; i < 2; i++) {
+      ctx.fillStyle = `rgba(255,255,200,${0.4 + Math.random() * 0.4})`;
+      ctx.beginPath();
+      ctx.arc(jetX + (Math.random() - 0.5) * 6, py + 35 + by + (Math.random() - 0.5) * 4, 2 + Math.random() * 2, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+  } else if (player.powerups.litterBox > 0) {
+    // === LITTER BOX ON WHEELS ===
+    // Box body
+    ctx.fillStyle = '#8a7a6a';
+    ctx.fillRect(px - 2, py + 25 + by, 46, 22);
+    // Box rim
+    ctx.fillStyle = '#6a5a4a';
+    ctx.fillRect(px - 4, py + 22 + by, 50, 6);
+    // Litter/sand inside visible
+    ctx.fillStyle = '#ccbb99';
+    ctx.fillRect(px + 2, py + 26 + by, 38, 8);
+    // Sand granules
+    ctx.fillStyle = '#aa9977';
+    for (let i = 0; i < 6; i++) {
+      ctx.fillRect(px + 4 + i * 6, py + 27 + by + (i % 2) * 3, 3, 2);
+    }
+    // Wheels
+    ctx.fillStyle = '#1a1a1a';
+    ctx.beginPath(); ctx.arc(px + 8, py + 47 + by, 5, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(px + 34, py + 47 + by, 5, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#999999';
+    ctx.beginPath(); ctx.arc(px + 8, py + 47 + by, 2, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(px + 34, py + 47 + by, 2, 0, Math.PI * 2); ctx.fill();
+
+    // Leopard peeking out of box
+    // Head
+    ctx.fillStyle = '#e8a828';
+    ctx.fillRect(px + 24, py + 6 + by, 14, 14);
+    // Ears
+    ctx.fillStyle = '#d09020';
+    ctx.fillRect(px + 26, py + 3 + by, 4, 4);
+    ctx.fillRect(px + 32, py + 3 + by, 4, 4);
+    // Eyes
+    ctx.fillStyle = '#00ff00';
+    ctx.fillRect(px + 31, py + 10 + by, 3, 3);
+    // Nose
+    ctx.fillStyle = '#ff6688';
+    ctx.fillRect(px + 35, py + 14 + by, 2, 2);
+    // Body visible above box
+    ctx.fillStyle = '#e8a828';
+    ctx.fillRect(px + 14, py + 14 + by, 18, 10);
+    // Spots
+    ctx.fillStyle = '#c08018';
+    ctx.fillRect(px + 16, py + 16 + by, 2, 2);
+    ctx.fillRect(px + 22, py + 18 + by, 2, 2);
+    // Paws gripping box rim
+    ctx.fillStyle = '#d09020';
+    ctx.fillRect(px + 12, py + 22 + by, 5, 5);
+    ctx.fillRect(px + 28, py + 22 + by, 5, 5);
+
+  } else {
+    // === WALKING LEOPARD ON ALL FOURS ===
+    // Body (horizontal)
+    ctx.fillStyle = '#e8a828';
+    ctx.fillRect(px + 6, py + 20 + by, 30, 14);
+    // Head
+    ctx.fillRect(px + 30, py + 10 + by, 14, 14);
+    // Snout
+    ctx.fillRect(px + 42, py + 16 + by, 5, 6);
+    // Ears
+    ctx.fillStyle = '#d09020';
+    ctx.fillRect(px + 32, py + 7 + by, 4, 4);
+    ctx.fillRect(px + 38, py + 7 + by, 4, 4);
+    // Eyes
+    ctx.fillStyle = '#00ff00';
+    ctx.fillRect(px + 37, py + 14 + by, 3, 3);
+    // Nose
+    ctx.fillStyle = '#ff6688';
+    ctx.fillRect(px + 44, py + 18 + by, 2, 2);
+    // Spots on body
+    ctx.fillStyle = '#c08018';
+    ctx.fillRect(px + 10, py + 22 + by, 3, 3);
+    ctx.fillRect(px + 16, py + 24 + by, 3, 3);
+    ctx.fillRect(px + 22, py + 22 + by, 3, 3);
+    ctx.fillRect(px + 28, py + 25 + by, 2, 2);
+    ctx.fillRect(px + 33, py + 13 + by, 2, 2);
+    // Belly
+    ctx.fillStyle = '#f0c050';
+    ctx.fillRect(px + 10, py + 30 + by, 22, 4);
+    // Legs (animated)
+    const legAnim = Math.sin(player.frameTimer * 0.4) * 5;
+    ctx.fillStyle = '#e8a828';
+    // Front legs
+    ctx.fillRect(px + 28, py + 32 + by, 5, 14 + legAnim);
+    ctx.fillRect(px + 34, py + 32 + by, 5, 14 - legAnim);
+    // Back legs
+    ctx.fillRect(px + 8, py + 32 + by, 5, 14 - legAnim);
+    ctx.fillRect(px + 14, py + 32 + by, 5, 14 + legAnim);
+    // Paws
+    ctx.fillStyle = '#d09020';
+    ctx.fillRect(px + 27, py + 45 + by + legAnim, 7, 3);
+    ctx.fillRect(px + 33, py + 45 + by - legAnim, 7, 3);
+    ctx.fillRect(px + 7, py + 45 + by - legAnim, 7, 3);
+    ctx.fillRect(px + 13, py + 45 + by + legAnim, 7, 3);
+    // Tail
+    const tailWag = Math.sin(Date.now() * 0.005) * 4;
+    ctx.fillStyle = '#d09020';
+    ctx.fillRect(px + 2, py + 15 + by + tailWag, 6, 4);
+    ctx.fillRect(px - 2, py + 12 + by + tailWag * 1.2, 6, 4);
+    ctx.fillStyle = '#1a1a1a';
+    ctx.fillRect(px - 4, py + 10 + by + tailWag * 1.3, 4, 4);
+  }
 
   // Powerup visuals
   if (player.powerups.jumpyBoots > 0) {
@@ -182,7 +304,7 @@ export function drawLeopard(x, y) {
   ctx.restore(); // undo the facing flip
 
   // Attack slash effect (drawn in screen-relative space so it faces correctly)
-  if (player.attacking) {
+  if (player.attacking && player.powerups.bananaCannon <= 0 && player.powerups.litterBox <= 0) {
     ctx.strokeStyle = '#ffffff';
     ctx.lineWidth = 2;
     ctx.globalAlpha = alpha * (player.attackTimer / 12);
@@ -320,8 +442,8 @@ export function drawBackground() {
 
   const grad = ctx.createLinearGradient(0, 0, 0, GROUND_Y + 50);
   if (currentLevel === 1) { grad.addColorStop(0, '#0a1a0a'); grad.addColorStop(1, '#1a3a1a'); }
-  else if (currentLevel === 2) { grad.addColorStop(0, '#0a0a1a'); grad.addColorStop(1, '#1a1a3a'); }
-  else { grad.addColorStop(0, '#1a0808'); grad.addColorStop(1, '#3a1a1a'); }
+  else if (currentLevel === 2) { grad.addColorStop(0, '#0a0a15'); grad.addColorStop(1, '#1a1a2a'); }
+  else { grad.addColorStop(0, '#0a1a2a'); grad.addColorStop(1, '#1a3a4a'); }
   ctx.fillStyle = grad;
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 
@@ -329,7 +451,7 @@ export function drawBackground() {
   ctx.beginPath();
   ctx.arc(700 - camera.x * 0.05, 60, 30, 0, Math.PI * 2);
   ctx.fill();
-  ctx.fillStyle = currentLevel === 3 ? '#3a1a1a' : '#1a1a2a';
+  ctx.fillStyle = currentLevel === 3 ? '#1a3a4a' : '#1a1a2a';
   ctx.beginPath();
   ctx.arc(690 - camera.x * 0.05, 55, 26, 0, Math.PI * 2);
   ctx.fill();
@@ -355,37 +477,105 @@ export function drawBackground() {
     });
   }
 
-  if (currentLevel === 2 && ld.gravestones) {
-    ld.gravestones.forEach(g => {
-      const gx = g.x - camera.x * 0.7;
-      if (gx < -50 || gx > canvas.width + 50) return;
-      ctx.fillStyle = '#5a5a6a';
-      ctx.fillRect(gx - 8, GROUND_Y + 50 - g.h, 16, g.h);
-      ctx.beginPath(); ctx.arc(gx, GROUND_Y + 50 - g.h, 8, Math.PI, 0); ctx.fill();
-      ctx.fillStyle = '#4a4a5a';
-      ctx.fillRect(gx - 1, GROUND_Y + 50 - g.h + 4, 2, 10);
-      ctx.fillRect(gx - 4, GROUND_Y + 50 - g.h + 7, 8, 2);
+  if (currentLevel === 2 && ld.highway) {
+    // Road dashed center line
+    for (let lx = -camera.x % 40; lx < canvas.width; lx += 40) {
+      ctx.fillStyle = '#ffcc00';
+      ctx.fillRect(lx, GROUND_Y + 35, 20, 3);
+    }
+    ld.highway.forEach(h => {
+      const hx = h.x - camera.x * 0.7;
+      if (hx < -80 || hx > canvas.width + 80) return;
+      if (h.type === 'car') {
+        // Wrecked car
+        ctx.fillStyle = h.color;
+        ctx.fillRect(hx - 20, GROUND_Y + 50 - 22, 40, 16);
+        ctx.fillStyle = '#333333';
+        ctx.fillRect(hx - 12, GROUND_Y + 50 - 30, 24, 10);
+        ctx.fillStyle = '#88aacc';
+        ctx.fillRect(hx - 8, GROUND_Y + 50 - 28, 16, 6);
+        // Wheels
+        ctx.fillStyle = '#1a1a1a';
+        ctx.beginPath(); ctx.arc(hx - 12, GROUND_Y + 50 - 4, 5, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.arc(hx + 12, GROUND_Y + 50 - 4, 5, 0, Math.PI * 2); ctx.fill();
+      } else if (h.type === 'sign') {
+        // Road sign
+        ctx.fillStyle = '#666666';
+        ctx.fillRect(hx - 2, GROUND_Y + 50 - 50, 4, 50);
+        ctx.fillStyle = '#228822';
+        ctx.fillRect(hx - 15, GROUND_Y + 50 - 60, 30, 15);
+        ctx.fillStyle = '#ffffff';
+        ctx.font = '6px "Courier New"';
+        ctx.textAlign = 'center';
+        ctx.fillText('EXIT', hx, GROUND_Y + 50 - 50);
+        ctx.textAlign = 'left';
+      } else if (h.type === 'lamp') {
+        // Lamppost
+        ctx.fillStyle = '#555555';
+        ctx.fillRect(hx - 2, GROUND_Y + 50 - 70, 4, 70);
+        ctx.fillStyle = '#777777';
+        ctx.fillRect(hx - 8, GROUND_Y + 50 - 72, 16, 4);
+        // Light glow
+        const glowGrad = ctx.createRadialGradient(hx, GROUND_Y + 50 - 68, 0, hx, GROUND_Y + 50 - 68, 35);
+        glowGrad.addColorStop(0, 'rgba(255,200,100,0.2)');
+        glowGrad.addColorStop(1, 'rgba(255,200,100,0)');
+        ctx.fillStyle = glowGrad;
+        ctx.fillRect(hx - 35, GROUND_Y + 50 - 103, 70, 70);
+      }
     });
   }
 
-  if (currentLevel === 3 && ld.torches) {
-    ld.torches.forEach(t => {
-      const tx = t.x - camera.x * 0.7;
-      if (tx < -50 || tx > canvas.width + 50) return;
-      t.flicker += 0.1;
-      ctx.fillStyle = '#5a4a3a';
-      ctx.fillRect(tx - 2, GROUND_Y + 50 - 50, 4, 50);
-      const flSize = 5 + Math.sin(t.flicker) * 2;
-      ctx.fillStyle = '#ff8800';
-      ctx.beginPath(); ctx.arc(tx, GROUND_Y + 50 - 55, flSize, 0, Math.PI * 2); ctx.fill();
-      ctx.fillStyle = '#ffcc00';
-      ctx.beginPath(); ctx.arc(tx, GROUND_Y + 50 - 57, flSize * 0.6, 0, Math.PI * 2); ctx.fill();
-      const glowGrad = ctx.createRadialGradient(tx, GROUND_Y + 50 - 55, 0, tx, GROUND_Y + 50 - 55, 40);
-      glowGrad.addColorStop(0, 'rgba(255,136,0,0.15)');
-      glowGrad.addColorStop(1, 'rgba(255,136,0,0)');
-      ctx.fillStyle = glowGrad;
-      ctx.fillRect(tx - 40, GROUND_Y + 50 - 95, 80, 80);
+  if (currentLevel === 3 && ld.iceFeatures) {
+    ld.iceFeatures.forEach(f => {
+      const fx = f.x - camera.x * 0.7;
+      if (fx < -60 || fx > canvas.width + 60) return;
+      if (f.type === 'icicle') {
+        // Hanging icicle from top
+        ctx.fillStyle = '#aaddff';
+        ctx.beginPath();
+        ctx.moveTo(fx - 4, 0);
+        ctx.lineTo(fx + 4, 0);
+        ctx.lineTo(fx, f.h);
+        ctx.closePath();
+        ctx.fill();
+        ctx.fillStyle = '#cceeFF';
+        ctx.beginPath();
+        ctx.moveTo(fx - 1, 0);
+        ctx.lineTo(fx + 1, 0);
+        ctx.lineTo(fx, f.h * 0.7);
+        ctx.closePath();
+        ctx.fill();
+      } else if (f.type === 'mound') {
+        // Snow mound
+        ctx.fillStyle = '#ddeeff';
+        ctx.beginPath();
+        ctx.arc(fx, GROUND_Y + 50, f.h, Math.PI, 0);
+        ctx.fill();
+        ctx.fillStyle = '#eef4ff';
+        ctx.beginPath();
+        ctx.arc(fx, GROUND_Y + 50, f.h * 0.6, Math.PI, 0);
+        ctx.fill();
+      } else if (f.type === 'frozenTree') {
+        // Frozen tree
+        ctx.fillStyle = '#556677';
+        ctx.fillRect(fx - 4, GROUND_Y + 50 - f.h, 8, f.h);
+        // Icy branches
+        ctx.fillStyle = '#99bbdd';
+        ctx.beginPath(); ctx.arc(fx, GROUND_Y + 50 - f.h, 20, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = '#bbddee';
+        ctx.beginPath(); ctx.arc(fx - 6, GROUND_Y + 50 - f.h + 5, 14, 0, Math.PI * 2); ctx.fill();
+        // Ice sparkle
+        ctx.fillStyle = `rgba(200,230,255,${0.3 + Math.sin(Date.now() * 0.003 + f.x) * 0.2})`;
+        ctx.beginPath(); ctx.arc(fx + 5, GROUND_Y + 50 - f.h - 5, 3, 0, Math.PI * 2); ctx.fill();
+      }
     });
+    // Falling snowflakes
+    for (let i = 0; i < 20; i++) {
+      const sx = (Date.now() * 0.02 * (i * 0.2 + 0.3) + i * 120) % canvas.width;
+      const sy = (Date.now() * 0.015 * (i * 0.1 + 0.2) + i * 80) % (GROUND_Y + 30);
+      ctx.fillStyle = `rgba(230,240,255,${0.3 + Math.sin(Date.now() * 0.001 + i * 1.3) * 0.2})`;
+      ctx.fillRect(sx, sy, 2, 2);
+    }
   }
 
   ctx.fillStyle = ld.groundColor;
@@ -398,11 +588,25 @@ export function drawBackground() {
   ld.platforms.forEach(p => {
     const px = p.x - camera.x;
     if (px + p.w < 0 || px > canvas.width) return;
-    ctx.fillStyle = '#6a5a4a'; ctx.fillRect(px, p.y, p.w, p.h);
-    ctx.fillStyle = '#7a6a5a'; ctx.fillRect(px, p.y, p.w, 4);
-    ctx.fillStyle = '#5a4a3a';
-    ctx.fillRect(px + 5, p.y + p.h, 3, 8);
-    ctx.fillRect(px + p.w - 8, p.y + p.h, 3, 8);
+    if (currentLevel === 3) {
+      ctx.fillStyle = '#8aaacc'; ctx.fillRect(px, p.y, p.w, p.h);
+      ctx.fillStyle = '#aaccee'; ctx.fillRect(px, p.y, p.w, 4);
+      ctx.fillStyle = '#7a99bb';
+      ctx.fillRect(px + 5, p.y + p.h, 3, 8);
+      ctx.fillRect(px + p.w - 8, p.y + p.h, 3, 8);
+    } else if (currentLevel === 2) {
+      ctx.fillStyle = '#555560'; ctx.fillRect(px, p.y, p.w, p.h);
+      ctx.fillStyle = '#666670'; ctx.fillRect(px, p.y, p.w, 4);
+      ctx.fillStyle = '#444450';
+      ctx.fillRect(px + 5, p.y + p.h, 3, 8);
+      ctx.fillRect(px + p.w - 8, p.y + p.h, 3, 8);
+    } else {
+      ctx.fillStyle = '#6a5a4a'; ctx.fillRect(px, p.y, p.w, p.h);
+      ctx.fillStyle = '#7a6a5a'; ctx.fillRect(px, p.y, p.w, 4);
+      ctx.fillStyle = '#5a4a3a';
+      ctx.fillRect(px + 5, p.y + p.h, 3, 8);
+      ctx.fillRect(px + p.w - 8, p.y + p.h, 3, 8);
+    }
   });
 }
 
@@ -529,6 +733,53 @@ export function drawFloatingTexts() {
   ctx.globalAlpha = 1;
 }
 
+export function drawProjectiles() {
+  state.projectiles.forEach(proj => {
+    const px = proj.x - camera.x;
+    const py = proj.y;
+
+    if (proj.type === 'banana') {
+      // Spinning banana
+      const spin = Date.now() * 0.015;
+      ctx.save();
+      ctx.translate(px, py);
+      ctx.rotate(spin);
+      // Banana body (curved shape)
+      ctx.fillStyle = '#ffdd00';
+      ctx.beginPath();
+      ctx.arc(0, 0, 8, 0.3, Math.PI - 0.3);
+      ctx.fill();
+      ctx.fillStyle = '#ffee44';
+      ctx.beginPath();
+      ctx.arc(0, -1, 6, 0.5, Math.PI - 0.5);
+      ctx.fill();
+      // Tips
+      ctx.fillStyle = '#886600';
+      ctx.fillRect(-7, -2, 3, 2);
+      ctx.fillRect(5, -2, 3, 2);
+      ctx.restore();
+      // Trail
+      for (let i = 0; i < 3; i++) {
+        ctx.fillStyle = `rgba(255,221,0,${0.15 - i * 0.04})`;
+        ctx.beginPath();
+        ctx.arc(px - proj.vx * (i + 1) * 0.5, py - proj.vy * (i + 1) * 0.5, 5 - i, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    } else if (proj.type === 'litter') {
+      // Litter chunk - small brownish/grey chunks
+      ctx.fillStyle = '#998877';
+      ctx.fillRect(px - 3, py - 3, 6, 6);
+      ctx.fillStyle = '#bbaa88';
+      ctx.fillRect(px - 2, py - 2, 4, 4);
+      // Dust trail
+      ctx.fillStyle = `rgba(170,153,119,${proj.life / 30 * 0.3})`;
+      ctx.beginPath();
+      ctx.arc(px - proj.vx * 0.3, py - proj.vy * 0.3, 4, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  });
+}
+
 export function drawHUD() {
   ctx.fillStyle = 'rgba(0,0,0,0.7)'; ctx.fillRect(15, 15, 204, 24);
   ctx.fillStyle = '#440000'; ctx.fillRect(17, 17, 200, 20);
@@ -572,6 +823,18 @@ export function drawHUD() {
   if (player.powerups.superFangs > 0) {
     ctx.fillStyle = '#ff44ff'; ctx.font = '11px "Courier New"';
     ctx.fillText(`SUPER FANGS [${Math.ceil(player.powerups.superFangs/60)}s]`, 15, puY); puY += 14;
+  }
+  if (player.powerups.raceCar > 0) {
+    ctx.fillStyle = '#cc2222'; ctx.font = '11px "Courier New"';
+    ctx.fillText(`RACE CAR [${Math.ceil(player.powerups.raceCar/60)}s]`, 15, puY); puY += 14;
+  }
+  if (player.powerups.bananaCannon > 0) {
+    ctx.fillStyle = '#ffdd00'; ctx.font = '11px "Courier New"';
+    ctx.fillText(`BANANA CANNON [${Math.ceil(player.powerups.bananaCannon/60)}s]`, 15, puY); puY += 14;
+  }
+  if (player.powerups.litterBox > 0) {
+    ctx.fillStyle = '#aa8844'; ctx.font = '11px "Courier New"';
+    ctx.fillText(`LITTER BOX [${Math.ceil(player.powerups.litterBox/60)}s]`, 15, puY); puY += 14;
   }
 
   if (state.currentLevel === 3) {
@@ -638,7 +901,7 @@ export function drawTitleScreen() {
   ctx.closePath(); ctx.fill();
 
   ctx.fillStyle = '#aaaaaa'; ctx.font = '16px "Courier New"';
-  ctx.fillText('Arrow Keys - Drive & Jump', canvas.width / 2, 345);
+  ctx.fillText('Arrow Keys - Move & Jump', canvas.width / 2, 345);
   ctx.fillText('Space - Attack', canvas.width / 2, 370);
   ctx.fillText('Break crates on platforms for power-ups!', canvas.width / 2, 400);
   ctx.fillText('3 Lives - Defeat zombies across 3 levels', canvas.width / 2, 430);
@@ -694,8 +957,8 @@ export function drawGameWin() {
   ctx.fillText(`FINAL SCORE: ${player.score}`, canvas.width / 2, 320);
   ctx.fillStyle = '#aaaaaa'; ctx.font = '16px "Courier New"';
   ctx.fillText('You fought through the Dark Forest,', canvas.width / 2, 380);
-  ctx.fillText('survived the Graveyard, conquered the', canvas.width / 2, 405);
-  ctx.fillText('Zombie Fortress, and defeated the Zombie Lord!', canvas.width / 2, 430);
+  ctx.fillText('raced across the Highway, survived the', canvas.width / 2, 405);
+  ctx.fillText('Ice Age, and defeated the Zombie Lord!', canvas.width / 2, 430);
   if (Math.sin(Date.now() * 0.005) > 0) {
     ctx.fillStyle = '#ffcc00'; ctx.font = 'bold 18px "Courier New"';
     ctx.fillText('PRESS ENTER TO PLAY AGAIN', canvas.width / 2, 490);

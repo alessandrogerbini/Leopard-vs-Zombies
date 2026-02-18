@@ -4,7 +4,7 @@ import { getLevelData } from './levels.js';
 import { rectCollide, getAttackBox, spawnParticles, spawnFloatingText, getPlayerDamage, getPlayerCooldown, getPlayerJumpForce } from './utils.js';
 import { spawnZombies, spawnBoss, updateZombieAI, updateBossAI } from './enemies.js';
 import { spawnHealthPickups, spawnPowerupCrates, updateHealthPickups, updateDiamond, updatePortal } from './items.js';
-import { initRenderer, getCtx, drawLeopard, drawZombie, drawBoss, drawBackground, drawHealthPickups, drawPowerupCrates, drawPortal, drawDiamond, drawParticles, drawFloatingTexts, drawHUD, drawBossIntro, drawDying, drawTitleScreen, drawLevelComplete, drawGameWin, drawGameOver } from './renderer.js';
+import { initRenderer, getCtx, drawLeopard, drawZombie, drawBoss, drawBackground, drawHealthPickups, drawPowerupCrates, drawPortal, drawDiamond, drawParticles, drawFloatingTexts, drawHUD, drawBossIntro, drawDying, drawTitleScreen, drawLevelComplete, drawGameWin, drawGameOver, drawProjectiles } from './renderer.js';
 
 const canvas = document.getElementById('game');
 initRenderer(canvas);
@@ -31,6 +31,9 @@ function initLevel(level) {
   player.powerups.jumpyBoots = 0;
   player.powerups.clawsOfSteel = 0;
   player.powerups.superFangs = 0;
+  player.powerups.raceCar = 0;
+  player.powerups.bananaCannon = 0;
+  player.powerups.litterBox = 0;
   camera.x = 0;
   state.particles = [];
   state.floatingTexts = [];
@@ -38,6 +41,7 @@ function initLevel(level) {
   state.boss = null;
   state.bossIntroTimer = 0;
   state.portal = null;
+  state.projectiles = [];
 
   spawnZombies();
   spawnHealthPickups();
@@ -91,6 +95,9 @@ function update() {
   if (player.powerups.jumpyBoots > 0) player.powerups.jumpyBoots--;
   if (player.powerups.clawsOfSteel > 0) player.powerups.clawsOfSteel--;
   if (player.powerups.superFangs > 0) player.powerups.superFangs--;
+  if (player.powerups.raceCar > 0) player.powerups.raceCar--;
+  if (player.powerups.bananaCannon > 0) player.powerups.bananaCannon--;
+  if (player.powerups.litterBox > 0) player.powerups.litterBox--;
 
   // Player movement
   if (player.onGround) {
@@ -101,7 +108,7 @@ function update() {
     let targetVx = 0;
     if (keys['ArrowLeft']) { targetVx = -player.speed; player.facing = -1; }
     if (keys['ArrowRight']) { targetVx = player.speed; player.facing = 1; }
-    player.vx += (targetVx - player.vx) * 0.22;
+    player.vx += (targetVx - player.vx) * 0.55;
   }
   if (keys['ArrowUp'] && player.onGround) {
     player.vy = getPlayerJumpForce();
@@ -111,9 +118,34 @@ function update() {
   // Attack
   const cooldown = getPlayerCooldown();
   if (keys['Space'] && player.attackCooldown <= 0 && !player.attacking) {
-    player.attacking = true;
-    player.attackTimer = 12;
-    player.attackCooldown = cooldown;
+    if (player.powerups.bananaCannon > 0) {
+      // Banana cannon: fire a boomerang banana (only if none already in flight)
+      const bananaInFlight = state.projectiles.some(p => p.type === 'banana');
+      if (!bananaInFlight) {
+        state.projectiles.push({
+          type: 'banana', x: player.x + player.w/2, y: player.y + player.h/2,
+          vx: player.facing * 8, vy: 0, damage: 20, life: 120,
+          maxDist: 280, distTraveled: 0, returning: false,
+          hitEnemies: new Set(), originX: player.x + player.w/2
+        });
+        player.attackCooldown = cooldown;
+      }
+    } else if (player.powerups.litterBox > 0) {
+      // Litter box: fire 5 litter projectiles behind the player
+      for (let i = 0; i < 5; i++) {
+        state.projectiles.push({
+          type: 'litter', x: player.x + player.w/2, y: player.y + player.h/2,
+          vx: -player.facing * (4 + Math.random() * 4), vy: -2 + Math.random() * 4,
+          damage: 25, life: 30, hitEnemies: new Set()
+        });
+      }
+      player.attackCooldown = cooldown;
+    } else {
+      // Standard melee attack
+      player.attacking = true;
+      player.attackTimer = 12;
+      player.attackCooldown = cooldown;
+    }
   }
   if (player.attacking) { player.attackTimer--; if (player.attackTimer <= 0) player.attacking = false; }
   if (player.attackCooldown > 0) player.attackCooldown--;
@@ -212,12 +244,129 @@ function update() {
     });
   }
 
+  // Jet fire damage (race car)
+  if (player.powerups.raceCar > 0 && state.gameState !== 'dying') {
+    // Fire jet damages enemies behind the car
+    const jetBox = {
+      x: player.facing === 1 ? player.x - 80 : player.x + player.w,
+      y: player.y + 10,
+      w: 80,
+      h: player.h - 10
+    };
+    state.zombies.forEach(z => {
+      if (!z.alive) return;
+      if (rectCollide(jetBox, z) && Math.random() < 0.15) {
+        const fireDmg = 8;
+        z.hp -= fireDmg; z.hurt = 4;
+        spawnParticles(z.x + z.w/2, z.y + z.h/2, '#ff6600', 3, 4);
+        spawnFloatingText(z.x + z.w/2, z.y - 10, `-${fireDmg}`, '#ff8800');
+        if (z.hp <= 0) {
+          z.alive = false;
+          player.score += z.type === 'big' ? 200 : 100;
+          spawnParticles(z.x + z.w/2, z.y + z.h/2, '#ff8800', 15, 10);
+          spawnFloatingText(z.x + z.w/2, z.y - 30, z.type === 'big' ? '+200' : '+100', '#ffff44');
+        }
+      }
+    });
+    // Also damage boss
+    if (state.boss && state.boss.alive) {
+      const boss = state.boss;
+      if (rectCollide(jetBox, boss) && Math.random() < 0.15) {
+        const fireDmg = 8;
+        boss.hp -= fireDmg; boss.hurt = 4;
+        spawnParticles(boss.x + boss.w/2, boss.y + boss.h/2, '#ff6600', 3, 4);
+        spawnFloatingText(boss.x + boss.w/2, boss.y - 10, `-${fireDmg}`, '#ff8800');
+        if (boss.hp <= 0) {
+          boss.alive = false; player.score += 1000;
+          state.screenShake = 20; state.screenFlash = 15;
+          spawnParticles(boss.x + boss.w/2, boss.y + boss.h/2, '#ff8800', 40, 15);
+          spawnFloatingText(boss.x + boss.w/2, boss.y - 40, 'BOSS DEFEATED! +1000', '#ffff44');
+          state.diamond = { x: state.levelData.width - 150, y: GROUND_Y - 30, collected: false, glow: 0 };
+          spawnFloatingText(state.levelData.width - 150, GROUND_Y - 60, 'THE LEOPARD DIAMOND APPEARS!', '#00ffff');
+        }
+      }
+    }
+  }
+
   // AI updates
   updateZombieAI();
   updateBossAI();
   updateHealthPickups();
   updateDiamond();
   updatePortal();
+
+  // Update projectiles
+  state.projectiles = state.projectiles.filter(proj => {
+    proj.life--;
+    if (proj.life <= 0) return false;
+
+    if (proj.type === 'banana') {
+      proj.distTraveled += Math.abs(proj.vx);
+      if (!proj.returning && proj.distTraveled >= proj.maxDist) {
+        proj.returning = true;
+      }
+      if (proj.returning) {
+        // Fly back toward player
+        const dx = player.x + player.w/2 - proj.x;
+        const dy = player.y + player.h/2 - proj.y;
+        const dist = Math.sqrt(dx*dx + dy*dy);
+        if (dist < 20) return false; // collected
+        proj.vx = (dx / dist) * 9;
+        proj.vy = (dy / dist) * 9;
+      }
+      proj.x += proj.vx;
+      proj.y += proj.vy;
+    } else if (proj.type === 'litter') {
+      proj.vy += 0.3; // gravity on litter
+      proj.x += proj.vx;
+      proj.y += proj.vy;
+      proj.vx *= 0.95;
+      if (proj.y > GROUND_Y + 50) return false;
+    }
+
+    // Hit enemies
+    const pBox = { x: proj.x - 8, y: proj.y - 8, w: 16, h: 16 };
+    state.zombies.forEach(z => {
+      if (!z.alive || proj.hitEnemies.has(z)) return;
+      if (rectCollide(pBox, z)) {
+        z.hp -= proj.damage; z.hurt = 8;
+        z.vx = (proj.vx > 0 ? 1 : -1) * 4; z.vy = -3;
+        proj.hitEnemies.add(z);
+        spawnParticles(z.x + z.w/2, z.y + z.h/2, proj.type === 'banana' ? '#ffdd00' : '#aa8844', 6, 5);
+        spawnFloatingText(z.x + z.w/2, z.y - 10, `-${proj.damage}`, proj.type === 'banana' ? '#ffdd00' : '#aa8844');
+        state.screenShake = 3;
+        if (z.hp <= 0) {
+          z.alive = false;
+          player.score += z.type === 'big' ? 200 : 100;
+          spawnParticles(z.x + z.w/2, z.y + z.h/2, '#44ff44', 15, 10);
+          spawnFloatingText(z.x + z.w/2, z.y - 30, z.type === 'big' ? '+200' : '+100', '#ffff44');
+        }
+        if (proj.type === 'litter') return; // litter hits all in AOE
+      }
+    });
+
+    // Hit boss
+    if (state.boss && state.boss.alive) {
+      const boss = state.boss;
+      if (!proj.hitEnemies.has(boss) && rectCollide(pBox, boss)) {
+        boss.hp -= proj.damage; boss.hurt = 8;
+        proj.hitEnemies.add(boss);
+        spawnParticles(boss.x + boss.w/2, boss.y + boss.h/2, '#ff4444', 8, 6);
+        spawnFloatingText(boss.x + boss.w/2, boss.y - 10, `-${proj.damage}`, '#ff6666');
+        state.screenShake = 4;
+        if (boss.hp <= 0) {
+          boss.alive = false; player.score += 1000;
+          state.screenShake = 20; state.screenFlash = 15;
+          spawnParticles(boss.x + boss.w/2, boss.y + boss.h/2, '#ff8800', 40, 15);
+          spawnFloatingText(boss.x + boss.w/2, boss.y - 40, 'BOSS DEFEATED! +1000', '#ffff44');
+          state.diamond = { x: state.levelData.width - 150, y: GROUND_Y - 30, collected: false, glow: 0 };
+          spawnFloatingText(state.levelData.width - 150, GROUND_Y - 60, 'THE LEOPARD DIAMOND APPEARS!', '#00ffff');
+        }
+      }
+    }
+
+    return true;
+  });
 
   // Level completion
   if (state.currentLevel < 3) {
@@ -284,6 +433,7 @@ function draw() {
   state.zombies.forEach(z => drawZombie(z));
   drawBoss();
   drawLeopard(player.x - camera.x, player.y);
+  drawProjectiles();
   drawParticles();
   drawFloatingTexts();
   ctx.restore();

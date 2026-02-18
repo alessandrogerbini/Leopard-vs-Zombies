@@ -1,5 +1,5 @@
 // Shared game state - all mutable globals live here
-export const GRAVITY = 0.485;
+export const GRAVITY = 0.325;
 export const GROUND_Y = 440;
 
 export const BASE_PLAYER_W = 48;
@@ -25,6 +25,7 @@ export const state = {
   bossIntroTimer: 0,
   deathTimer: 0,
   portal: null,
+  projectiles: [],
 };
 
 export const player = {
@@ -44,7 +45,10 @@ export const player = {
   powerups: {
     jumpyBoots: 0,
     clawsOfSteel: 0,
-    superFangs: 0
+    superFangs: 0,
+    raceCar: 0,
+    bananaCannon: 0,
+    litterBox: 0
   }
 };
 
@@ -54,5 +58,8 @@ export const POWERUP_TYPES = [
   { id: 'jumpyBoots', name: 'JUMPY BOOTS', color: '#44ff88', desc: '+50% Jump Height', icon: 'boot' },
   { id: 'clawsOfSteel', name: 'CLAWS OF STEEL', color: '#ff8844', desc: '2x Attack Damage', icon: 'claw' },
   { id: 'superFangs', name: 'SUPER FANGS', color: '#ff44ff', desc: '2x Attack Speed', icon: 'fang' },
+  { id: 'raceCar', name: 'RACE CAR', color: '#cc2222', desc: 'Jet Fire + Speed!', icon: 'car' },
+  { id: 'bananaCannon', name: 'BANANA CANNON', color: '#ffdd00', desc: 'Ranged Boomerang!', icon: 'banana' },
+  { id: 'litterBox', name: 'LITTER BOX', color: '#aa8844', desc: 'Rear AOE Attack!', icon: 'litter' },
 ];
-export const POWERUP_DURATION = 600;
+export const POWERUP_DURATION = 750;

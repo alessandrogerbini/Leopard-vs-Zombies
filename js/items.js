@@ -26,10 +26,16 @@ export function spawnPowerupCrates() {
   state.powerupCrates = [];
   const ld = state.levelData;
   const sorted = [...ld.platforms].sort((a, b) => a.y - b.y);
-  const highPlats = sorted.slice(0, Math.min(3, sorted.length));
+  const highPlats = sorted.slice(0, Math.min(4, sorted.length));
+
+  const types = [...POWERUP_TYPES];
+  for (let i = types.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [types[i], types[j]] = [types[j], types[i]];
+  }
 
   highPlats.forEach((p, i) => {
-    const type = POWERUP_TYPES[i % POWERUP_TYPES.length];
+    const type = types[i];
     state.powerupCrates.push({
       x: p.x + p.w / 2 - 12,
       y: p.y - 28,
@@ -45,6 +51,7 @@ export function spawnPowerupCrates() {
 export function updateHealthPickups() {
   state.healthPickups.forEach(h => {
     if (h.collected) return;
+    if (player.hp >= player.maxHp) return;
     h.bobTimer += 0.05;
     const hbox = { x: h.x - 10, y: h.y - 10 + Math.sin(h.bobTimer) * 5, w: 20, h: 20 };
     const pbox = { x: player.x, y: player.y, w: player.w, h: player.h };

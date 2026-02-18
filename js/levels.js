@@ -8,20 +8,35 @@ function generateTrees(width) {
   return trees;
 }
 
-function generateGravestones(width) {
-  const stones = [];
-  for (let x = 200; x < width - 200; x += 100 + Math.random() * 150) {
-    stones.push({ x, h: 20 + Math.random() * 20 });
+function generateHighway(width) {
+  const items = [];
+  const carColors = ['#8b0000', '#2f4f4f', '#1a1a6e', '#4a4a4a', '#6b3a00', '#2e8b57'];
+  for (let x = 200; x < width - 200; x += 120 + Math.random() * 180) {
+    const roll = Math.random();
+    if (roll < 0.5) {
+      items.push({ x, type: 'car', color: carColors[Math.floor(Math.random() * carColors.length)] });
+    } else if (roll < 0.75) {
+      items.push({ x, type: 'sign' });
+    } else {
+      items.push({ x, type: 'lamp' });
+    }
   }
-  return stones;
+  return items;
 }
 
-function generateTorches(width) {
-  const torches = [];
-  for (let x = 200; x < width - 200; x += 200 + Math.random() * 200) {
-    torches.push({ x, flicker: Math.random() * Math.PI * 2 });
+function generateIceFeatures(width) {
+  const features = [];
+  for (let x = 200; x < width - 200; x += 100 + Math.random() * 180) {
+    const roll = Math.random();
+    if (roll < 0.4) {
+      features.push({ x, type: 'icicle', h: 30 + Math.random() * 50 });
+    } else if (roll < 0.7) {
+      features.push({ x, type: 'mound', h: 15 + Math.random() * 25 });
+    } else {
+      features.push({ x, type: 'frozenTree', h: 80 + Math.random() * 60 });
+    }
   }
-  return torches;
+  return features;
 }
 
 export function getLevelData(level) {
@@ -48,9 +63,9 @@ export function getLevelData(level) {
     },
     2: {
       width: 4000,
-      name: "THE GRAVEYARD",
-      bgColor: '#1a1a2a',
-      groundColor: '#3a3a4a',
+      name: "THE HIGHWAY",
+      bgColor: '#1a1a22',
+      groundColor: '#2a2a2e',
       zombieCount: 18,
       zombieHp: 45,
       zombieSpeed: 0.86,
@@ -68,13 +83,13 @@ export function getLevelData(level) {
         { x: 3200, y: 360, w: 100, h: 16 },
         { x: 3500, y: 300, w: 80, h: 16 },
       ],
-      gravestones: generateGravestones(4000),
+      highway: generateHighway(4000),
     },
     3: {
       width: 5000,
-      name: "THE ZOMBIE FORTRESS",
-      bgColor: '#2a1a1a',
-      groundColor: '#4a2a2a',
+      name: "THE ICE AGE",
+      bgColor: '#0a1a2a',
+      groundColor: '#8aaacc',
       zombieCount: 25,
       zombieHp: 60,
       zombieSpeed: 1.38,
@@ -95,7 +110,7 @@ export function getLevelData(level) {
         { x: 4000, y: 340, w: 120, h: 16 },
         { x: 4400, y: 300, w: 100, h: 16 },
       ],
-      torches: generateTorches(5000),
+      iceFeatures: generateIceFeatures(5000),
     }
   };
   return levels[level];
