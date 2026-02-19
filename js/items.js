@@ -1,6 +1,7 @@
 // Health pickups, powerup crates, armor crates, diamond, portal spawning
-import { GROUND_Y, state, player, POWERUP_TYPES, POWERUP_DURATION, ARMOR_TYPES, GLASSES_TYPE, SNEAKERS_TYPE, keys } from './state.js';
+import { GROUND_Y, state, player, POWERUP_TYPES, POWERUP_DURATION, ARMOR_TYPES, GLASSES_TYPE, SNEAKERS_TYPE, CLEATS_TYPE, HORSE_TYPE, keys } from './state.js';
 import { rectCollide, spawnParticles, spawnFloatingText } from './utils.js';
+import { spawnAlly } from './enemies.js';
 
 export function spawnHealthPickups() {
   state.healthPickups = [];
@@ -235,6 +236,100 @@ export function updateSneakersPickups() {
       state.screenFlash = 8;
       player.score += 250;
       keys['KeyE'] = false; // consume the key press
+    }
+  });
+}
+
+export function spawnCleatsCrates() {
+  state.cleatsCrates = [];
+  state.cleatsPickups = [];
+  // Only spawn on the cleats' designated level
+  if (state.currentLevel !== CLEATS_TYPE.level) return;
+  // Don't spawn if player already has soccer cleats
+  if (player.items.soccerCleats) return;
+
+  const ld = state.levelData;
+  // Place it on the ground roughly 65% into the level (distinct from glasses at 25%, armor at 40%, sneakers at 55%)
+  const crateX = Math.floor(ld.width * 0.65);
+  state.cleatsCrates.push({
+    x: crateX,
+    y: GROUND_Y + player.h - 28,
+    w: 28, h: 28,
+    hp: 3,
+    broken: false,
+    cleatsType: CLEATS_TYPE,
+    shakeTimer: 0
+  });
+}
+
+export function updateCleatsPickups() {
+  state.cleatsPickups.forEach(cp => {
+    if (cp.equipped) return;
+    cp.bobTimer += 0.04;
+    cp.glowTimer += 0.03;
+
+    // Check if player is near and pressing E
+    const pbox = { x: player.x, y: player.y, w: player.w, h: player.h };
+    const cpBox = { x: cp.x - 20, y: cp.y - 40, w: 40, h: 50 };
+    if (rectCollide(pbox, cpBox) && keys['KeyE']) {
+      cp.equipped = true;
+      player.items.soccerCleats = true;
+      spawnParticles(cp.x, cp.y - 20, CLEATS_TYPE.color, 25, 10);
+      spawnParticles(cp.x, cp.y - 20, '#ffffff', 15, 8);
+      spawnFloatingText(cp.x, cp.y - 50, CLEATS_TYPE.name, CLEATS_TYPE.color);
+      spawnFloatingText(cp.x, cp.y - 35, 'EQUIPPED!', '#ffffff');
+      state.screenFlash = 8;
+      player.score += 250;
+      keys['KeyE'] = false; // consume the key press
+    }
+  });
+}
+
+export function spawnHorseCrates() {
+  state.horseCrates = [];
+  state.horsePickups = [];
+  // Only spawn on level 3
+  if (state.currentLevel !== HORSE_TYPE.level) return;
+  // Only spawn if player has cowboy boots AND doesn't have horse yet
+  if (!player.items.cowboyBoots) return;
+  if (player.items.horse) return;
+
+  const ld = state.levelData;
+  // Place it on the ground roughly 30% into the level (distinct from other crates)
+  const crateX = Math.floor(ld.width * 0.30);
+  state.horseCrates.push({
+    x: crateX,
+    y: GROUND_Y + player.h - 32,
+    w: 32, h: 32,
+    hp: 3,
+    broken: false,
+    horseType: HORSE_TYPE,
+    shakeTimer: 0
+  });
+}
+
+export function updateHorsePickups() {
+  state.horsePickups.forEach(hp => {
+    if (hp.equipped) return;
+    hp.bobTimer += 0.04;
+    hp.glowTimer += 0.03;
+
+    // Check if player is near and pressing E
+    const pbox = { x: player.x, y: player.y, w: player.w, h: player.h };
+    const hpBox = { x: hp.x - 25, y: hp.y - 50, w: 50, h: 60 };
+    if (rectCollide(pbox, hpBox) && keys['KeyE']) {
+      hp.equipped = true;
+      player.items.horse = true;
+      // Spawn the horse ally (invulnerable)
+      spawnAlly('horse', player.x + 60, GROUND_Y, true);
+      spawnParticles(hp.x, hp.y - 20, HORSE_TYPE.color, 30, 12);
+      spawnParticles(hp.x, hp.y - 20, '#ffffff', 20, 8);
+      spawnFloatingText(hp.x, hp.y - 60, HORSE_TYPE.name, HORSE_TYPE.color);
+      spawnFloatingText(hp.x, hp.y - 40, 'HORSE ALLY JOINS YOU!', '#ffffff');
+      state.screenFlash = 10;
+      state.screenShake = 5;
+      player.score += 500;
+      keys['KeyE'] = false;
     }
   });
 }

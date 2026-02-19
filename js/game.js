@@ -1,10 +1,10 @@
 // Main game loop, update logic, initialization
-import { GRAVITY, GROUND_Y, keys, state, player, camera, POWERUP_DURATION, POWERUP_AMMO } from './state.js';
+import { GRAVITY, GROUND_Y, keys, state, player, camera, POWERUP_DURATION, POWERUP_AMMO, ANIMAL_TYPES } from './state.js';
 import { getLevelData } from './levels.js';
 import { rectCollide, getAttackBox, spawnParticles, spawnFloatingText, getPlayerDamage, getPlayerCooldown, getPlayerJumpForce } from './utils.js';
-import { spawnZombies, spawnBoss, updateZombieAI, updateBossAI } from './enemies.js';
-import { spawnHealthPickups, spawnPowerupCrates, spawnArmorCrates, spawnGlassesCrates, spawnSneakersCrates, updateHealthPickups, updateDiamond, updatePortal, updateArmorPickups, updateGlassesPickups, updateSneakersPickups } from './items.js';
-import { initRenderer, getCtx, drawLeopard, drawZombie, drawBoss, drawBackground, drawHealthPickups, drawPowerupCrates, drawArmorCrates, drawArmorPickups, drawGlassesCrates, drawGlassesPickups, drawSneakersCrates, drawSneakersPickups, drawPortal, drawDiamond, drawParticles, drawFloatingTexts, drawHUD, drawBossIntro, drawDying, drawTitleScreen, drawLevelComplete, drawGameWin, drawGameOver, drawProjectiles } from './renderer.js';
+import { spawnZombies, spawnBoss, updateZombieAI, updateBossAI, updateAllyAI, spawnAlly } from './enemies.js';
+import { spawnHealthPickups, spawnPowerupCrates, spawnArmorCrates, spawnGlassesCrates, spawnSneakersCrates, spawnCleatsCrates, spawnHorseCrates, updateHealthPickups, updateDiamond, updatePortal, updateArmorPickups, updateGlassesPickups, updateSneakersPickups, updateCleatsPickups, updateHorsePickups } from './items.js';
+import { initRenderer, getCtx, drawLeopard, drawZombie, drawBoss, drawBackground, drawHealthPickups, drawPowerupCrates, drawArmorCrates, drawArmorPickups, drawGlassesCrates, drawGlassesPickups, drawSneakersCrates, drawSneakersPickups, drawCleatsCrates, drawCleatsPickups, drawHorseCrates, drawHorsePickups, drawPortal, drawDiamond, drawParticles, drawFloatingTexts, drawHUD, drawBossIntro, drawDying, drawTitleScreen, drawLevelComplete, drawGameWin, drawGameOver, drawProjectiles, drawPaused, drawSelectScreen, drawAlly } from './renderer.js';
 
 const canvas = document.getElementById('game');
 initRenderer(canvas);
@@ -12,6 +12,36 @@ initRenderer(canvas);
 // Input
 window.addEventListener('keydown', e => { keys[e.code] = true; e.preventDefault(); });
 window.addEventListener('keyup', e => { keys[e.code] = false; e.preventDefault(); });
+
+// Name entry input (captures actual key characters for text entry)
+window.addEventListener('keydown', e => {
+  if (state.nameEntryActive) {
+    if (e.key === 'Backspace') {
+      state.nameEntry = state.nameEntry.slice(0, -1);
+    } else if (e.key === 'Enter' && state.nameEntry.length > 0) {
+      saveScore();
+      state.nameEntryActive = false;
+    } else if (e.key.length === 1 && state.nameEntry.length < 10) {
+      state.nameEntry += e.key.toUpperCase();
+    }
+  }
+});
+
+// Leaderboard persistence
+state.leaderboard = JSON.parse(localStorage.getItem('avz-leaderboard') || '[]');
+
+function saveScore() {
+  state.leaderboard.push({
+    name: state.nameEntry,
+    score: player.score,
+    animal: player.animal,
+    level: state.currentLevel,
+    date: Date.now()
+  });
+  state.leaderboard.sort((a, b) => b.score - a.score);
+  state.leaderboard = state.leaderboard.slice(0, 10);
+  localStorage.setItem('avz-leaderboard', JSON.stringify(state.leaderboard));
+}
 
 function initLevel(level) {
   state.currentLevel = level;
@@ -50,20 +80,107 @@ function initLevel(level) {
   spawnArmorCrates();
   spawnGlassesCrates();
   spawnSneakersCrates();
+  spawnCleatsCrates();
+  spawnHorseCrates();
+
+  // Re-spawn horse ally if player has horse item and no horse ally exists
+  if (player.items.horse && !state.allies.some(a => a.type === 'horse')) {
+    spawnAlly('horse', player.x + 60, GROUND_Y, true);
+  }
+  // Reset existing allies' positions near player on level start
+  state.allies.forEach(a => {
+    if (a.alive) {
+      a.x = player.x + (Math.random() > 0.5 ? 40 : -40);
+      a.y = GROUND_Y;
+      a.vx = 0;
+      a.vy = 0;
+    } else if (a.lives > 0) {
+      // Respawn dead allies with lives remaining
+      a.alive = true;
+      a.hp = a.maxHp;
+      a.x = player.x + (Math.random() > 0.5 ? 40 : -40);
+      a.y = GROUND_Y;
+      a.vx = 0;
+      a.vy = 0;
+      a.invincibleTimer = 60;
+    }
+  });
+
   state.gameState = 'playing';
 }
 
 function update() {
+  // Pause toggle
+  if (keys['Escape'] && !state._escHeld) {
+    state._escHeld = true;
+    if (state.gameState === 'paused') {
+      state.gameState = state._prevState;
+    } else if (state.gameState === 'playing' || state.gameState === 'bossFight') {
+      state._prevState = state.gameState;
+      state.gameState = 'paused';
+    }
+  }
+  if (!keys['Escape']) state._escHeld = false;
+  if (state.gameState === 'paused') return;
+
   if (state.gameState === 'title') {
-    if (keys['Enter']) { player.lives = 3; player.items.armor = null; player.items.glasses = false; player.items.sneakers = true; player.items.cowboyBoots = false; initLevel(1); }
+    if (keys['Enter'] && !state._enterHeld) { state._enterHeld = true; state.selectedAnimal = 0; state.gameState = 'select'; }
+    if (!keys['Enter']) state._enterHeld = false;
+    return;
+  }
+
+  if (state.gameState === 'select') {
+    if (keys['ArrowLeft'] && !state._selectLeftHeld) {
+      state._selectLeftHeld = true;
+      state.selectedAnimal = (state.selectedAnimal - 1 + ANIMAL_TYPES.length) % ANIMAL_TYPES.length;
+    }
+    if (!keys['ArrowLeft']) state._selectLeftHeld = false;
+    if (keys['ArrowRight'] && !state._selectRightHeld) {
+      state._selectRightHeld = true;
+      state.selectedAnimal = (state.selectedAnimal + 1) % ANIMAL_TYPES.length;
+    }
+    if (!keys['ArrowRight']) state._selectRightHeld = false;
+    if (keys['Enter'] && !state._enterHeld) {
+      state._enterHeld = true;
+      const animal = ANIMAL_TYPES[state.selectedAnimal];
+      player.animal = animal.id;
+      player.baseSpeed = 2.8125 * animal.speed;
+      player.speed = player.baseSpeed;
+      player.baseDamage = 15 * animal.damage;
+      player.maxHp = animal.hp;
+      player.hp = animal.hp;
+      player.lives = 3;
+      player.items.armor = null;
+      player.items.glasses = false;
+      player.items.sneakers = true;
+      player.items.cowboyBoots = false;
+      player.items.soccerCleats = false;
+      player.items.horse = false;
+      state.allies = [];
+      initLevel(1);
+    }
+    if (!keys['Enter']) state._enterHeld = false;
+    if (keys['Escape'] && !state._escHeld) {
+      state._escHeld = true;
+      state.gameState = 'title';
+    }
     return;
   }
 
   if (state.gameState === 'levelComplete') {
     state.transitionTimer--;
+    // Spawn random animal ally once when level complete starts (at a specific timer value)
+    if (state.transitionTimer === 80) {
+      const allyTypes = ['leopard', 'redPanda', 'lion', 'gator'].filter(t => t !== player.animal);
+      const randomType = allyTypes[Math.floor(Math.random() * allyTypes.length)];
+      spawnAlly(randomType, player.x + 80, GROUND_Y, false);
+      spawnParticles(player.x + 80, GROUND_Y, '#ffcc00', 20, 10);
+      spawnFloatingText(player.x + 80, GROUND_Y - 40, `${randomType.toUpperCase()} ALLY JOINS!`, '#ffcc00');
+      state.screenFlash = 8;
+    }
     if (state.transitionTimer <= 0) {
       if (state.currentLevel < 3) initLevel(state.currentLevel + 1);
-      else state.gameState = 'gameWin';
+      else { state.gameState = 'gameWin'; state.nameEntryActive = true; state.nameEntry = ''; }
     }
     return;
   }
@@ -75,7 +192,7 @@ function update() {
   }
 
   if (state.gameState === 'gameWin' || state.gameState === 'gameOver') {
-    if (keys['Enter']) { state.gameState = 'title'; player.score = 0; player.lives = 3; player.items.armor = null; player.items.glasses = false; player.items.sneakers = true; player.items.cowboyBoots = false; }
+    if (!state.nameEntryActive && keys['Enter']) { state.gameState = 'title'; player.score = 0; player.lives = 3; player.items.armor = null; player.items.glasses = false; player.items.sneakers = true; player.items.cowboyBoots = false; player.items.soccerCleats = false; player.items.horse = false; state.allies = []; }
     return;
   }
 
@@ -87,6 +204,8 @@ function update() {
         spawnFloatingText(player.x, player.y - 40, `${player.lives} LIVES LEFT`, '#ffcc00');
       } else {
         state.gameState = 'gameOver';
+        state.nameEntryActive = true;
+        state.nameEntry = '';
       }
     }
     return;
@@ -100,9 +219,11 @@ function update() {
   if (player.powerups.wings > 0) player.powerups.wings--;
 
   // Player movement
+  // Apply soccer cleats speed bonus
+  const moveSpeed = player.items.soccerCleats ? player.speed * 1.15 : player.speed;
   if (player.powerups.wings > 0) {
     // Flight mode: smooth movement in all directions
-    const flySpeed = player.speed * 1.1;
+    const flySpeed = moveSpeed * 1.1;
     let targetVx = 0;
     let targetVy = 0;
     if (keys['ArrowLeft']) { targetVx = -flySpeed; player.facing = -1; }
@@ -114,12 +235,12 @@ function update() {
     player.vy += (targetVy - player.vy) * 0.15;
   } else if (player.onGround) {
     player.vx = 0;
-    if (keys['ArrowLeft']) { player.vx = -player.speed; player.facing = -1; }
-    if (keys['ArrowRight']) { player.vx = player.speed; player.facing = 1; }
+    if (keys['ArrowLeft']) { player.vx = -moveSpeed; player.facing = -1; }
+    if (keys['ArrowRight']) { player.vx = moveSpeed; player.facing = 1; }
   } else {
     let targetVx = 0;
-    if (keys['ArrowLeft']) { targetVx = -player.speed; player.facing = -1; }
-    if (keys['ArrowRight']) { targetVx = player.speed; player.facing = 1; }
+    if (keys['ArrowLeft']) { targetVx = -moveSpeed; player.facing = -1; }
+    if (keys['ArrowRight']) { targetVx = moveSpeed; player.facing = 1; }
     player.vx += (targetVx - player.vx) * 0.55;
   }
   if (player.powerups.wings <= 0 && keys['ArrowUp'] && player.onGround) {
@@ -380,6 +501,54 @@ function update() {
         }
       }
     });
+
+    // Cleats crate hits
+    state.cleatsCrates.forEach(c => {
+      if (c.broken) return;
+      if (rectCollide(atkBox, c)) {
+        c.hp--; c.shakeTimer = 6;
+        spawnParticles(c.x + c.w/2, c.y + c.h/2, '#8888aa', 4, 4);
+        if (c.hp <= 0) {
+          c.broken = true;
+          spawnParticles(c.x + c.w/2, c.y + c.h/2, c.cleatsType.color, 20, 10);
+          spawnFloatingText(c.x + c.w/2, c.y - 20, c.cleatsType.name, c.cleatsType.color);
+          state.screenFlash = 5;
+          // Spawn floating cleats pickup that rises above the crate
+          state.cleatsPickups.push({
+            x: c.x + c.w/2,
+            y: c.y,
+            cleatsType: c.cleatsType,
+            equipped: false,
+            bobTimer: 0,
+            glowTimer: 0
+          });
+        }
+      }
+    });
+
+    // Horse crate hits
+    state.horseCrates.forEach(c => {
+      if (c.broken) return;
+      if (rectCollide(atkBox, c)) {
+        c.hp--; c.shakeTimer = 6;
+        spawnParticles(c.x + c.w/2, c.y + c.h/2, '#8888aa', 4, 4);
+        if (c.hp <= 0) {
+          c.broken = true;
+          spawnParticles(c.x + c.w/2, c.y + c.h/2, c.horseType.color, 25, 12);
+          spawnFloatingText(c.x + c.w/2, c.y - 20, c.horseType.name, c.horseType.color);
+          state.screenFlash = 8;
+          // Spawn floating horse pickup that rises above the crate
+          state.horsePickups.push({
+            x: c.x + c.w/2,
+            y: c.y,
+            horseType: c.horseType,
+            equipped: false,
+            bobTimer: 0,
+            glowTimer: 0
+          });
+        }
+      }
+    });
   }
 
   // Jet fire damage (race car)
@@ -429,12 +598,15 @@ function update() {
   // AI updates
   updateZombieAI();
   updateBossAI();
+  updateAllyAI();
   updateHealthPickups();
   updateDiamond();
   updatePortal();
   updateArmorPickups();
   updateGlassesPickups();
   updateSneakersPickups();
+  updateCleatsPickups();
+  updateHorsePickups();
 
   // Update projectiles
   state.projectiles = state.projectiles.filter(proj => {
@@ -474,7 +646,7 @@ function update() {
       if (proj.radius > proj.maxRadius) proj.radius = proj.maxRadius;
     } else if (proj.type === 'bossMortar') {
       // Arcing projectile affected by gravity
-      proj.vy += GRAVITY * 0.8;
+      proj.vy += GRAVITY * 0.6;
       proj.x += proj.vx;
       proj.y += proj.vy;
       if (proj.y > GROUND_Y + 10) {
@@ -632,6 +804,7 @@ function draw() {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
   if (state.gameState === 'title') { drawTitleScreen(); return; }
+  if (state.gameState === 'select') { drawSelectScreen(); return; }
   if (state.gameState === 'gameWin') { drawGameWin(); return; }
 
   ctx.save();
@@ -648,10 +821,15 @@ function draw() {
   drawGlassesPickups();
   drawSneakersCrates();
   drawSneakersPickups();
+  drawCleatsCrates();
+  drawCleatsPickups();
+  drawHorseCrates();
+  drawHorsePickups();
   drawPortal();
   drawDiamond();
   state.zombies.forEach(z => drawZombie(z));
   drawBoss();
+  state.allies.forEach(a => drawAlly(a));
   drawLeopard(player.x - camera.x, player.y);
   drawProjectiles();
   drawParticles();
@@ -668,6 +846,7 @@ function draw() {
   if (state.gameState === 'dying') drawDying();
   if (state.gameState === 'levelComplete') drawLevelComplete();
   if (state.gameState === 'gameOver') drawGameOver();
+  if (state.gameState === 'paused') drawPaused();
 }
 
 function gameLoop() {

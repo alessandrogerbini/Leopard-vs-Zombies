@@ -8,8 +8,16 @@ export const DRAW_SCALE = 1.62;
 
 export const keys = {};
 
+export const ANIMAL_TYPES = [
+  { id: 'leopard', name: 'LEOPARD', color: '#e8a828', speed: 1.0, damage: 1.0, hp: 100, desc: 'Balanced fighter' },
+  { id: 'redPanda', name: 'RED PANDA', color: '#cc4422', speed: 1.2, damage: 0.8, hp: 80, desc: 'Fast & agile' },
+  { id: 'lion', name: 'LION', color: '#dda030', speed: 0.85, damage: 1.3, hp: 120, desc: 'Strong & tough' },
+  { id: 'gator', name: 'GATOR', color: '#44aa44', speed: 0.75, damage: 1.5, hp: 150, desc: 'Slow but deadly' },
+];
+
 export const state = {
-  gameState: 'title', // title, playing, bossIntro, bossFight, levelComplete, gameWin, gameOver
+  gameState: 'title', // title, select, playing, bossIntro, bossFight, levelComplete, gameWin, gameOver
+  selectedAnimal: 0,
   currentLevel: 1,
   screenShake: 0,
   screenFlash: 0,
@@ -32,9 +40,18 @@ export const state = {
   glassesPickups: [],
   sneakersCrates: [],
   sneakersPickups: [],
+  cleatsCrates: [],
+  cleatsPickups: [],
+  horseCrates: [],
+  horsePickups: [],
+  allies: [],
+  leaderboard: [],
+  nameEntry: '',
+  nameEntryActive: false,
 };
 
 export const player = {
+  animal: 'leopard',
   x: 80, y: GROUND_Y, w: BASE_PLAYER_W, h: BASE_PLAYER_H,
   vx: 0, vy: 0,
   speed: 2.8125, jumpForce: -12.75,
@@ -61,7 +78,9 @@ export const player = {
     armor: null,  // null, 'leather', or 'chainmail'
     glasses: false, // aviator glasses - see powerup crate contents
     sneakers: true, // high-top sneakers - 50% more jump hangtime (always equipped from start)
-    cowboyBoots: false // cowboy boots - +20% attack range
+    cowboyBoots: false, // cowboy boots - +20% attack range
+    soccerCleats: false, // soccer cleats - +15% movement speed
+    horse: false // horse ally - requires cowboy boots, permanent NPC
   }
 };
 
@@ -99,4 +118,12 @@ export const GLASSES_TYPE = {
 
 export const SNEAKERS_TYPE = {
   id: 'cowboyBoots', name: 'COWBOY BOOTS', color: '#8B4513', desc: '+20% Attack Range!', level: 2
+};
+
+export const CLEATS_TYPE = {
+  id: 'soccerCleats', name: 'SOCCER CLEATS', color: '#00cc44', desc: '+15% Move Speed!', level: 1
+};
+
+export const HORSE_TYPE = {
+  id: 'horse', name: 'WAR HORSE', color: '#8B6914', desc: 'Allied Horse Companion!', level: 3
 };
