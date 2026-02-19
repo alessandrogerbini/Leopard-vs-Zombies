@@ -197,10 +197,10 @@ export function updateGlassesPickups() {
 export function spawnSneakersCrates() {
   state.sneakersCrates = [];
   state.sneakersPickups = [];
-  // Only spawn on the sneakers' designated level
+  // Only spawn on the cowboy boots' designated level
   if (state.currentLevel !== SNEAKERS_TYPE.level) return;
-  // Don't spawn if player already has sneakers
-  if (player.items.sneakers) return;
+  // Don't spawn if player already has cowboy boots
+  if (player.items.cowboyBoots) return;
 
   const ld = state.levelData;
   // Place it on the ground roughly 55% into the level (distinct from armor at 40%, glasses at 25%)
@@ -227,7 +227,7 @@ export function updateSneakersPickups() {
     const spBox = { x: sp.x - 20, y: sp.y - 40, w: 40, h: 50 };
     if (rectCollide(pbox, spBox) && keys['KeyE']) {
       sp.equipped = true;
-      player.items.sneakers = true;
+      player.items.cowboyBoots = true;
       spawnParticles(sp.x, sp.y - 20, SNEAKERS_TYPE.color, 25, 10);
       spawnParticles(sp.x, sp.y - 20, '#ffffff', 15, 8);
       spawnFloatingText(sp.x, sp.y - 50, SNEAKERS_TYPE.name, SNEAKERS_TYPE.color);

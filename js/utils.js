@@ -7,7 +7,8 @@ export function rectCollide(a, b) {
 }
 
 export function getAttackBox() {
-  const reach = 55;
+  let reach = 55;
+  if (player.items.cowboyBoots) reach = Math.floor(reach * 1.2);
   if (player.facing === 1) {
     return { x: player.x + player.w, y: player.y - 5, w: reach, h: player.h + 5 };
   } else {

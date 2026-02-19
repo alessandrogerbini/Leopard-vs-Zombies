@@ -1,5 +1,5 @@
 // Main game loop, update logic, initialization
-import { GRAVITY, GROUND_Y, keys, state, player, camera, POWERUP_DURATION } from './state.js';
+import { GRAVITY, GROUND_Y, keys, state, player, camera, POWERUP_DURATION, POWERUP_AMMO } from './state.js';
 import { getLevelData } from './levels.js';
 import { rectCollide, getAttackBox, spawnParticles, spawnFloatingText, getPlayerDamage, getPlayerCooldown, getPlayerJumpForce } from './utils.js';
 import { spawnZombies, spawnBoss, updateZombieAI, updateBossAI } from './enemies.js';
@@ -55,7 +55,7 @@ function initLevel(level) {
 
 function update() {
   if (state.gameState === 'title') {
-    if (keys['Enter']) { player.lives = 3; player.items.armor = null; player.items.glasses = false; player.items.sneakers = false; initLevel(1); }
+    if (keys['Enter']) { player.lives = 3; player.items.armor = null; player.items.glasses = false; player.items.sneakers = true; player.items.cowboyBoots = false; initLevel(1); }
     return;
   }
 
@@ -75,7 +75,7 @@ function update() {
   }
 
   if (state.gameState === 'gameWin' || state.gameState === 'gameOver') {
-    if (keys['Enter']) { state.gameState = 'title'; player.score = 0; player.lives = 3; player.items.armor = null; player.items.glasses = false; player.items.sneakers = false; }
+    if (keys['Enter']) { state.gameState = 'title'; player.score = 0; player.lives = 3; player.items.armor = null; player.items.glasses = false; player.items.sneakers = true; player.items.cowboyBoots = false; }
     return;
   }
 
@@ -95,13 +95,8 @@ function update() {
   const ld = state.levelData;
   const inBossFight = state.gameState === 'bossFight';
 
-  // Powerup timers
-  if (player.powerups.jumpyBoots > 0) player.powerups.jumpyBoots--;
-  if (player.powerups.clawsOfSteel > 0) player.powerups.clawsOfSteel--;
-  if (player.powerups.superFangs > 0) player.powerups.superFangs--;
+  // Powerup timers (only frame-based powerups tick down per frame)
   if (player.powerups.raceCar > 0) player.powerups.raceCar--;
-  if (player.powerups.bananaCannon > 0) player.powerups.bananaCannon--;
-  if (player.powerups.litterBox > 0) player.powerups.litterBox--;
   if (player.powerups.wings > 0) player.powerups.wings--;
 
   // Player movement
@@ -130,6 +125,7 @@ function update() {
   if (player.powerups.wings <= 0 && keys['ArrowUp'] && player.onGround) {
     player.vy = getPlayerJumpForce();
     player.onGround = false;
+    if (player.powerups.jumpyBoots > 0) player.powerups.jumpyBoots--;
   }
 
   // Attack
@@ -146,6 +142,7 @@ function update() {
           hitEnemies: new Set(), originX: player.x + player.w/2
         });
         player.attackCooldown = cooldown;
+        player.powerups.bananaCannon--;
       }
     } else if (player.powerups.litterBox > 0) {
       // Litter box: fire 5 litter projectiles behind the player
@@ -157,11 +154,14 @@ function update() {
         });
       }
       player.attackCooldown = cooldown;
+      player.powerups.litterBox--;
     } else {
       // Standard melee attack
       player.attacking = true;
       player.attackTimer = 12;
       player.attackCooldown = cooldown;
+      if (player.powerups.clawsOfSteel > 0) player.powerups.clawsOfSteel--;
+      if (player.powerups.superFangs > 0) player.powerups.superFangs--;
     }
   }
   if (player.attacking) { player.attackTimer--; if (player.attackTimer <= 0) player.attacking = false; }
@@ -199,7 +199,7 @@ function update() {
       if (player.vy >= 0 &&
           player.x + player.w > p.x && player.x < p.x + p.w &&
           player.y + player.h >= p.y && player.y + player.h <= p.y + p.h + 10) {
-        player.y = p.y - player.h;
+        player.y = p.y - player.h + 5;
         player.vy = 0;
         player.onGround = true;
       }
@@ -266,7 +266,7 @@ function update() {
         if (c.hp <= 0) {
           c.broken = true;
           const ptype = c.powerupType;
-          player.powerups[ptype.id] = POWERUP_DURATION;
+          player.powerups[ptype.id] = POWERUP_AMMO[ptype.id];
           spawnParticles(c.x + c.w/2, c.y + c.h/2, ptype.color, 20, 10);
           spawnFloatingText(c.x + c.w/2, c.y - 20, ptype.name, ptype.color);
           spawnFloatingText(c.x + c.w/2, c.y - 5, ptype.desc, '#ffffff');
@@ -386,9 +386,9 @@ function update() {
   if (player.powerups.raceCar > 0 && state.gameState !== 'dying') {
     // Fire jet damages enemies behind the car
     const jetBox = {
-      x: player.facing === 1 ? player.x - 80 : player.x + player.w,
+      x: player.facing === 1 ? player.x - 240 : player.x + player.w,
       y: player.y + 10,
-      w: 80,
+      w: 240,
       h: player.h - 10
     };
     state.zombies.forEach(z => {
@@ -463,46 +463,119 @@ function update() {
       proj.y += proj.vy;
       proj.vx *= 0.95;
       if (proj.y > GROUND_Y + 50) return false;
+    } else if (proj.type === 'bossSkull') {
+      // Straight-line projectile
+      proj.x += proj.vx;
+      proj.y += proj.vy;
+      if (proj.y > GROUND_Y + 50 || proj.y < -50) return false;
+    } else if (proj.type === 'bossAOE') {
+      // Expanding shockwave ring
+      proj.radius += proj.maxRadius / (proj.life + 10);
+      if (proj.radius > proj.maxRadius) proj.radius = proj.maxRadius;
+    } else if (proj.type === 'bossMortar') {
+      // Arcing projectile affected by gravity
+      proj.vy += GRAVITY * 0.8;
+      proj.x += proj.vx;
+      proj.y += proj.vy;
+      if (proj.y > GROUND_Y + 10) {
+        // Impact: spawn a brief ground burst effect
+        spawnParticles(proj.x, GROUND_Y, '#44ff44', 6, 5);
+        // Check player hit on impact
+        if (!proj.hitPlayer && player.invincible <= 0) {
+          const impactDist = Math.abs(player.x + player.w / 2 - proj.x);
+          if (impactDist < 40 && player.y + player.h >= GROUND_Y - 10) {
+            player.hp -= proj.damage;
+            player.invincible = 35;
+            player.knockbackX = (player.x > proj.x ? 1 : -1) * 8;
+            player.vy = -5;
+            state.screenShake = 8;
+            state.screenFlash = 5;
+            spawnParticles(player.x + player.w / 2, player.y + player.h / 2, '#ff0000', 8, 6);
+            spawnFloatingText(player.x + player.w / 2, player.y - 10, `-${proj.damage}`, '#ff4444');
+            proj.hitPlayer = true;
+          }
+        }
+        return false;
+      }
     }
 
-    // Hit enemies
-    const pBox = { x: proj.x - 8, y: proj.y - 8, w: 16, h: 16 };
-    state.zombies.forEach(z => {
-      if (!z.alive || proj.hitEnemies.has(z)) return;
-      if (rectCollide(pBox, z)) {
-        z.hp -= proj.damage; z.hurt = 8;
-        z.vx = (proj.vx > 0 ? 1 : -1) * 4; z.vy = -3;
-        proj.hitEnemies.add(z);
-        spawnParticles(z.x + z.w/2, z.y + z.h/2, proj.type === 'banana' ? '#ffdd00' : '#aa8844', 6, 5);
-        spawnFloatingText(z.x + z.w/2, z.y - 10, `-${proj.damage}`, proj.type === 'banana' ? '#ffdd00' : '#aa8844');
-        state.screenShake = 3;
-        if (z.hp <= 0) {
-          z.alive = false;
-          player.score += z.type === 'big' ? 200 : 100;
-          spawnParticles(z.x + z.w/2, z.y + z.h/2, '#44ff44', 15, 10);
-          spawnFloatingText(z.x + z.w/2, z.y - 30, z.type === 'big' ? '+200' : '+100', '#ffff44');
+    // Player projectiles hit enemies (skip boss projectile types)
+    if (proj.hitEnemies) {
+      const pBox = { x: proj.x - 8, y: proj.y - 8, w: 16, h: 16 };
+      state.zombies.forEach(z => {
+        if (!z.alive || proj.hitEnemies.has(z)) return;
+        if (rectCollide(pBox, z)) {
+          z.hp -= proj.damage; z.hurt = 8;
+          z.vx = (proj.vx > 0 ? 1 : -1) * 4; z.vy = -3;
+          proj.hitEnemies.add(z);
+          spawnParticles(z.x + z.w/2, z.y + z.h/2, proj.type === 'banana' ? '#ffdd00' : '#aa8844', 6, 5);
+          spawnFloatingText(z.x + z.w/2, z.y - 10, `-${proj.damage}`, proj.type === 'banana' ? '#ffdd00' : '#aa8844');
+          state.screenShake = 3;
+          if (z.hp <= 0) {
+            z.alive = false;
+            player.score += z.type === 'big' ? 200 : 100;
+            spawnParticles(z.x + z.w/2, z.y + z.h/2, '#44ff44', 15, 10);
+            spawnFloatingText(z.x + z.w/2, z.y - 30, z.type === 'big' ? '+200' : '+100', '#ffff44');
+          }
+          if (proj.type === 'litter') return; // litter hits all in AOE
         }
-        if (proj.type === 'litter') return; // litter hits all in AOE
-      }
-    });
+      });
 
-    // Hit boss
-    if (state.boss && state.boss.alive) {
-      const boss = state.boss;
-      if (!proj.hitEnemies.has(boss) && rectCollide(pBox, boss)) {
-        boss.hp -= proj.damage; boss.hurt = 8;
-        proj.hitEnemies.add(boss);
-        spawnParticles(boss.x + boss.w/2, boss.y + boss.h/2, '#ff4444', 8, 6);
-        spawnFloatingText(boss.x + boss.w/2, boss.y - 10, `-${proj.damage}`, '#ff6666');
-        state.screenShake = 4;
-        if (boss.hp <= 0) {
-          boss.alive = false; player.score += 1000;
-          state.screenShake = 20; state.screenFlash = 15;
-          spawnParticles(boss.x + boss.w/2, boss.y + boss.h/2, '#ff8800', 40, 15);
-          spawnFloatingText(boss.x + boss.w/2, boss.y - 40, 'BOSS DEFEATED! +1000', '#ffff44');
-          state.diamond = { x: state.levelData.width - 150, y: GROUND_Y - 30, collected: false, glow: 0 };
-          spawnFloatingText(state.levelData.width - 150, GROUND_Y - 60, 'THE LEOPARD DIAMOND APPEARS!', '#00ffff');
+      // Hit boss
+      if (state.boss && state.boss.alive) {
+        const boss = state.boss;
+        if (!proj.hitEnemies.has(boss) && rectCollide(pBox, boss)) {
+          boss.hp -= proj.damage; boss.hurt = 8;
+          proj.hitEnemies.add(boss);
+          spawnParticles(boss.x + boss.w/2, boss.y + boss.h/2, '#ff4444', 8, 6);
+          spawnFloatingText(boss.x + boss.w/2, boss.y - 10, `-${proj.damage}`, '#ff6666');
+          state.screenShake = 4;
+          if (boss.hp <= 0) {
+            boss.alive = false; player.score += 1000;
+            state.screenShake = 20; state.screenFlash = 15;
+            spawnParticles(boss.x + boss.w/2, boss.y + boss.h/2, '#ff8800', 40, 15);
+            spawnFloatingText(boss.x + boss.w/2, boss.y - 40, 'BOSS DEFEATED! +1000', '#ffff44');
+            state.diamond = { x: state.levelData.width - 150, y: GROUND_Y - 30, collected: false, glow: 0 };
+            spawnFloatingText(state.levelData.width - 150, GROUND_Y - 60, 'THE LEOPARD DIAMOND APPEARS!', '#00ffff');
+          }
         }
+      }
+    }
+
+    // Boss projectiles hit player
+    if (proj.type === 'bossSkull' && !proj.hitPlayer && player.invincible <= 0) {
+      const skullBox = { x: proj.x - 10, y: proj.y - 10, w: 20, h: 20 };
+      const plBox = { x: player.x, y: player.y, w: player.w, h: player.h };
+      if (rectCollide(skullBox, plBox)) {
+        player.hp -= proj.damage;
+        player.invincible = 35;
+        player.knockbackX = (proj.vx > 0 ? 1 : -1) * 10;
+        player.vy = -5;
+        state.screenShake = 10;
+        state.screenFlash = 6;
+        spawnParticles(player.x + player.w / 2, player.y + player.h / 2, '#44ff44', 10, 7);
+        spawnFloatingText(player.x + player.w / 2, player.y - 10, `-${proj.damage}`, '#ff4444');
+        proj.hitPlayer = true;
+        return false; // skull consumed on hit
+      }
+    }
+
+    if (proj.type === 'bossAOE' && !proj.hitPlayer && player.invincible <= 0) {
+      const dx = (player.x + player.w / 2) - proj.x;
+      const dy = (player.y + player.h) - proj.y;
+      const playerDist = Math.sqrt(dx * dx + dy * dy);
+      // Hit if player is within the expanding ring (between inner and outer edge)
+      if (playerDist < proj.radius + 20 && playerDist > proj.radius - 30) {
+        player.hp -= proj.damage;
+        player.invincible = 35;
+        const pushDir = dx !== 0 ? (dx > 0 ? 1 : -1) : 1;
+        player.knockbackX = pushDir * 10;
+        player.vy = -6;
+        state.screenShake = 10;
+        state.screenFlash = 6;
+        spawnParticles(player.x + player.w / 2, player.y + player.h / 2, '#88ff88', 10, 7);
+        spawnFloatingText(player.x + player.w / 2, player.y - 10, `-${proj.damage}`, '#ff4444');
+        proj.hitPlayer = true;
       }
     }
 

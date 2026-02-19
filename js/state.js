@@ -37,8 +37,8 @@ export const state = {
 export const player = {
   x: 80, y: GROUND_Y, w: BASE_PLAYER_W, h: BASE_PLAYER_H,
   vx: 0, vy: 0,
-  speed: 3.75, jumpForce: -12.75,
-  baseSpeed: 3.75, baseJumpForce: -12.75, baseDamage: 15, baseCooldown: 20,
+  speed: 2.8125, jumpForce: -12.75,
+  baseSpeed: 2.8125, baseJumpForce: -12.75, baseDamage: 15, baseCooldown: 20,
   onGround: false,
   hp: 100, maxHp: 100,
   attacking: false, attackTimer: 0, attackCooldown: 0,
@@ -60,7 +60,8 @@ export const player = {
   items: {
     armor: null,  // null, 'leather', or 'chainmail'
     glasses: false, // aviator glasses - see powerup crate contents
-    sneakers: false // high-top sneakers - 50% more jump hangtime
+    sneakers: true, // high-top sneakers - 50% more jump hangtime (always equipped from start)
+    cowboyBoots: false // cowboy boots - +20% attack range
   }
 };
 
@@ -75,7 +76,17 @@ export const POWERUP_TYPES = [
   { id: 'litterBox', name: 'LITTER BOX', color: '#aa8844', desc: 'Rear AOE Attack!', icon: 'litter' },
   { id: 'wings', name: 'ANGEL WINGS', color: '#aaddff', desc: 'Fly Anywhere!', icon: 'wings' },
 ];
-export const POWERUP_DURATION = 750;
+export const POWERUP_DURATION = 1500;
+
+export const POWERUP_AMMO = {
+  jumpyBoots: 15,
+  clawsOfSteel: 25,
+  superFangs: 25,
+  raceCar: 500,
+  bananaCannon: 12,
+  litterBox: 8,
+  wings: 600,
+};
 
 export const ARMOR_TYPES = [
   { id: 'leather', name: 'LEATHER ARMOR', color: '#b08040', desc: 'Light Protection', tier: 1, level: 2 },
@@ -87,5 +98,5 @@ export const GLASSES_TYPE = {
 };
 
 export const SNEAKERS_TYPE = {
-  id: 'hightops', name: 'HIGH-TOP SNEAKERS', color: '#ff4444', desc: '+50% Jump Hangtime!', level: 2
+  id: 'cowboyBoots', name: 'COWBOY BOOTS', color: '#8B4513', desc: '+20% Attack Range!', level: 2
 };
