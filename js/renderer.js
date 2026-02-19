@@ -131,37 +131,8 @@ export function drawLeopard(x, y) {
       }
     }
 
-    // === LEOPARD (sitting in car) ===
-    // Body (torso)
-    ctx.fillStyle = '#e8a828';
-    ctx.fillRect(px + 14, py + 12 + by, 18, 14);
-    // Head
-    ctx.fillRect(px + 24, py + 2 + by, 14, 14);
-    // Ears
-    ctx.fillStyle = '#d09020';
-    ctx.fillRect(px + 26, py - 1 + by, 4, 4);
-    ctx.fillRect(px + 32, py - 1 + by, 4, 4);
-    // Eyes
-    ctx.fillStyle = '#00ff00';
-    ctx.fillRect(px + 31, py + 6 + by, 3, 3);
-    // Nose
-    ctx.fillStyle = '#ff6688';
-    ctx.fillRect(px + 35, py + 10 + by, 2, 2);
-    // Spots
-    ctx.fillStyle = '#c08018';
-    ctx.fillRect(px + 16, py + 14 + by, 2, 2);
-    ctx.fillRect(px + 20, py + 16 + by, 2, 2);
-    ctx.fillRect(px + 26, py + 15 + by, 2, 2);
-    // Paws on steering area
-    ctx.fillStyle = '#d09020';
-    ctx.fillRect(px + 28, py + 24 + by, 5, 4);
-    ctx.fillRect(px + 22, py + 24 + by, 5, 4);
-    // Tail sticking up behind
-    const tailWagCar = Math.sin(Date.now() * 0.005) * 4;
-    ctx.fillStyle = '#d09020';
-    ctx.fillRect(px + 10, py + 8 + by + tailWagCar, 3, 8);
-    ctx.fillStyle = '#1a1a1a';
-    ctx.fillRect(px + 9, py + 4 + by + tailWagCar, 3, 5);
+    // === ANIMAL (sitting in car) ===
+    _drawAnimalInCar(ctx, player.animal, px, py, by);
 
     // Jet fire (behind car - always at back; ctx flip handles direction)
     const jetX = px - 10;
@@ -207,158 +178,12 @@ export function drawLeopard(x, y) {
     ctx.beginPath(); ctx.arc(px + 8, py + 47 + by, 2, 0, Math.PI * 2); ctx.fill();
     ctx.beginPath(); ctx.arc(px + 34, py + 47 + by, 2, 0, Math.PI * 2); ctx.fill();
 
-    // Leopard peeking out of box
-    // Head
-    ctx.fillStyle = '#e8a828';
-    ctx.fillRect(px + 24, py + 6 + by, 14, 14);
-    // Ears
-    ctx.fillStyle = '#d09020';
-    ctx.fillRect(px + 26, py + 3 + by, 4, 4);
-    ctx.fillRect(px + 32, py + 3 + by, 4, 4);
-    // Eyes
-    ctx.fillStyle = '#00ff00';
-    ctx.fillRect(px + 31, py + 10 + by, 3, 3);
-    // Nose
-    ctx.fillStyle = '#ff6688';
-    ctx.fillRect(px + 35, py + 14 + by, 2, 2);
-    // Body visible above box
-    ctx.fillStyle = '#e8a828';
-    ctx.fillRect(px + 14, py + 14 + by, 18, 10);
-    // Spots
-    ctx.fillStyle = '#c08018';
-    ctx.fillRect(px + 16, py + 16 + by, 2, 2);
-    ctx.fillRect(px + 22, py + 18 + by, 2, 2);
-    // Paws gripping box rim
-    ctx.fillStyle = '#d09020';
-    ctx.fillRect(px + 12, py + 22 + by, 5, 5);
-    ctx.fillRect(px + 28, py + 22 + by, 5, 5);
+    // Animal peeking out of box
+    _drawAnimalInLitterBox(ctx, player.animal, px, py, by);
 
   } else {
-    // === WALKING LEOPARD ON ALL FOURS ===
-    const runSpeed = Math.abs(player.vx) > 0.5;
-    const legTime = Date.now() * (runSpeed ? 0.012 : 0.004);
-    const legSwing = runSpeed ? Math.sin(legTime) * 7 : 0;
-
-    // Tail (drawn first, behind body)
-    const tailWag = Math.sin(Date.now() * 0.006) * 5;
-    const tailCurl = Math.sin(Date.now() * 0.004) * 3;
-    ctx.fillStyle = '#e8a828';
-    ctx.fillRect(px + 2, py + 17 + by + tailWag, 6, 4);
-    ctx.fillStyle = '#d09020';
-    ctx.fillRect(px - 3, py + 14 + by + tailWag * 1.2, 6, 4);
-    ctx.fillRect(px - 7, py + 11 + by + tailWag * 1.4 + tailCurl, 5, 3);
-    ctx.fillStyle = '#1a1a1a';
-    ctx.fillRect(px - 10, py + 9 + by + tailWag * 1.5 + tailCurl, 4, 3);
-
-    // Back legs (behind body)
-    const backLeg1 = legSwing;
-    const backLeg2 = -legSwing;
-    ctx.fillStyle = '#c89020';
-    // Back leg 1 (far)
-    ctx.fillRect(px + 9, py + 32 + by, 5, 12 + backLeg1);
-    ctx.fillStyle = '#b88018';
-    ctx.fillRect(px + 8, py + 43 + by + backLeg1, 6, 3);
-    // Back leg 2 (near)
-    ctx.fillStyle = '#d09820';
-    ctx.fillRect(px + 15, py + 32 + by, 5, 12 + backLeg2);
-    ctx.fillStyle = '#c08818';
-    ctx.fillRect(px + 14, py + 43 + by + backLeg2, 6, 3);
-
-    // Body (horizontal, muscular torso)
-    ctx.fillStyle = '#e8a828';
-    ctx.fillRect(px + 6, py + 19 + by, 32, 15);
-    // Slight hump at shoulders
-    ctx.fillRect(px + 24, py + 17 + by, 12, 4);
-    // Belly (lighter underside)
-    ctx.fillStyle = '#f0c858';
-    ctx.fillRect(px + 10, py + 30 + by, 24, 4);
-
-    // Leopard rosette spots on body
-    ctx.fillStyle = '#c08018';
-    ctx.fillRect(px + 10, py + 21 + by, 3, 3);
-    ctx.fillRect(px + 15, py + 24 + by, 3, 2);
-    ctx.fillRect(px + 21, py + 21 + by, 3, 3);
-    ctx.fillRect(px + 26, py + 24 + by, 2, 2);
-    ctx.fillRect(px + 31, py + 21 + by, 2, 3);
-    ctx.fillRect(px + 18, py + 28 + by, 2, 2);
-    ctx.fillRect(px + 24, py + 28 + by, 2, 2);
-    // Rosette outlines (darker rings around some spots)
-    ctx.fillStyle = '#a06810';
-    ctx.fillRect(px + 9, py + 20 + by, 1, 5);
-    ctx.fillRect(px + 13, py + 20 + by, 1, 5);
-    ctx.fillRect(px + 20, py + 20 + by, 1, 5);
-    ctx.fillRect(px + 24, py + 20 + by, 1, 5);
-
-    // Front legs (in front of body)
-    const frontLeg1 = -legSwing;
-    const frontLeg2 = legSwing;
-    ctx.fillStyle = '#e8a828';
-    // Front leg 1 (far)
-    ctx.fillRect(px + 28, py + 32 + by, 5, 12 + frontLeg1);
-    ctx.fillStyle = '#d09020';
-    ctx.fillRect(px + 27, py + 43 + by + frontLeg1, 6, 3);
-    // Front leg 2 (near)
-    ctx.fillStyle = '#e8a828';
-    ctx.fillRect(px + 34, py + 32 + by, 5, 12 + frontLeg2);
-    ctx.fillStyle = '#d09020';
-    ctx.fillRect(px + 33, py + 43 + by + frontLeg2, 6, 3);
-
-    // Neck
-    ctx.fillStyle = '#e8a828';
-    ctx.fillRect(px + 34, py + 14 + by, 6, 10);
-
-    // Head (rounder, more cat-like)
-    ctx.fillStyle = '#e8a828';
-    ctx.fillRect(px + 32, py + 8 + by, 14, 13);
-    ctx.fillRect(px + 34, py + 6 + by, 10, 3);
-    // Cheeks (wider lower face)
-    ctx.fillRect(px + 31, py + 14 + by, 16, 4);
-    // Snout
-    ctx.fillStyle = '#f0c050';
-    ctx.fillRect(px + 43, py + 14 + by, 5, 5);
-    // Nose
-    ctx.fillStyle = '#ff6688';
-    ctx.fillRect(px + 45, py + 15 + by, 3, 2);
-    // Mouth line
-    ctx.fillStyle = '#c08018';
-    ctx.fillRect(px + 44, py + 18 + by, 3, 1);
-
-    // Ears (triangular)
-    ctx.fillStyle = '#d09020';
-    ctx.fillRect(px + 33, py + 4 + by, 5, 5);
-    ctx.fillRect(px + 40, py + 4 + by, 5, 5);
-    // Inner ear
-    ctx.fillStyle = '#e8a0a0';
-    ctx.fillRect(px + 34, py + 5 + by, 3, 3);
-    ctx.fillRect(px + 41, py + 5 + by, 3, 3);
-
-    // Eyes (bright green, feline)
-    ctx.fillStyle = '#00dd00';
-    ctx.fillRect(px + 37, py + 10 + by, 4, 3);
-    ctx.fillRect(px + 43, py + 10 + by, 3, 3);
-    // Pupils (vertical slit)
-    ctx.fillStyle = '#000000';
-    ctx.fillRect(px + 38, py + 10 + by, 2, 3);
-    ctx.fillRect(px + 44, py + 10 + by, 1, 3);
-    // Eye shine
-    ctx.fillStyle = '#aaffaa';
-    ctx.fillRect(px + 37, py + 10 + by, 1, 1);
-    ctx.fillRect(px + 43, py + 10 + by, 1, 1);
-
-    // Whiskers
-    ctx.strokeStyle = '#f0d080';
-    ctx.lineWidth = 0.5;
-    ctx.beginPath();
-    ctx.moveTo(px + 45, py + 16 + by); ctx.lineTo(px + 52, py + 14 + by);
-    ctx.moveTo(px + 45, py + 17 + by); ctx.lineTo(px + 53, py + 17 + by);
-    ctx.moveTo(px + 45, py + 18 + by); ctx.lineTo(px + 52, py + 20 + by);
-    ctx.stroke();
-
-    // Head spots
-    ctx.fillStyle = '#c08018';
-    ctx.fillRect(px + 34, py + 8 + by, 2, 2);
-    ctx.fillRect(px + 39, py + 6 + by, 2, 2);
-    ctx.fillRect(px + 44, py + 8 + by, 2, 2);
+    // === WALKING ANIMAL ON ALL FOURS (dispatches by player.animal) ===
+    _drawWalkingAnimal(ctx, player.animal, px, py, by);
   }
 
   // Powerup visuals
@@ -585,83 +410,180 @@ export function drawLeopard(x, y) {
     }
   }
 
-  // Aviator glasses overlay (drawn on top of leopard face)
+  // Aviator glasses overlay (drawn on top of animal face)
   if (player.items.glasses) {
     if (player.powerups.raceCar > 0) {
-      // Glasses on race car leopard - head at px+24, eyes at px+31, py+6
-      // Frame bridge
-      ctx.fillStyle = '#cc8800';
-      ctx.fillRect(px + 28, py + 6 + by, 8, 2);
-      // Left lens
-      ctx.fillStyle = 'rgba(100,60,0,0.6)';
-      ctx.fillRect(px + 26, py + 5 + by, 6, 4);
-      ctx.fillStyle = '#ddaa22';
-      ctx.fillRect(px + 26, py + 5 + by, 6, 1);
-      ctx.fillRect(px + 26, py + 5 + by, 1, 4);
-      ctx.fillRect(px + 31, py + 5 + by, 1, 4);
-      // Right lens
-      ctx.fillStyle = 'rgba(100,60,0,0.6)';
-      ctx.fillRect(px + 33, py + 5 + by, 5, 4);
-      ctx.fillStyle = '#ddaa22';
-      ctx.fillRect(px + 33, py + 5 + by, 5, 1);
-      ctx.fillRect(px + 33, py + 5 + by, 1, 4);
-      ctx.fillRect(px + 37, py + 5 + by, 1, 4);
-      // Lens glint
-      ctx.fillStyle = 'rgba(255,255,200,0.4)';
-      ctx.fillRect(px + 27, py + 5 + by, 2, 1);
-      ctx.fillRect(px + 34, py + 5 + by, 2, 1);
+      if (player.animal === 'gator') {
+        // Glasses on race car gator - eyes at px+28,py+0 and px+34,py+0
+        // Frame bridge
+        ctx.fillStyle = '#1a1a1a';
+        ctx.fillRect(px + 30, py - 2 + by, 6, 2);
+        // Left lens
+        ctx.fillStyle = 'rgba(0,0,0,0.85)';
+        ctx.fillRect(px + 25, py - 3 + by, 7, 6);
+        // Left lens frame
+        ctx.fillStyle = '#222222';
+        ctx.fillRect(px + 25, py - 3 + by, 7, 1);
+        ctx.fillRect(px + 25, py + 2 + by, 7, 1);
+        ctx.fillRect(px + 25, py - 3 + by, 1, 6);
+        ctx.fillRect(px + 31, py - 3 + by, 1, 6);
+        // Right lens
+        ctx.fillStyle = 'rgba(0,0,0,0.85)';
+        ctx.fillRect(px + 33, py - 3 + by, 7, 6);
+        // Right lens frame
+        ctx.fillStyle = '#222222';
+        ctx.fillRect(px + 33, py - 3 + by, 7, 1);
+        ctx.fillRect(px + 33, py + 2 + by, 7, 1);
+        ctx.fillRect(px + 33, py - 3 + by, 1, 6);
+        ctx.fillRect(px + 39, py - 3 + by, 1, 6);
+        // Lens glint
+        ctx.fillStyle = 'rgba(255,255,255,0.25)';
+        ctx.fillRect(px + 26, py - 2 + by, 2, 1);
+        ctx.fillRect(px + 34, py - 2 + by, 2, 1);
+      } else {
+        // Glasses on race car (leopard/redPanda/lion) - eyes at ~px+31, py+6
+        // Frame bridge
+        ctx.fillStyle = '#1a1a1a';
+        ctx.fillRect(px + 27, py + 5 + by, 12, 2);
+        // Left lens
+        ctx.fillStyle = 'rgba(0,0,0,0.85)';
+        ctx.fillRect(px + 24, py + 3 + by, 8, 6);
+        // Left lens frame
+        ctx.fillStyle = '#222222';
+        ctx.fillRect(px + 24, py + 3 + by, 8, 1);
+        ctx.fillRect(px + 24, py + 8 + by, 8, 1);
+        ctx.fillRect(px + 24, py + 3 + by, 1, 6);
+        ctx.fillRect(px + 31, py + 3 + by, 1, 6);
+        // Right lens
+        ctx.fillStyle = 'rgba(0,0,0,0.85)';
+        ctx.fillRect(px + 33, py + 3 + by, 7, 6);
+        // Right lens frame
+        ctx.fillStyle = '#222222';
+        ctx.fillRect(px + 33, py + 3 + by, 7, 1);
+        ctx.fillRect(px + 33, py + 8 + by, 7, 1);
+        ctx.fillRect(px + 33, py + 3 + by, 1, 6);
+        ctx.fillRect(px + 39, py + 3 + by, 1, 6);
+        // Lens glint
+        ctx.fillStyle = 'rgba(255,255,255,0.25)';
+        ctx.fillRect(px + 25, py + 4 + by, 2, 1);
+        ctx.fillRect(px + 34, py + 4 + by, 2, 1);
+      }
     } else if (player.powerups.litterBox > 0) {
-      // Glasses on litter box leopard - head at px+24, eyes at px+31, py+10
-      ctx.fillStyle = '#cc8800';
-      ctx.fillRect(px + 28, py + 10 + by, 8, 2);
-      // Left lens
-      ctx.fillStyle = 'rgba(100,60,0,0.6)';
-      ctx.fillRect(px + 26, py + 9 + by, 6, 4);
-      ctx.fillStyle = '#ddaa22';
-      ctx.fillRect(px + 26, py + 9 + by, 6, 1);
-      ctx.fillRect(px + 26, py + 9 + by, 1, 4);
-      ctx.fillRect(px + 31, py + 9 + by, 1, 4);
-      // Right lens
-      ctx.fillStyle = 'rgba(100,60,0,0.6)';
-      ctx.fillRect(px + 33, py + 9 + by, 5, 4);
-      ctx.fillStyle = '#ddaa22';
-      ctx.fillRect(px + 33, py + 9 + by, 5, 1);
-      ctx.fillRect(px + 33, py + 9 + by, 1, 4);
-      ctx.fillRect(px + 37, py + 9 + by, 1, 4);
-      // Lens glint
-      ctx.fillStyle = 'rgba(255,255,200,0.4)';
-      ctx.fillRect(px + 27, py + 9 + by, 2, 1);
-      ctx.fillRect(px + 34, py + 9 + by, 2, 1);
+      if (player.animal === 'gator') {
+        // Glasses on litter box gator - eyes at px+27,py+3 and px+33,py+3
+        ctx.fillStyle = '#1a1a1a';
+        ctx.fillRect(px + 30, py + 2 + by, 5, 2);
+        // Left lens
+        ctx.fillStyle = 'rgba(0,0,0,0.85)';
+        ctx.fillRect(px + 24, py + 0 + by, 8, 6);
+        // Left lens frame
+        ctx.fillStyle = '#222222';
+        ctx.fillRect(px + 24, py + 0 + by, 8, 1);
+        ctx.fillRect(px + 24, py + 5 + by, 8, 1);
+        ctx.fillRect(px + 24, py + 0 + by, 1, 6);
+        ctx.fillRect(px + 31, py + 0 + by, 1, 6);
+        // Right lens
+        ctx.fillStyle = 'rgba(0,0,0,0.85)';
+        ctx.fillRect(px + 33, py + 0 + by, 7, 6);
+        // Right lens frame
+        ctx.fillStyle = '#222222';
+        ctx.fillRect(px + 33, py + 0 + by, 7, 1);
+        ctx.fillRect(px + 33, py + 5 + by, 7, 1);
+        ctx.fillRect(px + 33, py + 0 + by, 1, 6);
+        ctx.fillRect(px + 39, py + 0 + by, 1, 6);
+        // Lens glint
+        ctx.fillStyle = 'rgba(255,255,255,0.25)';
+        ctx.fillRect(px + 25, py + 1 + by, 2, 1);
+        ctx.fillRect(px + 34, py + 1 + by, 2, 1);
+      } else {
+        // Glasses on litter box (leopard/redPanda/lion) - eyes at ~px+31, py+10
+        ctx.fillStyle = '#1a1a1a';
+        ctx.fillRect(px + 27, py + 9 + by, 12, 2);
+        // Left lens
+        ctx.fillStyle = 'rgba(0,0,0,0.85)';
+        ctx.fillRect(px + 24, py + 7 + by, 8, 6);
+        // Left lens frame
+        ctx.fillStyle = '#222222';
+        ctx.fillRect(px + 24, py + 7 + by, 8, 1);
+        ctx.fillRect(px + 24, py + 12 + by, 8, 1);
+        ctx.fillRect(px + 24, py + 7 + by, 1, 6);
+        ctx.fillRect(px + 31, py + 7 + by, 1, 6);
+        // Right lens
+        ctx.fillStyle = 'rgba(0,0,0,0.85)';
+        ctx.fillRect(px + 33, py + 7 + by, 7, 6);
+        // Right lens frame
+        ctx.fillStyle = '#222222';
+        ctx.fillRect(px + 33, py + 7 + by, 7, 1);
+        ctx.fillRect(px + 33, py + 12 + by, 7, 1);
+        ctx.fillRect(px + 33, py + 7 + by, 1, 6);
+        ctx.fillRect(px + 39, py + 7 + by, 1, 6);
+        // Lens glint
+        ctx.fillStyle = 'rgba(255,255,255,0.25)';
+        ctx.fillRect(px + 25, py + 8 + by, 2, 1);
+        ctx.fillRect(px + 34, py + 8 + by, 2, 1);
+      }
     } else {
-      // Glasses on walking leopard - eyes at px+37,py+10 and px+43,py+10
-      // Frame bridge (between lenses)
-      ctx.fillStyle = '#cc8800';
-      ctx.fillRect(px + 40, py + 10 + by, 3, 2);
-      // Left lens (over left eye area)
-      ctx.fillStyle = 'rgba(100,60,0,0.6)';
-      ctx.fillRect(px + 35, py + 9 + by, 6, 5);
-      // Left lens frame
-      ctx.fillStyle = '#ddaa22';
-      ctx.fillRect(px + 35, py + 9 + by, 6, 1);
-      ctx.fillRect(px + 35, py + 13 + by, 6, 1);
-      ctx.fillRect(px + 35, py + 9 + by, 1, 5);
-      ctx.fillRect(px + 40, py + 9 + by, 1, 5);
-      // Right lens (over right eye area)
-      ctx.fillStyle = 'rgba(100,60,0,0.6)';
-      ctx.fillRect(px + 42, py + 9 + by, 5, 5);
-      // Right lens frame
-      ctx.fillStyle = '#ddaa22';
-      ctx.fillRect(px + 42, py + 9 + by, 5, 1);
-      ctx.fillRect(px + 42, py + 13 + by, 5, 1);
-      ctx.fillRect(px + 42, py + 9 + by, 1, 5);
-      ctx.fillRect(px + 46, py + 9 + by, 1, 5);
-      // Temple arm (extends back from frame)
-      ctx.fillStyle = '#cc8800';
-      ctx.fillRect(px + 34, py + 10 + by, 2, 2);
-      // Lens glint (reflection)
-      ctx.fillStyle = 'rgba(255,255,200,0.4)';
-      ctx.fillRect(px + 36, py + 9 + by, 2, 1);
-      ctx.fillRect(px + 43, py + 9 + by, 2, 1);
+      if (player.animal === 'gator') {
+        // Glasses on walking gator - eyes at px+41,py+7 and px+49,py+7
+        // Frame bridge (between lenses)
+        ctx.fillStyle = '#1a1a1a';
+        ctx.fillRect(px + 46, py + 6 + by, 4, 2);
+        // Left lens (over left eye area)
+        ctx.fillStyle = 'rgba(0,0,0,0.85)';
+        ctx.fillRect(px + 38, py + 4 + by, 9, 7);
+        // Left lens frame
+        ctx.fillStyle = '#222222';
+        ctx.fillRect(px + 38, py + 4 + by, 9, 1);
+        ctx.fillRect(px + 38, py + 10 + by, 9, 1);
+        ctx.fillRect(px + 38, py + 4 + by, 1, 7);
+        ctx.fillRect(px + 46, py + 4 + by, 1, 7);
+        // Right lens (over right eye area)
+        ctx.fillStyle = 'rgba(0,0,0,0.85)';
+        ctx.fillRect(px + 48, py + 4 + by, 7, 7);
+        // Right lens frame
+        ctx.fillStyle = '#222222';
+        ctx.fillRect(px + 48, py + 4 + by, 7, 1);
+        ctx.fillRect(px + 48, py + 10 + by, 7, 1);
+        ctx.fillRect(px + 48, py + 4 + by, 1, 7);
+        ctx.fillRect(px + 54, py + 4 + by, 1, 7);
+        // Temple arm (extends back from frame)
+        ctx.fillStyle = '#1a1a1a';
+        ctx.fillRect(px + 36, py + 6 + by, 3, 2);
+        // Lens glint (reflection)
+        ctx.fillStyle = 'rgba(255,255,255,0.25)';
+        ctx.fillRect(px + 39, py + 5 + by, 3, 1);
+        ctx.fillRect(px + 49, py + 5 + by, 3, 1);
+      } else {
+        // Glasses on walking (leopard/redPanda/lion) - eyes at ~px+37,py+10 and px+43,py+10
+        // Frame bridge (between lenses)
+        ctx.fillStyle = '#1a1a1a';
+        ctx.fillRect(px + 39, py + 9 + by, 5, 2);
+        // Left lens (over left eye area)
+        ctx.fillStyle = 'rgba(0,0,0,0.85)';
+        ctx.fillRect(px + 33, py + 7 + by, 8, 7);
+        // Left lens frame
+        ctx.fillStyle = '#222222';
+        ctx.fillRect(px + 33, py + 7 + by, 8, 1);
+        ctx.fillRect(px + 33, py + 13 + by, 8, 1);
+        ctx.fillRect(px + 33, py + 7 + by, 1, 7);
+        ctx.fillRect(px + 40, py + 7 + by, 1, 7);
+        // Right lens (over right eye area)
+        ctx.fillStyle = 'rgba(0,0,0,0.85)';
+        ctx.fillRect(px + 42, py + 7 + by, 7, 7);
+        // Right lens frame
+        ctx.fillStyle = '#222222';
+        ctx.fillRect(px + 42, py + 7 + by, 7, 1);
+        ctx.fillRect(px + 42, py + 13 + by, 7, 1);
+        ctx.fillRect(px + 42, py + 7 + by, 1, 7);
+        ctx.fillRect(px + 48, py + 7 + by, 1, 7);
+        // Temple arm (extends back from frame)
+        ctx.fillStyle = '#1a1a1a';
+        ctx.fillRect(px + 31, py + 9 + by, 3, 2);
+        // Lens glint (reflection)
+        ctx.fillStyle = 'rgba(255,255,255,0.25)';
+        ctx.fillRect(px + 34, py + 8 + by, 3, 1);
+        ctx.fillRect(px + 43, py + 8 + by, 3, 1);
+      }
     }
   }
 
@@ -705,6 +627,39 @@ export function drawLeopard(x, y) {
       drawCowboyBoot(px + 13, py + 37 + by - legSwingS);
       drawCowboyBoot(px + 26, py + 37 + by - legSwingS);
       drawCowboyBoot(px + 32, py + 37 + by + legSwingS);
+    } else if (player.items.soccerCleats) {
+      // Soccer cleats overlay (green low-cut with studs)
+      const drawCleat = (sx, sy) => {
+        // Dark outline
+        ctx.fillStyle = '#003d12';
+        ctx.fillRect(sx - 2, sy - 1, 12, 10);
+        // Cleat body (low-cut shoe)
+        ctx.fillStyle = '#00cc44';
+        ctx.fillRect(sx - 1, sy, 10, 7);
+        // Toe area
+        ctx.fillStyle = '#00aa33';
+        ctx.fillRect(sx + 7, sy + 1, 3, 5);
+        // Collar opening (low-cut)
+        ctx.fillStyle = '#009933';
+        ctx.fillRect(sx - 1, sy - 1, 5, 2);
+        // Sole
+        ctx.fillStyle = '#004d1a';
+        ctx.fillRect(sx - 2, sy + 7, 14, 2);
+        // Studs (white nubs on bottom)
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(sx - 1, sy + 9, 2, 2);
+        ctx.fillRect(sx + 3, sy + 9, 2, 2);
+        ctx.fillRect(sx + 7, sy + 9, 2, 2);
+        // Lace detail
+        ctx.fillStyle = '#88ffaa';
+        ctx.fillRect(sx + 1, sy + 1, 1, 1);
+        ctx.fillRect(sx + 3, sy, 1, 1);
+        ctx.fillRect(sx + 5, sy + 1, 1, 1);
+      };
+      drawCleat(px + 7, py + 39 + by + legSwingS);
+      drawCleat(px + 13, py + 39 + by - legSwingS);
+      drawCleat(px + 26, py + 39 + by - legSwingS);
+      drawCleat(px + 32, py + 39 + by + legSwingS);
     } else {
       // Default sneakers overlay (red high-tops)
       const drawSneaker = (sx, sy) => {
@@ -1521,19 +1476,32 @@ export function drawGlassesCrates() {
     ctx.fillRect(cx + 4, cy + c.h - 7, 3, 3);
     ctx.fillRect(cx + c.w - 7, cy + c.h - 7, 3, 3);
 
-    // Sunglasses icon instead of "?" - two small lens shapes
+    // Sunglasses icon instead of "?" - two dark lens shapes
     const icx = cx + c.w/2;
     const icy = cy + c.h/2;
-    ctx.fillStyle = GLASSES_TYPE.color;
     // Left lens
-    ctx.fillRect(icx - 7, icy - 2, 5, 4);
+    ctx.fillStyle = 'rgba(0,0,0,0.85)';
+    ctx.fillRect(icx - 9, icy - 3, 7, 6);
+    ctx.fillStyle = '#222222';
+    ctx.fillRect(icx - 9, icy - 3, 7, 1);
+    ctx.fillRect(icx - 9, icy + 2, 7, 1);
+    ctx.fillRect(icx - 9, icy - 3, 1, 6);
+    ctx.fillRect(icx - 3, icy - 3, 1, 6);
     // Right lens
-    ctx.fillRect(icx + 2, icy - 2, 5, 4);
+    ctx.fillStyle = 'rgba(0,0,0,0.85)';
+    ctx.fillRect(icx + 2, icy - 3, 7, 6);
+    ctx.fillStyle = '#222222';
+    ctx.fillRect(icx + 2, icy - 3, 7, 1);
+    ctx.fillRect(icx + 2, icy + 2, 7, 1);
+    ctx.fillRect(icx + 2, icy - 3, 1, 6);
+    ctx.fillRect(icx + 8, icy - 3, 1, 6);
     // Bridge
+    ctx.fillStyle = '#1a1a1a';
     ctx.fillRect(icx - 2, icy - 1, 4, 2);
     // Temple arms
-    ctx.fillRect(icx - 8, icy - 1, 2, 2);
-    ctx.fillRect(icx + 7, icy - 1, 2, 2);
+    ctx.fillStyle = '#1a1a1a';
+    ctx.fillRect(icx - 11, icy - 1, 3, 2);
+    ctx.fillRect(icx + 9, icy - 1, 3, 2);
 
     // Golden glow
     const glowAlpha = 0.1 + Math.sin(Date.now() * 0.003) * 0.05;
@@ -1571,32 +1539,32 @@ export function drawGlassesPickups() {
 
     // Draw aviator glasses item floating
     // Left lens
-    ctx.fillStyle = 'rgba(120,70,0,0.7)';
-    ctx.fillRect(gx - 12, floatY - 4, 10, 7);
-    ctx.fillStyle = '#ddaa22';
-    ctx.fillRect(gx - 12, floatY - 4, 10, 1);
-    ctx.fillRect(gx - 12, floatY + 2, 10, 1);
-    ctx.fillRect(gx - 12, floatY - 4, 1, 7);
-    ctx.fillRect(gx - 3, floatY - 4, 1, 7);
+    ctx.fillStyle = 'rgba(0,0,0,0.85)';
+    ctx.fillRect(gx - 14, floatY - 6, 12, 9);
+    ctx.fillStyle = '#222222';
+    ctx.fillRect(gx - 14, floatY - 6, 12, 1);
+    ctx.fillRect(gx - 14, floatY + 2, 12, 1);
+    ctx.fillRect(gx - 14, floatY - 6, 1, 9);
+    ctx.fillRect(gx - 3, floatY - 6, 1, 9);
     // Right lens
-    ctx.fillStyle = 'rgba(120,70,0,0.7)';
-    ctx.fillRect(gx + 2, floatY - 4, 10, 7);
-    ctx.fillStyle = '#ddaa22';
-    ctx.fillRect(gx + 2, floatY - 4, 10, 1);
-    ctx.fillRect(gx + 2, floatY + 2, 10, 1);
-    ctx.fillRect(gx + 2, floatY - 4, 1, 7);
-    ctx.fillRect(gx + 11, floatY - 4, 1, 7);
+    ctx.fillStyle = 'rgba(0,0,0,0.85)';
+    ctx.fillRect(gx + 2, floatY - 6, 12, 9);
+    ctx.fillStyle = '#222222';
+    ctx.fillRect(gx + 2, floatY - 6, 12, 1);
+    ctx.fillRect(gx + 2, floatY + 2, 12, 1);
+    ctx.fillRect(gx + 2, floatY - 6, 1, 9);
+    ctx.fillRect(gx + 13, floatY - 6, 1, 9);
     // Bridge
-    ctx.fillStyle = '#cc8800';
-    ctx.fillRect(gx - 2, floatY - 2, 4, 3);
+    ctx.fillStyle = '#1a1a1a';
+    ctx.fillRect(gx - 2, floatY - 3, 4, 3);
     // Temple arms
-    ctx.fillStyle = '#cc8800';
-    ctx.fillRect(gx - 15, floatY - 2, 4, 2);
-    ctx.fillRect(gx + 12, floatY - 2, 4, 2);
+    ctx.fillStyle = '#1a1a1a';
+    ctx.fillRect(gx - 18, floatY - 3, 5, 2);
+    ctx.fillRect(gx + 14, floatY - 3, 5, 2);
     // Lens glint
-    ctx.fillStyle = 'rgba(255,255,200,0.5)';
-    ctx.fillRect(gx - 10, floatY - 3, 3, 1);
-    ctx.fillRect(gx + 4, floatY - 3, 3, 1);
+    ctx.fillStyle = 'rgba(255,255,255,0.25)';
+    ctx.fillRect(gx - 12, floatY - 5, 3, 1);
+    ctx.fillRect(gx + 4, floatY - 5, 3, 1);
 
     // "Press E to equip" text
     const textBob = Math.sin(Date.now() * 0.004) * 2;
@@ -2283,6 +2251,60 @@ export function drawBossIntro() {
   ctx.textAlign = 'left';
 }
 
+function _drawTitleLeaderboard(cx, startY) {
+  const lb = state.leaderboard;
+  const maxEntries = Math.min(lb.length, 5);
+  if (maxEntries === 0) return;
+
+  // Panel background with subtle border
+  const panelW = 420, panelH = 50 + maxEntries * 24;
+  const panelX = cx - panelW / 2, panelY = startY - 20;
+  ctx.fillStyle = 'rgba(10, 10, 20, 0.7)';
+  ctx.fillRect(panelX, panelY, panelW, panelH);
+  ctx.strokeStyle = 'rgba(255, 204, 0, 0.25)';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(panelX, panelY, panelW, panelH);
+
+  // Title
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#ffcc00'; ctx.font = 'bold 18px "Courier New"';
+  ctx.fillText('TOP SCORES', cx, startY);
+
+  // Table header
+  const tableX = cx - 190;
+  let rowY = startY + 20;
+  ctx.textAlign = 'left';
+  ctx.fillStyle = '#666666'; ctx.font = 'bold 11px "Courier New"';
+  ctx.fillText('#', tableX, rowY);
+  ctx.fillText('NAME', tableX + 28, rowY);
+  ctx.fillText('ANIMAL', tableX + 150, rowY);
+  ctx.textAlign = 'right';
+  ctx.fillText('SCORE', tableX + 380, rowY);
+  rowY += 5;
+
+  // Separator
+  ctx.fillStyle = '#333333';
+  ctx.fillRect(tableX, rowY, 380, 1);
+  rowY += 13;
+
+  // Rows
+  for (let i = 0; i < maxEntries; i++) {
+    const entry = lb[i];
+    const isTop3 = i < 3;
+    const colors = ['#ffcc00', '#cccccc', '#cc8844'];
+    ctx.fillStyle = isTop3 ? colors[i] : '#888888';
+    ctx.font = isTop3 ? 'bold 13px "Courier New"' : '13px "Courier New"';
+    ctx.textAlign = 'left';
+    ctx.fillText(`${i + 1}.`, tableX, rowY);
+    ctx.fillText(entry.name || 'Player', tableX + 28, rowY);
+    ctx.fillText((entry.animal || 'leopard').toUpperCase(), tableX + 150, rowY);
+    ctx.textAlign = 'right';
+    ctx.fillText(`${entry.score}`, tableX + 380, rowY);
+    rowY += 24;
+  }
+  ctx.textAlign = 'center';
+}
+
 export function drawTitleScreen() {
   ctx.fillStyle = '#0a0a0a'; ctx.fillRect(0, 0, canvas.width, canvas.height);
   for (let i = 0; i < 30; i++) {
@@ -2291,22 +2313,32 @@ export function drawTitleScreen() {
     ctx.fillStyle = `rgba(0,255,0,${0.1 + Math.sin(Date.now() * 0.001 + i) * 0.1})`;
     ctx.fillRect(x, y, 2, 2);
   }
-  ctx.fillStyle = '#e8a828'; ctx.font = 'bold 48px "Courier New"'; ctx.textAlign = 'center';
-  ctx.fillText('ANIMALS', canvas.width / 2, 150);
-  ctx.fillStyle = '#ff4444'; ctx.fillText('vs', canvas.width / 2, 200);
-  ctx.fillStyle = '#5a7a5a'; ctx.fillText('ZOMBIES', canvas.width / 2, 250);
 
-  const dx = canvas.width / 2, dy = 295;
+  const hasScores = state.leaderboard.length > 0;
+  // When leaderboard has entries, shift title/controls to the left to make room
+  const titleCx = hasScores ? 270 : canvas.width / 2;
+
+  ctx.fillStyle = '#e8a828'; ctx.font = 'bold 48px "Courier New"'; ctx.textAlign = 'center';
+  ctx.fillText('ANIMALS', titleCx, 150);
+  ctx.fillStyle = '#ff4444'; ctx.fillText('vs', titleCx, 200);
+  ctx.fillStyle = '#5a7a5a'; ctx.fillText('ZOMBIES', titleCx, 250);
+
+  const dx = titleCx, dy = 295;
   ctx.fillStyle = '#00ffff'; ctx.beginPath();
   ctx.moveTo(dx, dy - 12); ctx.lineTo(dx + 10, dy); ctx.lineTo(dx, dy + 12); ctx.lineTo(dx - 10, dy);
   ctx.closePath(); ctx.fill();
 
   ctx.fillStyle = '#aaaaaa'; ctx.font = '16px "Courier New"';
-  ctx.fillText('Arrow Keys - Move & Jump', canvas.width / 2, 345);
-  ctx.fillText('Space - Attack | E - Equip Items', canvas.width / 2, 370);
-  ctx.fillText('Break crates for power-ups & armor!', canvas.width / 2, 400);
-  ctx.fillText('3 Lives - Defeat zombies across 3 levels', canvas.width / 2, 430);
-  ctx.fillText('Capture the Leopard Diamond!', canvas.width / 2, 455);
+  ctx.fillText('Arrow Keys - Move & Jump', titleCx, 345);
+  ctx.fillText('Space - Attack | E - Equip Items', titleCx, 370);
+  ctx.fillText('Break crates for power-ups & armor!', titleCx, 400);
+  ctx.fillText('3 Lives - Defeat zombies across 3 levels', titleCx, 430);
+  ctx.fillText('Capture the Leopard Diamond!', titleCx, 455);
+
+  // Draw leaderboard on the right side when scores exist
+  if (hasScores) {
+    _drawTitleLeaderboard(700, 140);
+  }
 
   if (Math.sin(Date.now() * 0.005) > 0) {
     ctx.fillStyle = '#ffcc00'; ctx.font = 'bold 20px "Courier New"';
@@ -2570,6 +2602,771 @@ export function drawSelectScreen() {
   ctx.textAlign = 'left';
 }
 
+// === WALKING ANIMAL DRAWING FUNCTIONS ===
+// Each animal has its own detailed pixel art on all fours, matching the style of the original leopard
+
+function _drawWalkingAnimal(ctx, animal, px, py, by, overrideVx) {
+  const vx = overrideVx !== undefined ? overrideVx : player.vx;
+  const runSpeed = Math.abs(vx) > 0.5;
+  const legTime = Date.now() * (runSpeed ? 0.012 : 0.004);
+  const legSwing = runSpeed ? Math.sin(legTime) * 7 : 0;
+
+  if (animal === 'leopard') {
+    _drawWalkingLeopard(ctx, px, py, by, legSwing);
+  } else if (animal === 'redPanda') {
+    _drawWalkingRedPanda(ctx, px, py, by, legSwing);
+  } else if (animal === 'lion') {
+    _drawWalkingLion(ctx, px, py, by, legSwing);
+  } else if (animal === 'gator') {
+    _drawWalkingGator(ctx, px, py, by, legSwing);
+  } else {
+    _drawWalkingLeopard(ctx, px, py, by, legSwing); // fallback
+  }
+}
+
+function _drawWalkingLeopard(ctx, px, py, by, legSwing) {
+  // Tail (drawn first, behind body)
+  const tailWag = Math.sin(Date.now() * 0.006) * 5;
+  const tailCurl = Math.sin(Date.now() * 0.004) * 3;
+  ctx.fillStyle = '#e8a828';
+  ctx.fillRect(px + 2, py + 17 + by + tailWag, 6, 4);
+  ctx.fillStyle = '#d09020';
+  ctx.fillRect(px - 3, py + 14 + by + tailWag * 1.2, 6, 4);
+  ctx.fillRect(px - 7, py + 11 + by + tailWag * 1.4 + tailCurl, 5, 3);
+  ctx.fillStyle = '#1a1a1a';
+  ctx.fillRect(px - 10, py + 9 + by + tailWag * 1.5 + tailCurl, 4, 3);
+
+  // Back legs (behind body)
+  const backLeg1 = legSwing;
+  const backLeg2 = -legSwing;
+  ctx.fillStyle = '#c89020';
+  ctx.fillRect(px + 9, py + 32 + by, 5, 12 + backLeg1);
+  ctx.fillStyle = '#b88018';
+  ctx.fillRect(px + 8, py + 43 + by + backLeg1, 6, 3);
+  ctx.fillStyle = '#d09820';
+  ctx.fillRect(px + 15, py + 32 + by, 5, 12 + backLeg2);
+  ctx.fillStyle = '#c08818';
+  ctx.fillRect(px + 14, py + 43 + by + backLeg2, 6, 3);
+
+  // Body (horizontal, muscular torso)
+  ctx.fillStyle = '#e8a828';
+  ctx.fillRect(px + 6, py + 19 + by, 32, 15);
+  ctx.fillRect(px + 24, py + 17 + by, 12, 4);
+  ctx.fillStyle = '#f0c858';
+  ctx.fillRect(px + 10, py + 30 + by, 24, 4);
+
+  // Leopard rosette spots on body
+  ctx.fillStyle = '#c08018';
+  ctx.fillRect(px + 10, py + 21 + by, 3, 3);
+  ctx.fillRect(px + 15, py + 24 + by, 3, 2);
+  ctx.fillRect(px + 21, py + 21 + by, 3, 3);
+  ctx.fillRect(px + 26, py + 24 + by, 2, 2);
+  ctx.fillRect(px + 31, py + 21 + by, 2, 3);
+  ctx.fillRect(px + 18, py + 28 + by, 2, 2);
+  ctx.fillRect(px + 24, py + 28 + by, 2, 2);
+  ctx.fillStyle = '#a06810';
+  ctx.fillRect(px + 9, py + 20 + by, 1, 5);
+  ctx.fillRect(px + 13, py + 20 + by, 1, 5);
+  ctx.fillRect(px + 20, py + 20 + by, 1, 5);
+  ctx.fillRect(px + 24, py + 20 + by, 1, 5);
+
+  // Front legs
+  const frontLeg1 = -legSwing;
+  const frontLeg2 = legSwing;
+  ctx.fillStyle = '#e8a828';
+  ctx.fillRect(px + 28, py + 32 + by, 5, 12 + frontLeg1);
+  ctx.fillStyle = '#d09020';
+  ctx.fillRect(px + 27, py + 43 + by + frontLeg1, 6, 3);
+  ctx.fillStyle = '#e8a828';
+  ctx.fillRect(px + 34, py + 32 + by, 5, 12 + frontLeg2);
+  ctx.fillStyle = '#d09020';
+  ctx.fillRect(px + 33, py + 43 + by + frontLeg2, 6, 3);
+
+  // Neck
+  ctx.fillStyle = '#e8a828';
+  ctx.fillRect(px + 34, py + 14 + by, 6, 10);
+
+  // Head
+  ctx.fillStyle = '#e8a828';
+  ctx.fillRect(px + 32, py + 8 + by, 14, 13);
+  ctx.fillRect(px + 34, py + 6 + by, 10, 3);
+  ctx.fillRect(px + 31, py + 14 + by, 16, 4);
+  ctx.fillStyle = '#f0c050';
+  ctx.fillRect(px + 43, py + 14 + by, 5, 5);
+  ctx.fillStyle = '#ff6688';
+  ctx.fillRect(px + 45, py + 15 + by, 3, 2);
+  ctx.fillStyle = '#c08018';
+  ctx.fillRect(px + 44, py + 18 + by, 3, 1);
+
+  // Ears
+  ctx.fillStyle = '#d09020';
+  ctx.fillRect(px + 33, py + 4 + by, 5, 5);
+  ctx.fillRect(px + 40, py + 4 + by, 5, 5);
+  ctx.fillStyle = '#e8a0a0';
+  ctx.fillRect(px + 34, py + 5 + by, 3, 3);
+  ctx.fillRect(px + 41, py + 5 + by, 3, 3);
+
+  // Eyes (bright green, feline)
+  ctx.fillStyle = '#00dd00';
+  ctx.fillRect(px + 37, py + 10 + by, 4, 3);
+  ctx.fillRect(px + 43, py + 10 + by, 3, 3);
+  ctx.fillStyle = '#000000';
+  ctx.fillRect(px + 38, py + 10 + by, 2, 3);
+  ctx.fillRect(px + 44, py + 10 + by, 1, 3);
+  ctx.fillStyle = '#aaffaa';
+  ctx.fillRect(px + 37, py + 10 + by, 1, 1);
+  ctx.fillRect(px + 43, py + 10 + by, 1, 1);
+
+  // Whiskers
+  ctx.strokeStyle = '#f0d080';
+  ctx.lineWidth = 0.5;
+  ctx.beginPath();
+  ctx.moveTo(px + 45, py + 16 + by); ctx.lineTo(px + 52, py + 14 + by);
+  ctx.moveTo(px + 45, py + 17 + by); ctx.lineTo(px + 53, py + 17 + by);
+  ctx.moveTo(px + 45, py + 18 + by); ctx.lineTo(px + 52, py + 20 + by);
+  ctx.stroke();
+
+  // Head spots
+  ctx.fillStyle = '#c08018';
+  ctx.fillRect(px + 34, py + 8 + by, 2, 2);
+  ctx.fillRect(px + 39, py + 6 + by, 2, 2);
+  ctx.fillRect(px + 44, py + 8 + by, 2, 2);
+}
+
+function _drawWalkingRedPanda(ctx, px, py, by, legSwing) {
+  // Tail (long, bushy, straight - signature red panda feature)
+  const tailWag = Math.sin(Date.now() * 0.006) * 3;
+  // Main tail body (thick, bushy, held fairly straight/horizontal)
+  ctx.fillStyle = '#cc4422';
+  ctx.fillRect(px - 2, py + 16 + by + tailWag, 10, 8);
+  ctx.fillRect(px - 10, py + 15 + by + tailWag * 1.1, 10, 8);
+  ctx.fillRect(px - 18, py + 14 + by + tailWag * 1.2, 10, 8);
+  ctx.fillRect(px - 26, py + 13 + by + tailWag * 1.3, 10, 8);
+  // Tail stripes (alternating light rings)
+  ctx.fillStyle = '#ffccaa';
+  ctx.fillRect(px - 6, py + 16 + by + tailWag * 1.05, 4, 8);
+  ctx.fillRect(px - 14, py + 15 + by + tailWag * 1.15, 4, 8);
+  ctx.fillRect(px - 22, py + 14 + by + tailWag * 1.25, 4, 8);
+  // Bushy tail tip
+  ctx.fillStyle = '#882211';
+  ctx.fillRect(px - 30, py + 12 + by + tailWag * 1.35, 6, 9);
+
+  // Back legs (dark brown/black)
+  const backLeg1 = legSwing;
+  const backLeg2 = -legSwing;
+  ctx.fillStyle = '#331100';
+  ctx.fillRect(px + 9, py + 32 + by, 5, 12 + backLeg1);
+  ctx.fillRect(px + 8, py + 43 + by + backLeg1, 6, 3);
+  ctx.fillRect(px + 15, py + 32 + by, 5, 12 + backLeg2);
+  ctx.fillRect(px + 14, py + 43 + by + backLeg2, 6, 3);
+
+  // Body (reddish-brown)
+  ctx.fillStyle = '#cc4422';
+  ctx.fillRect(px + 6, py + 19 + by, 32, 15);
+  ctx.fillRect(px + 24, py + 17 + by, 12, 4);
+  // Dark belly
+  ctx.fillStyle = '#331100';
+  ctx.fillRect(px + 10, py + 30 + by, 24, 4);
+
+  // Front legs (dark brown/black)
+  const frontLeg1 = -legSwing;
+  const frontLeg2 = legSwing;
+  ctx.fillStyle = '#331100';
+  ctx.fillRect(px + 28, py + 32 + by, 5, 12 + frontLeg1);
+  ctx.fillRect(px + 27, py + 43 + by + frontLeg1, 6, 3);
+  ctx.fillRect(px + 34, py + 32 + by, 5, 12 + frontLeg2);
+  ctx.fillRect(px + 33, py + 43 + by + frontLeg2, 6, 3);
+
+  // Neck
+  ctx.fillStyle = '#cc4422';
+  ctx.fillRect(px + 34, py + 14 + by, 8, 10);
+
+  // Head (big, round, with distinctive white face markings)
+  ctx.fillStyle = '#cc4422';
+  ctx.fillRect(px + 30, py + 4 + by, 20, 17);
+  ctx.fillRect(px + 32, py + 2 + by, 16, 4);
+  // White face mask (bigger, rounder)
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(px + 32, py + 8 + by, 14, 8);
+  // Cheek patches (white extends to cheeks - wider)
+  ctx.fillRect(px + 29, py + 12 + by, 4, 4);
+  ctx.fillRect(px + 48, py + 12 + by, 4, 4);
+  // Dark eye patches (tear marks)
+  ctx.fillStyle = '#441100';
+  ctx.fillRect(px + 33, py + 7 + by, 5, 5);
+  ctx.fillRect(px + 41, py + 7 + by, 5, 5);
+  // Snout (lighter)
+  ctx.fillStyle = '#ffccaa';
+  ctx.fillRect(px + 45, py + 13 + by, 6, 5);
+  // Nose (dark)
+  ctx.fillStyle = '#222222';
+  ctx.fillRect(px + 47, py + 14 + by, 3, 2);
+  // Mouth line
+  ctx.fillStyle = '#882211';
+  ctx.fillRect(px + 46, py + 17 + by, 4, 1);
+
+  // Ears (large, tall, pointed, with white inner)
+  ctx.fillStyle = '#882211';
+  ctx.fillRect(px + 30, py - 4 + by, 8, 10);
+  ctx.fillRect(px + 42, py - 4 + by, 8, 10);
+  // Pointed ear tips
+  ctx.fillRect(px + 32, py - 6 + by, 4, 3);
+  ctx.fillRect(px + 44, py - 6 + by, 4, 3);
+  // Inner ear (white/cream)
+  ctx.fillStyle = '#ffccaa';
+  ctx.fillRect(px + 32, py - 2 + by, 5, 7);
+  ctx.fillRect(px + 44, py - 2 + by, 5, 7);
+
+  // Eyes (dark, beady)
+  ctx.fillStyle = '#222222';
+  ctx.fillRect(px + 35, py + 9 + by, 3, 3);
+  ctx.fillRect(px + 43, py + 9 + by, 3, 3);
+  // Eye shine
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(px + 35, py + 9 + by, 1, 1);
+  ctx.fillRect(px + 43, py + 9 + by, 1, 1);
+
+  // Whiskers (thin, delicate)
+  ctx.strokeStyle = '#ffddcc';
+  ctx.lineWidth = 0.5;
+  ctx.beginPath();
+  ctx.moveTo(px + 48, py + 15 + by); ctx.lineTo(px + 56, py + 13 + by);
+  ctx.moveTo(px + 48, py + 16 + by); ctx.lineTo(px + 57, py + 16 + by);
+  ctx.moveTo(px + 48, py + 17 + by); ctx.lineTo(px + 56, py + 19 + by);
+  ctx.stroke();
+}
+
+function _drawWalkingLion(ctx, px, py, by, legSwing) {
+  // Tail (long, with tuft at end)
+  const tailWag = Math.sin(Date.now() * 0.006) * 5;
+  const tailCurl = Math.sin(Date.now() * 0.004) * 3;
+  ctx.fillStyle = '#dda030';
+  ctx.fillRect(px + 2, py + 19 + by + tailWag, 5, 3);
+  ctx.fillRect(px - 3, py + 16 + by + tailWag * 1.2, 5, 3);
+  ctx.fillRect(px - 8, py + 13 + by + tailWag * 1.4 + tailCurl, 5, 3);
+  // Tail tuft (dark brown puff at tip)
+  ctx.fillStyle = '#aa6610';
+  ctx.fillRect(px - 13, py + 10 + by + tailWag * 1.5 + tailCurl, 7, 6);
+  ctx.fillStyle = '#bb7720';
+  ctx.fillRect(px - 12, py + 11 + by + tailWag * 1.5 + tailCurl, 5, 4);
+
+  // Back legs (thick, powerful)
+  const backLeg1 = legSwing;
+  const backLeg2 = -legSwing;
+  ctx.fillStyle = '#c89020';
+  ctx.fillRect(px + 8, py + 32 + by, 6, 12 + backLeg1);
+  ctx.fillStyle = '#b88018';
+  ctx.fillRect(px + 7, py + 43 + by + backLeg1, 7, 3);
+  ctx.fillStyle = '#d09820';
+  ctx.fillRect(px + 15, py + 32 + by, 6, 12 + backLeg2);
+  ctx.fillStyle = '#c08818';
+  ctx.fillRect(px + 14, py + 43 + by + backLeg2, 7, 3);
+
+  // Body (larger, muscular - lion is bigger)
+  ctx.fillStyle = '#dda030';
+  ctx.fillRect(px + 5, py + 18 + by, 34, 16);
+  ctx.fillRect(px + 22, py + 15 + by, 14, 5);
+  // Belly (lighter underside)
+  ctx.fillStyle = '#eec060';
+  ctx.fillRect(px + 9, py + 30 + by, 26, 4);
+
+  // Front legs (thick)
+  const frontLeg1 = -legSwing;
+  const frontLeg2 = legSwing;
+  ctx.fillStyle = '#dda030';
+  ctx.fillRect(px + 27, py + 32 + by, 6, 12 + frontLeg1);
+  ctx.fillStyle = '#c89020';
+  ctx.fillRect(px + 26, py + 43 + by + frontLeg1, 7, 3);
+  ctx.fillStyle = '#dda030';
+  ctx.fillRect(px + 34, py + 32 + by, 6, 12 + frontLeg2);
+  ctx.fillStyle = '#c89020';
+  ctx.fillRect(px + 33, py + 43 + by + frontLeg2, 7, 3);
+
+  // Neck (thick)
+  ctx.fillStyle = '#dda030';
+  ctx.fillRect(px + 33, py + 12 + by, 8, 12);
+
+  // Mane (large, surrounding head - drawn before head)
+  ctx.fillStyle = '#aa6610';
+  ctx.fillRect(px + 27, py + 2 + by, 24, 22);
+  // Mane detail layers
+  ctx.fillStyle = '#bb7720';
+  ctx.fillRect(px + 29, py + 4 + by, 20, 18);
+  // Mane outer tufts
+  ctx.fillStyle = '#996610';
+  ctx.fillRect(px + 26, py + 6 + by, 3, 14);
+  ctx.fillRect(px + 49, py + 6 + by, 3, 14);
+  ctx.fillRect(px + 30, py + 0 + by, 18, 4);
+  ctx.fillRect(px + 30, py + 22 + by, 18, 3);
+
+  // Head (on top of mane)
+  ctx.fillStyle = '#dda030';
+  ctx.fillRect(px + 32, py + 6 + by, 14, 14);
+  ctx.fillRect(px + 34, py + 5 + by, 10, 3);
+  // Snout (wider, lion-like)
+  ctx.fillStyle = '#eec060';
+  ctx.fillRect(px + 42, py + 13 + by, 7, 6);
+  // Nose (large, dark)
+  ctx.fillStyle = '#996620';
+  ctx.fillRect(px + 44, py + 14 + by, 4, 3);
+  // Mouth
+  ctx.fillStyle = '#885510';
+  ctx.fillRect(px + 44, py + 17 + by, 4, 1);
+
+  // Ears (rounded, small relative to mane)
+  ctx.fillStyle = '#c89020';
+  ctx.fillRect(px + 33, py + 2 + by, 5, 5);
+  ctx.fillRect(px + 41, py + 2 + by, 5, 5);
+  // Inner ear
+  ctx.fillStyle = '#eec0a0';
+  ctx.fillRect(px + 34, py + 3 + by, 3, 3);
+  ctx.fillRect(px + 42, py + 3 + by, 3, 3);
+
+  // Eyes (amber/brown, intense)
+  ctx.fillStyle = '#ffaa00';
+  ctx.fillRect(px + 36, py + 9 + by, 4, 3);
+  ctx.fillRect(px + 42, py + 9 + by, 4, 3);
+  // Pupils (round)
+  ctx.fillStyle = '#000000';
+  ctx.fillRect(px + 37, py + 9 + by, 2, 3);
+  ctx.fillRect(px + 43, py + 9 + by, 2, 3);
+  // Eye shine
+  ctx.fillStyle = '#ffddaa';
+  ctx.fillRect(px + 36, py + 9 + by, 1, 1);
+  ctx.fillRect(px + 42, py + 9 + by, 1, 1);
+
+  // Whiskers (subtle)
+  ctx.strokeStyle = '#eec880';
+  ctx.lineWidth = 0.5;
+  ctx.beginPath();
+  ctx.moveTo(px + 46, py + 16 + by); ctx.lineTo(px + 53, py + 14 + by);
+  ctx.moveTo(px + 46, py + 17 + by); ctx.lineTo(px + 54, py + 17 + by);
+  ctx.moveTo(px + 46, py + 18 + by); ctx.lineTo(px + 53, py + 20 + by);
+  ctx.stroke();
+}
+
+function _drawWalkingGator(ctx, px, py, by, legSwing) {
+  // Tail (long, thick, tapering - extends far behind)
+  const tailWag = Math.sin(Date.now() * 0.005) * 4;
+  ctx.fillStyle = '#44aa44';
+  ctx.fillRect(px - 2, py + 22 + by + tailWag, 8, 6);
+  ctx.fillRect(px - 10, py + 21 + by + tailWag * 1.2, 9, 6);
+  ctx.fillStyle = '#3a9a3a';
+  ctx.fillRect(px - 18, py + 22 + by + tailWag * 1.4, 9, 5);
+  ctx.fillRect(px - 24, py + 23 + by + tailWag * 1.5, 7, 4);
+  // Tail ridges
+  ctx.fillStyle = '#338833';
+  ctx.fillRect(px - 5, py + 20 + by + tailWag * 1.1, 4, 3);
+  ctx.fillRect(px - 13, py + 19 + by + tailWag * 1.3, 4, 3);
+  ctx.fillRect(px - 20, py + 20 + by + tailWag * 1.4, 3, 3);
+
+  // Back legs (short and stubby)
+  const backLeg1 = legSwing * 0.6; // gator legs move less
+  const backLeg2 = -legSwing * 0.6;
+  ctx.fillStyle = '#338833';
+  ctx.fillRect(px + 8, py + 34 + by, 6, 8 + backLeg1);
+  ctx.fillStyle = '#2d772d';
+  ctx.fillRect(px + 7, py + 41 + by + backLeg1, 8, 4);
+  // Back claws
+  ctx.fillStyle = '#cccc88';
+  ctx.fillRect(px + 6, py + 44 + by + backLeg1, 3, 2);
+  ctx.fillRect(px + 10, py + 44 + by + backLeg1, 3, 2);
+  ctx.fillRect(px + 14, py + 44 + by + backLeg1, 3, 2);
+
+  ctx.fillStyle = '#3a9a3a';
+  ctx.fillRect(px + 16, py + 34 + by, 6, 8 + backLeg2);
+  ctx.fillStyle = '#2d772d';
+  ctx.fillRect(px + 15, py + 41 + by + backLeg2, 8, 4);
+  // Claws
+  ctx.fillStyle = '#cccc88';
+  ctx.fillRect(px + 14, py + 44 + by + backLeg2, 3, 2);
+  ctx.fillRect(px + 18, py + 44 + by + backLeg2, 3, 2);
+  ctx.fillRect(px + 22, py + 44 + by + backLeg2, 3, 2);
+
+  // Body (long, low, armored)
+  ctx.fillStyle = '#44aa44';
+  ctx.fillRect(px + 4, py + 22 + by, 36, 14);
+  // Belly (lighter, yellowish-green)
+  ctx.fillStyle = '#88cc88';
+  ctx.fillRect(px + 8, py + 32 + by, 28, 4);
+  // Back ridges/scales (bumpy spine)
+  ctx.fillStyle = '#338833';
+  for (let i = 0; i < 6; i++) {
+    ctx.fillRect(px + 6 + i * 5, py + 19 + by, 4, 4);
+  }
+  // Scale texture on body
+  ctx.fillStyle = '#3a9a3a';
+  ctx.fillRect(px + 8, py + 24 + by, 3, 3);
+  ctx.fillRect(px + 14, py + 26 + by, 3, 3);
+  ctx.fillRect(px + 20, py + 24 + by, 3, 3);
+  ctx.fillRect(px + 26, py + 26 + by, 3, 3);
+  ctx.fillRect(px + 32, py + 24 + by, 3, 3);
+
+  // Front legs (short and stubby)
+  const frontLeg1 = -legSwing * 0.6;
+  const frontLeg2 = legSwing * 0.6;
+  ctx.fillStyle = '#44aa44';
+  ctx.fillRect(px + 28, py + 34 + by, 6, 8 + frontLeg1);
+  ctx.fillStyle = '#2d772d';
+  ctx.fillRect(px + 27, py + 41 + by + frontLeg1, 8, 4);
+  // Front claws
+  ctx.fillStyle = '#cccc88';
+  ctx.fillRect(px + 26, py + 44 + by + frontLeg1, 3, 2);
+  ctx.fillRect(px + 30, py + 44 + by + frontLeg1, 3, 2);
+  ctx.fillRect(px + 34, py + 44 + by + frontLeg1, 3, 2);
+
+  ctx.fillStyle = '#44aa44';
+  ctx.fillRect(px + 35, py + 34 + by, 6, 8 + frontLeg2);
+  ctx.fillStyle = '#2d772d';
+  ctx.fillRect(px + 34, py + 41 + by + frontLeg2, 8, 4);
+  // Claws
+  ctx.fillStyle = '#cccc88';
+  ctx.fillRect(px + 33, py + 44 + by + frontLeg2, 3, 2);
+  ctx.fillRect(px + 37, py + 44 + by + frontLeg2, 3, 2);
+  ctx.fillRect(px + 41, py + 44 + by + frontLeg2, 3, 2);
+
+  // Head/snout (long, extending forward)
+  ctx.fillStyle = '#44aa44';
+  ctx.fillRect(px + 34, py + 16 + by, 8, 10); // neck/base
+  // Upper jaw (long snout)
+  ctx.fillStyle = '#3a9a3a';
+  ctx.fillRect(px + 36, py + 12 + by, 18, 10);
+  // Snout top (lighter green)
+  ctx.fillStyle = '#44aa44';
+  ctx.fillRect(px + 38, py + 10 + by, 16, 6);
+  // Lower jaw
+  ctx.fillStyle = '#2d882d';
+  ctx.fillRect(px + 40, py + 22 + by, 14, 4);
+  // Nostrils (bumps on top of snout tip)
+  ctx.fillStyle = '#338833';
+  ctx.fillRect(px + 50, py + 9 + by, 4, 3);
+  ctx.fillRect(px + 52, py + 8 + by, 3, 2);
+  // Nostril holes
+  ctx.fillStyle = '#224422';
+  ctx.fillRect(px + 51, py + 10 + by, 2, 1);
+
+  // Teeth (visible along jaw line)
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(px + 42, py + 21 + by, 2, 2);
+  ctx.fillRect(px + 46, py + 21 + by, 2, 2);
+  ctx.fillRect(px + 50, py + 21 + by, 2, 2);
+  // Upper teeth
+  ctx.fillRect(px + 44, py + 20 + by, 2, 2);
+  ctx.fillRect(px + 48, py + 20 + by, 2, 2);
+  ctx.fillRect(px + 52, py + 20 + by, 2, 2);
+
+  // Eyes (yellow-green, on top of head, protruding)
+  ctx.fillStyle = '#44aa44';
+  ctx.fillRect(px + 40, py + 6 + by, 6, 6);
+  ctx.fillRect(px + 48, py + 6 + by, 6, 6);
+  ctx.fillStyle = '#ccff44';
+  ctx.fillRect(px + 41, py + 7 + by, 4, 4);
+  ctx.fillRect(px + 49, py + 7 + by, 4, 4);
+  // Vertical slit pupils
+  ctx.fillStyle = '#000000';
+  ctx.fillRect(px + 42, py + 7 + by, 2, 4);
+  ctx.fillRect(px + 50, py + 7 + by, 2, 4);
+  // Eye shine
+  ctx.fillStyle = '#eeff88';
+  ctx.fillRect(px + 41, py + 7 + by, 1, 1);
+  ctx.fillRect(px + 49, py + 7 + by, 1, 1);
+}
+
+// === ANIMAL IN RACE CAR ===
+function _drawAnimalInCar(ctx, animal, px, py, by) {
+  const tailWagCar = Math.sin(Date.now() * 0.005) * 4;
+
+  if (animal === 'leopard') {
+    // Body (torso)
+    ctx.fillStyle = '#e8a828';
+    ctx.fillRect(px + 14, py + 12 + by, 18, 14);
+    // Head
+    ctx.fillRect(px + 24, py + 2 + by, 14, 14);
+    // Ears
+    ctx.fillStyle = '#d09020';
+    ctx.fillRect(px + 26, py - 1 + by, 4, 4);
+    ctx.fillRect(px + 32, py - 1 + by, 4, 4);
+    // Eyes
+    ctx.fillStyle = '#00ff00';
+    ctx.fillRect(px + 31, py + 6 + by, 3, 3);
+    // Nose
+    ctx.fillStyle = '#ff6688';
+    ctx.fillRect(px + 35, py + 10 + by, 2, 2);
+    // Spots
+    ctx.fillStyle = '#c08018';
+    ctx.fillRect(px + 16, py + 14 + by, 2, 2);
+    ctx.fillRect(px + 20, py + 16 + by, 2, 2);
+    ctx.fillRect(px + 26, py + 15 + by, 2, 2);
+    // Paws on steering area
+    ctx.fillStyle = '#d09020';
+    ctx.fillRect(px + 28, py + 24 + by, 5, 4);
+    ctx.fillRect(px + 22, py + 24 + by, 5, 4);
+    // Tail sticking up behind
+    ctx.fillStyle = '#d09020';
+    ctx.fillRect(px + 10, py + 8 + by + tailWagCar, 3, 8);
+    ctx.fillStyle = '#1a1a1a';
+    ctx.fillRect(px + 9, py + 4 + by + tailWagCar, 3, 5);
+  } else if (animal === 'redPanda') {
+    // Body
+    ctx.fillStyle = '#cc4422';
+    ctx.fillRect(px + 14, py + 12 + by, 18, 14);
+    // Head (bigger)
+    ctx.fillRect(px + 22, py + 0 + by, 18, 16);
+    // White face mask
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(px + 24, py + 4 + by, 14, 8);
+    // Dark eye patches
+    ctx.fillStyle = '#441100';
+    ctx.fillRect(px + 25, py + 3 + by, 5, 5);
+    ctx.fillRect(px + 33, py + 3 + by, 5, 5);
+    // Eyes (dark)
+    ctx.fillStyle = '#222222';
+    ctx.fillRect(px + 27, py + 5 + by, 2, 2);
+    ctx.fillRect(px + 34, py + 5 + by, 2, 2);
+    // Ears (large, tall, pointed)
+    ctx.fillStyle = '#882211';
+    ctx.fillRect(px + 23, py - 5 + by, 7, 8);
+    ctx.fillRect(px + 33, py - 5 + by, 7, 8);
+    // Pointed tips
+    ctx.fillRect(px + 25, py - 7 + by, 3, 3);
+    ctx.fillRect(px + 35, py - 7 + by, 3, 3);
+    ctx.fillStyle = '#ffccaa';
+    ctx.fillRect(px + 25, py - 3 + by, 4, 5);
+    ctx.fillRect(px + 35, py - 3 + by, 4, 5);
+    // Nose
+    ctx.fillStyle = '#222222';
+    ctx.fillRect(px + 37, py + 9 + by, 2, 2);
+    // Paws
+    ctx.fillStyle = '#331100';
+    ctx.fillRect(px + 28, py + 24 + by, 5, 4);
+    ctx.fillRect(px + 22, py + 24 + by, 5, 4);
+    // Bushy striped tail sticking up (longer, bushier)
+    ctx.fillStyle = '#cc4422';
+    ctx.fillRect(px + 7, py + 2 + by + tailWagCar, 6, 14);
+    ctx.fillStyle = '#ffccaa';
+    ctx.fillRect(px + 7, py + 4 + by + tailWagCar, 6, 3);
+    ctx.fillRect(px + 7, py + 9 + by + tailWagCar, 6, 3);
+    // Tail tip
+    ctx.fillStyle = '#882211';
+    ctx.fillRect(px + 7, py - 1 + by + tailWagCar, 6, 4);
+  } else if (animal === 'lion') {
+    // Body
+    ctx.fillStyle = '#dda030';
+    ctx.fillRect(px + 14, py + 12 + by, 18, 14);
+    // Mane (behind head)
+    ctx.fillStyle = '#aa6610';
+    ctx.fillRect(px + 22, py - 2 + by, 20, 20);
+    ctx.fillStyle = '#bb7720';
+    ctx.fillRect(px + 24, py + 0 + by, 16, 16);
+    // Head
+    ctx.fillStyle = '#dda030';
+    ctx.fillRect(px + 26, py + 2 + by, 12, 12);
+    // Eyes (amber)
+    ctx.fillStyle = '#ffaa00';
+    ctx.fillRect(px + 31, py + 6 + by, 3, 2);
+    ctx.fillStyle = '#000000';
+    ctx.fillRect(px + 32, py + 6 + by, 1, 2);
+    // Nose
+    ctx.fillStyle = '#996620';
+    ctx.fillRect(px + 35, py + 9 + by, 3, 2);
+    // Mouth
+    ctx.fillStyle = '#885510';
+    ctx.fillRect(px + 35, py + 11 + by, 3, 1);
+    // Ears (small, in mane)
+    ctx.fillStyle = '#c89020';
+    ctx.fillRect(px + 27, py - 1 + by, 4, 4);
+    ctx.fillRect(px + 34, py - 1 + by, 4, 4);
+    // Paws
+    ctx.fillStyle = '#c89020';
+    ctx.fillRect(px + 28, py + 24 + by, 5, 4);
+    ctx.fillRect(px + 22, py + 24 + by, 5, 4);
+    // Tail with tuft
+    ctx.fillStyle = '#dda030';
+    ctx.fillRect(px + 10, py + 8 + by + tailWagCar, 3, 8);
+    ctx.fillStyle = '#aa6610';
+    ctx.fillRect(px + 8, py + 4 + by + tailWagCar, 5, 5);
+  } else if (animal === 'gator') {
+    // Body (green)
+    ctx.fillStyle = '#44aa44';
+    ctx.fillRect(px + 14, py + 12 + by, 18, 14);
+    // Scale texture
+    ctx.fillStyle = '#3a9a3a';
+    ctx.fillRect(px + 16, py + 14 + by, 3, 3);
+    ctx.fillRect(px + 22, py + 16 + by, 3, 3);
+    // Head/snout (long, extending forward)
+    ctx.fillStyle = '#44aa44';
+    ctx.fillRect(px + 24, py + 2 + by, 10, 12);
+    // Long snout extending right
+    ctx.fillStyle = '#3a9a3a';
+    ctx.fillRect(px + 32, py + 4 + by, 10, 8);
+    // Jaw line
+    ctx.fillStyle = '#2d882d';
+    ctx.fillRect(px + 34, py + 10 + by, 8, 3);
+    // Teeth
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(px + 35, py + 9 + by, 2, 2);
+    ctx.fillRect(px + 39, py + 9 + by, 2, 2);
+    // Eyes (protruding, on top)
+    ctx.fillStyle = '#ccff44';
+    ctx.fillRect(px + 28, py + 0 + by, 4, 4);
+    ctx.fillRect(px + 34, py + 0 + by, 4, 4);
+    ctx.fillStyle = '#000000';
+    ctx.fillRect(px + 29, py + 0 + by, 2, 4);
+    ctx.fillRect(px + 35, py + 0 + by, 2, 4);
+    // Nostril bumps
+    ctx.fillStyle = '#338833';
+    ctx.fillRect(px + 40, py + 4 + by, 3, 2);
+    // Paws/claws
+    ctx.fillStyle = '#338833';
+    ctx.fillRect(px + 28, py + 24 + by, 5, 4);
+    ctx.fillRect(px + 22, py + 24 + by, 5, 4);
+    ctx.fillStyle = '#cccc88';
+    ctx.fillRect(px + 28, py + 27 + by, 2, 2);
+    ctx.fillRect(px + 22, py + 27 + by, 2, 2);
+    // Tail (thick, scaly)
+    ctx.fillStyle = '#44aa44';
+    ctx.fillRect(px + 8, py + 8 + by + tailWagCar, 4, 10);
+    ctx.fillStyle = '#338833';
+    ctx.fillRect(px + 7, py + 6 + by + tailWagCar, 3, 4);
+    // Tail ridges
+    ctx.fillRect(px + 9, py + 7 + by + tailWagCar, 2, 2);
+    ctx.fillRect(px + 9, py + 11 + by + tailWagCar, 2, 2);
+    ctx.fillRect(px + 9, py + 15 + by + tailWagCar, 2, 2);
+  }
+}
+
+// === ANIMAL IN LITTER BOX ===
+function _drawAnimalInLitterBox(ctx, animal, px, py, by) {
+  if (animal === 'leopard') {
+    // Head
+    ctx.fillStyle = '#e8a828';
+    ctx.fillRect(px + 24, py + 6 + by, 14, 14);
+    // Ears
+    ctx.fillStyle = '#d09020';
+    ctx.fillRect(px + 26, py + 3 + by, 4, 4);
+    ctx.fillRect(px + 32, py + 3 + by, 4, 4);
+    // Eyes
+    ctx.fillStyle = '#00ff00';
+    ctx.fillRect(px + 31, py + 10 + by, 3, 3);
+    // Nose
+    ctx.fillStyle = '#ff6688';
+    ctx.fillRect(px + 35, py + 14 + by, 2, 2);
+    // Body visible above box
+    ctx.fillStyle = '#e8a828';
+    ctx.fillRect(px + 14, py + 14 + by, 18, 10);
+    // Spots
+    ctx.fillStyle = '#c08018';
+    ctx.fillRect(px + 16, py + 16 + by, 2, 2);
+    ctx.fillRect(px + 22, py + 18 + by, 2, 2);
+    // Paws gripping box rim
+    ctx.fillStyle = '#d09020';
+    ctx.fillRect(px + 12, py + 22 + by, 5, 5);
+    ctx.fillRect(px + 28, py + 22 + by, 5, 5);
+  } else if (animal === 'redPanda') {
+    // Head (bigger)
+    ctx.fillStyle = '#cc4422';
+    ctx.fillRect(px + 22, py + 4 + by, 18, 16);
+    // White face
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(px + 24, py + 8 + by, 14, 8);
+    // Eye patches
+    ctx.fillStyle = '#441100';
+    ctx.fillRect(px + 25, py + 7 + by, 5, 5);
+    ctx.fillRect(px + 33, py + 7 + by, 5, 5);
+    // Eyes
+    ctx.fillStyle = '#222222';
+    ctx.fillRect(px + 27, py + 9 + by, 2, 2);
+    ctx.fillRect(px + 34, py + 9 + by, 2, 2);
+    // Ears (large, tall, pointed)
+    ctx.fillStyle = '#882211';
+    ctx.fillRect(px + 23, py - 1 + by, 7, 8);
+    ctx.fillRect(px + 33, py - 1 + by, 7, 8);
+    // Pointed tips
+    ctx.fillRect(px + 25, py - 3 + by, 3, 3);
+    ctx.fillRect(px + 35, py - 3 + by, 3, 3);
+    ctx.fillStyle = '#ffccaa';
+    ctx.fillRect(px + 25, py + 1 + by, 4, 5);
+    ctx.fillRect(px + 35, py + 1 + by, 4, 5);
+    // Nose
+    ctx.fillStyle = '#222222';
+    ctx.fillRect(px + 37, py + 13 + by, 2, 2);
+    // Body
+    ctx.fillStyle = '#cc4422';
+    ctx.fillRect(px + 14, py + 14 + by, 18, 10);
+    // Dark belly
+    ctx.fillStyle = '#331100';
+    ctx.fillRect(px + 16, py + 20 + by, 14, 4);
+    // Paws
+    ctx.fillStyle = '#331100';
+    ctx.fillRect(px + 12, py + 22 + by, 5, 5);
+    ctx.fillRect(px + 28, py + 22 + by, 5, 5);
+  } else if (animal === 'lion') {
+    // Mane (behind head)
+    ctx.fillStyle = '#aa6610';
+    ctx.fillRect(px + 20, py + 2 + by, 22, 18);
+    ctx.fillStyle = '#bb7720';
+    ctx.fillRect(px + 22, py + 4 + by, 18, 14);
+    // Head
+    ctx.fillStyle = '#dda030';
+    ctx.fillRect(px + 24, py + 6 + by, 14, 14);
+    // Ears
+    ctx.fillStyle = '#c89020';
+    ctx.fillRect(px + 26, py + 2 + by, 4, 4);
+    ctx.fillRect(px + 33, py + 2 + by, 4, 4);
+    // Eyes (amber)
+    ctx.fillStyle = '#ffaa00';
+    ctx.fillRect(px + 31, py + 10 + by, 3, 2);
+    ctx.fillStyle = '#000000';
+    ctx.fillRect(px + 32, py + 10 + by, 1, 2);
+    // Nose
+    ctx.fillStyle = '#996620';
+    ctx.fillRect(px + 35, py + 13 + by, 3, 2);
+    // Body
+    ctx.fillStyle = '#dda030';
+    ctx.fillRect(px + 14, py + 14 + by, 18, 10);
+    // Paws
+    ctx.fillStyle = '#c89020';
+    ctx.fillRect(px + 12, py + 22 + by, 5, 5);
+    ctx.fillRect(px + 28, py + 22 + by, 5, 5);
+  } else if (animal === 'gator') {
+    // Head/snout (long)
+    ctx.fillStyle = '#44aa44';
+    ctx.fillRect(px + 24, py + 6 + by, 10, 12);
+    // Snout extending right
+    ctx.fillStyle = '#3a9a3a';
+    ctx.fillRect(px + 32, py + 8 + by, 10, 8);
+    // Jaw
+    ctx.fillStyle = '#2d882d';
+    ctx.fillRect(px + 34, py + 14 + by, 8, 3);
+    // Teeth
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(px + 35, py + 13 + by, 2, 2);
+    ctx.fillRect(px + 39, py + 13 + by, 2, 2);
+    // Eyes (protruding on top)
+    ctx.fillStyle = '#ccff44';
+    ctx.fillRect(px + 27, py + 3 + by, 4, 4);
+    ctx.fillRect(px + 33, py + 3 + by, 4, 4);
+    ctx.fillStyle = '#000000';
+    ctx.fillRect(px + 28, py + 3 + by, 2, 4);
+    ctx.fillRect(px + 34, py + 3 + by, 2, 4);
+    // Body visible above box
+    ctx.fillStyle = '#44aa44';
+    ctx.fillRect(px + 14, py + 14 + by, 18, 10);
+    // Scales
+    ctx.fillStyle = '#338833';
+    ctx.fillRect(px + 16, py + 15 + by, 3, 3);
+    ctx.fillRect(px + 22, py + 17 + by, 3, 3);
+    // Paws/claws gripping box
+    ctx.fillStyle = '#338833';
+    ctx.fillRect(px + 12, py + 22 + by, 5, 5);
+    ctx.fillRect(px + 28, py + 22 + by, 5, 5);
+    // Claws visible
+    ctx.fillStyle = '#cccc88';
+    ctx.fillRect(px + 12, py + 26 + by, 2, 2);
+    ctx.fillRect(px + 28, py + 26 + by, 2, 2);
+  }
+}
+
 function _drawAnimalPortrait(id, px, py, pw, ph, color, t) {
   const cx = px + pw / 2;
   const cy = py + ph / 2;
@@ -2614,38 +3411,45 @@ function _drawAnimalPortrait(id, px, py, pw, ph, color, t) {
     // Reddish-brown body
     ctx.fillStyle = color;
     ctx.fillRect(cx - 18, cy - 16, 36, 32); // body
-    ctx.fillRect(cx - 12, cy - 28, 24, 16); // head
-    // Ears (big and rounded)
+    ctx.fillRect(cx - 16, cy - 32, 32, 20); // head (bigger)
+    ctx.fillRect(cx - 14, cy - 34, 28, 4); // head top
+    // Ears (large, tall, pointed)
     ctx.fillStyle = '#882211';
-    ctx.fillRect(cx - 14, cy - 34, 8, 10);
-    ctx.fillRect(cx + 6, cy - 34, 8, 10);
+    ctx.fillRect(cx - 18, cy - 42, 10, 14);
+    ctx.fillRect(cx + 8, cy - 42, 10, 14);
+    // Pointed ear tips
+    ctx.fillRect(cx - 16, cy - 46, 6, 5);
+    ctx.fillRect(cx + 10, cy - 46, 6, 5);
     // Inner ears
     ctx.fillStyle = '#ffccaa';
-    ctx.fillRect(cx - 12, cy - 32, 4, 6);
-    ctx.fillRect(cx + 8, cy - 32, 4, 6);
-    // Face markings - white
+    ctx.fillRect(cx - 15, cy - 40, 6, 9);
+    ctx.fillRect(cx + 10, cy - 40, 6, 9);
+    // Face markings - white (bigger)
     ctx.fillStyle = '#ffffff';
-    ctx.fillRect(cx - 10, cy - 26, 20, 8);
+    ctx.fillRect(cx - 13, cy - 28, 26, 10);
     // Eye patches - dark
     ctx.fillStyle = '#441100';
-    ctx.fillRect(cx - 8, cy - 25, 6, 5);
-    ctx.fillRect(cx + 2, cy - 25, 6, 5);
+    ctx.fillRect(cx - 10, cy - 27, 8, 6);
+    ctx.fillRect(cx + 2, cy - 27, 8, 6);
     // Eyes
     ctx.fillStyle = '#ffffff';
-    ctx.fillRect(cx - 6, cy - 24, 3, 3);
-    ctx.fillRect(cx + 4, cy - 24, 3, 3);
+    ctx.fillRect(cx - 8, cy - 26, 4, 4);
+    ctx.fillRect(cx + 4, cy - 26, 4, 4);
     ctx.fillStyle = '#000000';
-    ctx.fillRect(cx - 5, cy - 23, 2, 2);
-    ctx.fillRect(cx + 5, cy - 23, 2, 2);
+    ctx.fillRect(cx - 6, cy - 25, 3, 3);
+    ctx.fillRect(cx + 5, cy - 25, 3, 3);
     // Nose
     ctx.fillStyle = '#222222';
     ctx.fillRect(cx - 2, cy - 18, 4, 3);
-    // Striped tail (signature red panda feature)
+    // Striped tail (long, bushy, straight - signature red panda feature)
     ctx.fillStyle = color;
-    ctx.fillRect(cx + 18, cy - 4, 18, 8);
+    ctx.fillRect(cx + 18, cy - 6, 24, 10);
     ctx.fillStyle = '#ffccaa';
-    ctx.fillRect(cx + 22, cy - 4, 4, 8);
-    ctx.fillRect(cx + 30, cy - 4, 4, 8);
+    ctx.fillRect(cx + 24, cy - 6, 5, 10);
+    ctx.fillRect(cx + 33, cy - 6, 5, 10);
+    // Tail tip
+    ctx.fillStyle = '#882211';
+    ctx.fillRect(cx + 40, cy - 7, 6, 11);
     // Belly
     ctx.fillStyle = '#331100';
     ctx.fillRect(cx - 12, cy + 2, 24, 12);
@@ -2854,8 +3658,49 @@ export function drawAlly(ally) {
 
     ctx.restore();
 
+  } else if (ally.type === 'leopard' || ally.type === 'redPanda' || ally.type === 'lion' || ally.type === 'gator') {
+    // === ALLY ANIMAL - reuses the same drawing as the player walking functions ===
+    ctx.save();
+    ctx.translate(px + ally.w / 2, py + ally.h);
+    if (f === -1) { ctx.scale(-1, 1); }
+
+    const running = Math.abs(ally.vx) > 0.5;
+    const allyLegTime = Date.now() * (running ? 0.012 : 0.004);
+    const bodyBob = running ? Math.sin(allyLegTime * 2) * 1.5 : 0;
+
+    // Scale to fit ally bounding box: player art is drawn in a ~48x48 space,
+    // ally box is 43x54. We use a scale factor to map player art to ally size.
+    const allyScale = ally.w / 48; // 43/48 = ~0.9 (90% of player size)
+    ctx.scale(allyScale, allyScale);
+
+    // Position the origin so the player drawing functions' coordinate space
+    // maps correctly: the walking functions draw from (px, py) where the body
+    // center-x is at px+24 and the bottom of the feet is at ~py+48.
+    // From our current origin (bottom-center in scaled space), we need:
+    //   px + 24 = 0  =>  px = -24
+    //   py + 48 = 0  =>  py = -48
+    _drawWalkingAnimal(ctx, ally.type, -24, -48, bodyBob, ally.vx);
+
+    // Hurt flash: draw a bright white overlay on the animal's bounding area
+    if (hurtFlash) {
+      ctx.fillStyle = 'rgba(255,255,255,0.7)';
+      ctx.fillRect(-30, -56, 65, 60);
+    }
+
+    // Attack effect (positioned relative to the head/mouth area in scaled space)
+    if (ally.attackTimer > 0) {
+      ctx.fillStyle = `rgba(255,136,68,${ally.attackTimer / 10})`;
+      if (ally.type === 'gator') {
+        ctx.fillRect(32, -48 + bodyBob, 12, 10);
+      } else {
+        ctx.fillRect(26, -48 + bodyBob, 10, 10);
+      }
+    }
+
+    ctx.restore();
+
   } else {
-    // === OTHER ANIMAL ALLIES ===
+    // === FALLBACK for any unknown ally type ===
     ctx.save();
     ctx.translate(px + ally.w / 2, py + ally.h);
     if (f === -1) { ctx.scale(-1, 1); }
@@ -2864,102 +3709,20 @@ export function drawAlly(ally) {
     const legTime = Date.now() * (running ? 0.012 : 0.004);
     const legSwing = running ? Math.sin(legTime) * 6 : 0;
 
-    // Color based on type
-    let bodyColor = '#aaaaaa';
-    let darkColor = '#888888';
-    let lightColor = '#cccccc';
-    let eyeColor = '#00ff00';
-
-    if (ally.type === 'leopard') {
-      bodyColor = '#e8a828'; darkColor = '#c08018'; lightColor = '#f0c858'; eyeColor = '#00dd00';
-    } else if (ally.type === 'redPanda') {
-      bodyColor = '#cc4422'; darkColor = '#882211'; lightColor = '#ffccaa'; eyeColor = '#222222';
-    } else if (ally.type === 'lion') {
-      bodyColor = '#dda030'; darkColor = '#aa6610'; lightColor = '#eec060'; eyeColor = '#664400';
-    } else if (ally.type === 'gator') {
-      bodyColor = '#44aa44'; darkColor = '#338833'; lightColor = '#88cc88'; eyeColor = '#ccff44';
-    }
-
-    // Tail (behind body)
-    ctx.fillStyle = hurtFlash ? '#ffffff' : darkColor;
-    ctx.fillRect(-16, -28, 6, 4);
-    ctx.fillRect(-20, -32, 5, 6);
-
-    // Back legs
-    ctx.fillStyle = hurtFlash ? '#ffffff' : darkColor;
-    ctx.fillRect(-12, -16, 5, 12 + legSwing);
-    ctx.fillRect(-6, -16, 5, 12 - legSwing);
-
-    // Body
-    ctx.fillStyle = hurtFlash ? '#ffffff' : bodyColor;
-    ctx.fillRect(-14, -32, 28, 18);
-    // Belly
-    ctx.fillStyle = hurtFlash ? '#ffffff' : lightColor;
-    ctx.fillRect(-10, -18, 20, 4);
-
-    // Front legs
-    ctx.fillStyle = hurtFlash ? '#ffffff' : bodyColor;
-    ctx.fillRect(6, -16, 5, 12 - legSwing);
-    ctx.fillRect(12, -16, 5, 12 + legSwing);
-
-    // Neck
-    ctx.fillStyle = hurtFlash ? '#ffffff' : bodyColor;
-    ctx.fillRect(10, -40, 6, 12);
-
-    // Head
-    ctx.fillStyle = hurtFlash ? '#ffffff' : bodyColor;
-    ctx.fillRect(8, -48, 14, 12);
-
-    // Ears
-    ctx.fillStyle = hurtFlash ? '#ffffff' : darkColor;
-    ctx.fillRect(9, -52, 4, 5);
-    ctx.fillRect(16, -52, 4, 5);
-
-    // Eyes
-    ctx.fillStyle = eyeColor;
-    ctx.fillRect(16, -46, 3, 3);
+    ctx.fillStyle = hurtFlash ? '#ffffff' : '#aaaaaa';
+    ctx.fillRect(-14, -28, 28, 16);
+    ctx.fillRect(-12, -14, 5, 14 + legSwing);
+    ctx.fillRect(-6, -14, 5, 14 - legSwing);
+    ctx.fillRect(8, -14, 5, 14 - legSwing);
+    ctx.fillRect(12, -14, 5, 14 + legSwing);
+    ctx.fillRect(10, -34, 8, 8);
+    ctx.fillRect(8, -40, 14, 10);
     ctx.fillStyle = '#000000';
-    ctx.fillRect(17, -45, 2, 2);
+    ctx.fillRect(17, -38, 2, 2);
 
-    // Nose
-    ctx.fillStyle = darkColor;
-    ctx.fillRect(20, -42, 2, 2);
-
-    // Lion mane
-    if (ally.type === 'lion') {
-      ctx.fillStyle = '#aa6610';
-      ctx.fillRect(6, -52, 18, 4);
-      ctx.fillRect(4, -48, 6, 12);
-      ctx.fillRect(22, -48, 4, 10);
-    }
-
-    // Gator snout extension
-    if (ally.type === 'gator') {
-      ctx.fillStyle = '#3a9a3a';
-      ctx.fillRect(20, -46, 8, 8);
-      ctx.fillStyle = '#ffffff';
-      ctx.fillRect(22, -40, 2, 2);
-      ctx.fillRect(25, -40, 2, 2);
-    }
-
-    // Red panda stripes on tail
-    if (ally.type === 'redPanda') {
-      ctx.fillStyle = '#ffccaa';
-      ctx.fillRect(-18, -32, 2, 6);
-    }
-
-    // Spots for leopard
-    if (ally.type === 'leopard') {
-      ctx.fillStyle = '#c08018';
-      ctx.fillRect(-8, -28, 3, 3);
-      ctx.fillRect(0, -26, 3, 2);
-      ctx.fillRect(6, -28, 2, 3);
-    }
-
-    // Attack effect
     if (ally.attackTimer > 0) {
       ctx.fillStyle = `rgba(255,136,68,${ally.attackTimer / 10})`;
-      ctx.fillRect(22, -46, 10, 10);
+      ctx.fillRect(22, -40, 10, 10);
     }
 
     ctx.restore();

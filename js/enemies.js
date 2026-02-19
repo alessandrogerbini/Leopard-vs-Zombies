@@ -69,6 +69,7 @@ export function updateZombieAI() {
   state.zombies.forEach(z => {
     if (!z.alive) return;
     if (z.hurt > 0) { z.hurt--; }
+    if (z._carHitCooldown > 0) z._carHitCooldown--;
 
     const dist = player.x - z.x;
     const absDist = Math.abs(dist);
@@ -92,7 +93,9 @@ export function updateZombieAI() {
       z.attackTimer += 2;
       if (z.attackTimer > 20) {
         if (player.invincible <= 0) {
-          const dmg = z.type === 'big' ? 19 : 11;
+          let dmg = z.type === 'big' ? 19 : 11;
+          // Race car armor: 80% damage reduction
+          if (player.powerups.raceCar > 0) dmg = Math.max(1, Math.floor(dmg * 0.2));
           player.hp -= dmg;
           player.invincible = 30;
           player.knockbackX = z.facing * 8;
@@ -128,6 +131,7 @@ export function updateBossAI() {
   if (!boss || !boss.alive || state.gameState !== 'bossFight') return;
 
   if (boss.hurt > 0) boss.hurt--;
+  if (boss._carHitCooldown > 0) boss._carHitCooldown--;
 
   const dist = player.x - boss.x;
   const absDist = Math.abs(dist);
@@ -291,7 +295,9 @@ export function updateBossAI() {
     const atkSpeed = p2 ? 20 : 30;
     if (boss.attackTimer > atkSpeed) {
       if (player.invincible <= 0) {
-        const dmg = boss.isCharging ? 35 : 22;
+        let dmg = boss.isCharging ? 35 : 22;
+        // Race car armor: 80% damage reduction
+        if (player.powerups.raceCar > 0) dmg = Math.max(1, Math.floor(dmg * 0.2));
         player.hp -= dmg;
         player.invincible = 40;
         player.knockbackX = boss.facing * 12;
@@ -326,7 +332,7 @@ export function updateBossAI() {
 
 export function spawnAlly(type, x, y, invulnerable) {
   const ally = {
-    x: x, y: y, w: type === 'horse' ? 52 : 36, h: type === 'horse' ? 56 : 48,
+    x: x, y: y, w: type === 'horse' ? 52 : 43, h: type === 'horse' ? 56 : 54,
     vx: 0, vy: 0,
     hp: 100, maxHp: 100,
     lives: invulnerable ? 999 : 3,

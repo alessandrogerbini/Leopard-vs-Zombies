@@ -593,6 +593,52 @@ function update() {
         }
       }
     }
+
+    // Race car contact damage: run over enemies on collision
+    const carBox = { x: player.x - 5, y: player.y, w: player.w + 10, h: player.h };
+    const carDmg = 30;
+    const carCooldownFrames = 20; // frames between hits on the same enemy
+    state.zombies.forEach(z => {
+      if (!z.alive) return;
+      if (rectCollide(carBox, z)) {
+        if (!z._carHitCooldown || z._carHitCooldown <= 0) {
+          z.hp -= carDmg; z.hurt = 10;
+          z.vx = player.facing * 10; z.vy = -6;
+          z._carHitCooldown = carCooldownFrames;
+          spawnParticles(z.x + z.w/2, z.y + z.h/2, '#cc2222', 10, 8);
+          spawnFloatingText(z.x + z.w/2, z.y - 10, `-${carDmg}`, '#cc2222');
+          state.screenShake = 6;
+          if (z.hp <= 0) {
+            z.alive = false;
+            player.score += z.type === 'big' ? 200 : 100;
+            spawnParticles(z.x + z.w/2, z.y + z.h/2, '#ff4400', 20, 12);
+            spawnFloatingText(z.x + z.w/2, z.y - 30, z.type === 'big' ? '+200' : '+100', '#ffff44');
+          }
+        }
+      }
+    });
+    // Contact damage to boss
+    if (state.boss && state.boss.alive) {
+      const boss = state.boss;
+      if (rectCollide(carBox, boss)) {
+        if (!boss._carHitCooldown || boss._carHitCooldown <= 0) {
+          boss.hp -= carDmg; boss.hurt = 10;
+          boss.vx = player.facing * 5;
+          boss._carHitCooldown = carCooldownFrames;
+          spawnParticles(boss.x + boss.w/2, boss.y + boss.h/2, '#cc2222', 12, 9);
+          spawnFloatingText(boss.x + boss.w/2, boss.y - 10, `-${carDmg}`, '#cc2222');
+          state.screenShake = 8;
+          if (boss.hp <= 0) {
+            boss.alive = false; player.score += 1000;
+            state.screenShake = 20; state.screenFlash = 15;
+            spawnParticles(boss.x + boss.w/2, boss.y + boss.h/2, '#ff8800', 40, 15);
+            spawnFloatingText(boss.x + boss.w/2, boss.y - 40, 'BOSS DEFEATED! +1000', '#ffff44');
+            state.diamond = { x: state.levelData.width - 150, y: GROUND_Y - 30, collected: false, glow: 0 };
+            spawnFloatingText(state.levelData.width - 150, GROUND_Y - 60, 'THE LEOPARD DIAMOND APPEARS!', '#00ffff');
+          }
+        }
+      }
+    }
   }
 
   // AI updates
@@ -656,14 +702,17 @@ function update() {
         if (!proj.hitPlayer && player.invincible <= 0) {
           const impactDist = Math.abs(player.x + player.w / 2 - proj.x);
           if (impactDist < 40 && player.y + player.h >= GROUND_Y - 10) {
-            player.hp -= proj.damage;
+            let mortarDmg = proj.damage;
+            // Race car armor: 80% damage reduction
+            if (player.powerups.raceCar > 0) mortarDmg = Math.max(1, Math.floor(mortarDmg * 0.2));
+            player.hp -= mortarDmg;
             player.invincible = 35;
             player.knockbackX = (player.x > proj.x ? 1 : -1) * 8;
             player.vy = -5;
             state.screenShake = 8;
             state.screenFlash = 5;
             spawnParticles(player.x + player.w / 2, player.y + player.h / 2, '#ff0000', 8, 6);
-            spawnFloatingText(player.x + player.w / 2, player.y - 10, `-${proj.damage}`, '#ff4444');
+            spawnFloatingText(player.x + player.w / 2, player.y - 10, `-${mortarDmg}`, '#ff4444');
             proj.hitPlayer = true;
           }
         }
@@ -719,14 +768,17 @@ function update() {
       const skullBox = { x: proj.x - 10, y: proj.y - 10, w: 20, h: 20 };
       const plBox = { x: player.x, y: player.y, w: player.w, h: player.h };
       if (rectCollide(skullBox, plBox)) {
-        player.hp -= proj.damage;
+        let skullDmg = proj.damage;
+        // Race car armor: 80% damage reduction
+        if (player.powerups.raceCar > 0) skullDmg = Math.max(1, Math.floor(skullDmg * 0.2));
+        player.hp -= skullDmg;
         player.invincible = 35;
         player.knockbackX = (proj.vx > 0 ? 1 : -1) * 10;
         player.vy = -5;
         state.screenShake = 10;
         state.screenFlash = 6;
         spawnParticles(player.x + player.w / 2, player.y + player.h / 2, '#44ff44', 10, 7);
-        spawnFloatingText(player.x + player.w / 2, player.y - 10, `-${proj.damage}`, '#ff4444');
+        spawnFloatingText(player.x + player.w / 2, player.y - 10, `-${skullDmg}`, '#ff4444');
         proj.hitPlayer = true;
         return false; // skull consumed on hit
       }
@@ -738,7 +790,10 @@ function update() {
       const playerDist = Math.sqrt(dx * dx + dy * dy);
       // Hit if player is within the expanding ring (between inner and outer edge)
       if (playerDist < proj.radius + 20 && playerDist > proj.radius - 30) {
-        player.hp -= proj.damage;
+        let aoeDmg = proj.damage;
+        // Race car armor: 80% damage reduction
+        if (player.powerups.raceCar > 0) aoeDmg = Math.max(1, Math.floor(aoeDmg * 0.2));
+        player.hp -= aoeDmg;
         player.invincible = 35;
         const pushDir = dx !== 0 ? (dx > 0 ? 1 : -1) : 1;
         player.knockbackX = pushDir * 10;
@@ -746,7 +801,7 @@ function update() {
         state.screenShake = 10;
         state.screenFlash = 6;
         spawnParticles(player.x + player.w / 2, player.y + player.h / 2, '#88ff88', 10, 7);
-        spawnFloatingText(player.x + player.w / 2, player.y - 10, `-${proj.damage}`, '#ff4444');
+        spawnFloatingText(player.x + player.w / 2, player.y - 10, `-${aoeDmg}`, '#ff4444');
         proj.hitPlayer = true;
       }
     }
