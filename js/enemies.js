@@ -1,6 +1,6 @@
 // Zombie spawning, zombie AI, boss spawning, boss AI
-import { GRAVITY, GROUND_Y, state, player, POWERUP_TYPES, POWERUP_DURATION } from './state.js';
-import { rectCollide, spawnParticles, spawnFloatingText } from './utils.js';
+import { GRAVITY, GROUND_Y, state, player, POWERUP_TYPES, POWERUP_DURATION, DIFFICULTY_SETTINGS } from './state.js';
+import { rectCollide, spawnParticles, spawnFloatingText, addScore } from './utils.js';
 
 export function spawnZombies() {
   state.zombies = [];
@@ -32,11 +32,12 @@ export function spawnZombies() {
 
 export function spawnBoss() {
   const ld = state.levelData;
+  const bossHp = state.currentLevel === 3 ? 600 : 300;
   state.boss = {
     x: ld.width - 400, y: GROUND_Y - 20,
     w: 70, h: 90,
     vx: 0, vy: 0,
-    hp: 300, maxHp: 300,
+    hp: bossHp, maxHp: bossHp,
     speed: 1.0,
     onGround: false,
     facing: -1,
@@ -332,10 +333,11 @@ export function updateBossAI() {
 
 export function spawnAlly(type, x, y, invulnerable) {
   const ally = {
-    x: x, y: y, w: type === 'horse' ? 52 : 43, h: type === 'horse' ? 56 : 54,
+    x: x, y: y, w: type === 'horse' ? 83 : 69, h: type === 'horse' ? 90 : 86,
     vx: 0, vy: 0,
-    hp: 100, maxHp: 100,
-    lives: invulnerable ? 999 : 3,
+    hp: player.maxHp,
+    maxHp: player.maxHp,
+    lives: 3,
     speed: type === 'horse' ? 2.5 : 1.8,
     damage: type === 'horse' ? 20 : 15,
     onGround: false,
@@ -345,7 +347,7 @@ export function spawnAlly(type, x, y, invulnerable) {
     hurt: 0,
     type: type,
     alive: true,
-    invulnerable: invulnerable || false,
+    invulnerable: false,
     invincibleTimer: 0,
     respawnTimer: 0,
   };
@@ -416,7 +418,7 @@ export function updateAllyAI() {
       }
 
       // Melee attack when close
-      const reach = ally.type === 'horse' ? 25 : 15;
+      const reach = ally.type === 'horse' ? 40 : 24;
       const allyAtkBox = {
         x: ally.facing === 1 ? ally.x + ally.w : ally.x - reach,
         y: ally.y - 5,
@@ -441,15 +443,15 @@ export function updateAllyAI() {
         if (targetEnemy.hp <= 0) {
           if (targetEnemy === state.boss) {
             targetEnemy.alive = false;
-            player.score += 1000;
+            addScore(1000);
             state.screenShake = 20; state.screenFlash = 15;
             spawnParticles(targetEnemy.x + targetEnemy.w/2, targetEnemy.y + targetEnemy.h/2, '#ff8800', 40, 15);
             spawnFloatingText(targetEnemy.x + targetEnemy.w/2, targetEnemy.y - 40, 'BOSS DEFEATED! +1000', '#ffff44');
             state.diamond = { x: ld.width - 150, y: GROUND_Y - 30, collected: false, glow: 0 };
-            spawnFloatingText(ld.width - 150, GROUND_Y - 60, 'THE LEOPARD DIAMOND APPEARS!', '#00ffff');
+            spawnFloatingText(ld.width - 150, GROUND_Y - 60, 'THE WILD DIAMOND APPEARS!', '#00ffff');
           } else {
             targetEnemy.alive = false;
-            player.score += targetEnemy.type === 'big' ? 200 : 100;
+            addScore(targetEnemy.type === 'big' ? 200 : 100);
             spawnParticles(targetEnemy.x + targetEnemy.w/2, targetEnemy.y + targetEnemy.h/2, '#44ff44', 15, 10);
             spawnFloatingText(targetEnemy.x + targetEnemy.w/2, targetEnemy.y - 30, targetEnemy.type === 'big' ? '+200' : '+100', '#ffff44');
           }

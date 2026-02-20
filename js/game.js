@@ -1,10 +1,10 @@
 // Main game loop, update logic, initialization
-import { GRAVITY, GROUND_Y, keys, state, player, camera, POWERUP_DURATION, POWERUP_AMMO, ANIMAL_TYPES } from './state.js';
+import { GRAVITY, GROUND_Y, keys, state, player, camera, POWERUP_DURATION, POWERUP_AMMO, ANIMAL_TYPES, DIFFICULTY_SETTINGS } from './state.js';
 import { getLevelData } from './levels.js';
-import { rectCollide, getAttackBox, spawnParticles, spawnFloatingText, getPlayerDamage, getPlayerCooldown, getPlayerJumpForce } from './utils.js';
+import { rectCollide, getAttackBox, spawnParticles, spawnFloatingText, getPlayerDamage, getPlayerCooldown, getPlayerJumpForce, addScore } from './utils.js';
 import { spawnZombies, spawnBoss, updateZombieAI, updateBossAI, updateAllyAI, spawnAlly } from './enemies.js';
 import { spawnHealthPickups, spawnPowerupCrates, spawnArmorCrates, spawnGlassesCrates, spawnSneakersCrates, spawnCleatsCrates, spawnHorseCrates, updateHealthPickups, updateDiamond, updatePortal, updateArmorPickups, updateGlassesPickups, updateSneakersPickups, updateCleatsPickups, updateHorsePickups } from './items.js';
-import { initRenderer, getCtx, drawLeopard, drawZombie, drawBoss, drawBackground, drawHealthPickups, drawPowerupCrates, drawArmorCrates, drawArmorPickups, drawGlassesCrates, drawGlassesPickups, drawSneakersCrates, drawSneakersPickups, drawCleatsCrates, drawCleatsPickups, drawHorseCrates, drawHorsePickups, drawPortal, drawDiamond, drawParticles, drawFloatingTexts, drawHUD, drawBossIntro, drawDying, drawTitleScreen, drawLevelComplete, drawGameWin, drawGameOver, drawProjectiles, drawPaused, drawSelectScreen, drawAlly } from './renderer.js';
+import { initRenderer, getCtx, drawLeopard, drawZombie, drawBoss, drawBackground, drawHealthPickups, drawPowerupCrates, drawArmorCrates, drawArmorPickups, drawGlassesCrates, drawGlassesPickups, drawSneakersCrates, drawSneakersPickups, drawCleatsCrates, drawCleatsPickups, drawHorseCrates, drawHorsePickups, drawPortal, drawDiamond, drawParticles, drawFloatingTexts, drawHUD, drawBossIntro, drawDying, drawTitleScreen, drawLevelComplete, drawGameWin, drawGameOver, drawProjectiles, drawPaused, drawSelectScreen, drawDifficultyScreen, drawAlly } from './renderer.js';
 
 const canvas = document.getElementById('game');
 initRenderer(canvas);
@@ -27,20 +27,26 @@ window.addEventListener('keydown', e => {
   }
 });
 
-// Leaderboard persistence
-state.leaderboard = JSON.parse(localStorage.getItem('avz-leaderboard') || '[]');
+// Leaderboard persistence (per-difficulty)
+function loadLeaderboard(difficulty) {
+  return JSON.parse(localStorage.getItem(`avz-leaderboard-${difficulty}`) || '[]');
+}
+state.leaderboard = loadLeaderboard(state.difficulty);
 
 function saveScore() {
-  state.leaderboard.push({
+  const diff = state.difficulty;
+  const lb = loadLeaderboard(diff);
+  lb.push({
     name: state.nameEntry,
     score: player.score,
     animal: player.animal,
     level: state.currentLevel,
+    difficulty: diff,
     date: Date.now()
   });
-  state.leaderboard.sort((a, b) => b.score - a.score);
-  state.leaderboard = state.leaderboard.slice(0, 10);
-  localStorage.setItem('avz-leaderboard', JSON.stringify(state.leaderboard));
+  lb.sort((a, b) => b.score - a.score);
+  state.leaderboard = lb.slice(0, 10);
+  localStorage.setItem(`avz-leaderboard-${diff}`, JSON.stringify(state.leaderboard));
 }
 
 function initLevel(level) {
@@ -85,7 +91,7 @@ function initLevel(level) {
 
   // Re-spawn horse ally if player has horse item and no horse ally exists
   if (player.items.horse && !state.allies.some(a => a.type === 'horse')) {
-    spawnAlly('horse', player.x + 60, GROUND_Y, true);
+    spawnAlly('horse', player.x + 60, GROUND_Y);
   }
   // Reset existing allies' positions near player on level start
   state.allies.forEach(a => {
@@ -124,8 +130,35 @@ function update() {
   if (state.gameState === 'paused') return;
 
   if (state.gameState === 'title') {
-    if (keys['Enter'] && !state._enterHeld) { state._enterHeld = true; state.selectedAnimal = 0; state.gameState = 'select'; }
+    if (keys['Enter'] && !state._enterHeld) { state._enterHeld = true; state.selectedDifficulty = 0; state.gameState = 'difficulty'; }
     if (!keys['Enter']) state._enterHeld = false;
+    return;
+  }
+
+  if (state.gameState === 'difficulty') {
+    const diffKeys = Object.keys(DIFFICULTY_SETTINGS);
+    if (keys['ArrowLeft'] && !state._selectLeftHeld) {
+      state._selectLeftHeld = true;
+      state.selectedDifficulty = (state.selectedDifficulty - 1 + diffKeys.length) % diffKeys.length;
+    }
+    if (!keys['ArrowLeft']) state._selectLeftHeld = false;
+    if (keys['ArrowRight'] && !state._selectRightHeld) {
+      state._selectRightHeld = true;
+      state.selectedDifficulty = (state.selectedDifficulty + 1) % diffKeys.length;
+    }
+    if (!keys['ArrowRight']) state._selectRightHeld = false;
+    if (keys['Enter'] && !state._enterHeld) {
+      state._enterHeld = true;
+      state.difficulty = diffKeys[state.selectedDifficulty];
+      state.leaderboard = loadLeaderboard(state.difficulty);
+      state.selectedAnimal = 0;
+      state.gameState = 'select';
+    }
+    if (!keys['Enter']) state._enterHeld = false;
+    if (keys['Escape'] && !state._escHeld) {
+      state._escHeld = true;
+      state.gameState = 'title';
+    }
     return;
   }
 
@@ -143,12 +176,13 @@ function update() {
     if (keys['Enter'] && !state._enterHeld) {
       state._enterHeld = true;
       const animal = ANIMAL_TYPES[state.selectedAnimal];
+      const diff = DIFFICULTY_SETTINGS[state.difficulty];
       player.animal = animal.id;
       player.baseSpeed = 2.8125 * animal.speed;
       player.speed = player.baseSpeed;
       player.baseDamage = 15 * animal.damage;
-      player.maxHp = animal.hp;
-      player.hp = animal.hp;
+      player.maxHp = Math.floor(animal.hp * diff.hpMult);
+      player.hp = player.maxHp;
       player.lives = 3;
       player.items.armor = null;
       player.items.glasses = false;
@@ -352,7 +386,7 @@ function update() {
         state.screenShake = 5;
         if (z.hp <= 0) {
           z.alive = false;
-          player.score += z.type === 'big' ? 200 : 100;
+          addScore(z.type === 'big' ? 200 : 100);
           spawnParticles(z.x + z.w/2, z.y + z.h/2, '#44ff44', 15, 10);
           spawnFloatingText(z.x + z.w/2, z.y - 30, z.type === 'big' ? '+200' : '+100', '#ffff44');
         }
@@ -368,13 +402,13 @@ function update() {
         spawnFloatingText(boss.x + boss.w/2, boss.y - 10, `-${dmg}`, '#ff6666');
         state.screenShake = 6;
         if (boss.hp <= 0) {
-          boss.alive = false; player.score += 1000;
+          boss.alive = false; addScore(1000);
           state.screenShake = 20; state.screenFlash = 15;
           spawnParticles(boss.x + boss.w/2, boss.y + boss.h/2, '#ff8800', 40, 15);
           spawnParticles(boss.x + boss.w/2, boss.y + boss.h/2, '#ffff00', 30, 12);
           spawnFloatingText(boss.x + boss.w/2, boss.y - 40, 'BOSS DEFEATED! +1000', '#ffff44');
           state.diamond = { x: ld.width - 150, y: GROUND_Y - 30, collected: false, glow: 0 };
-          spawnFloatingText(ld.width - 150, GROUND_Y - 60, 'THE LEOPARD DIAMOND APPEARS!', '#00ffff');
+          spawnFloatingText(ld.width - 150, GROUND_Y - 60, 'THE WILD DIAMOND APPEARS!', '#00ffff');
         }
       }
     }
@@ -391,7 +425,7 @@ function update() {
           spawnParticles(c.x + c.w/2, c.y + c.h/2, ptype.color, 20, 10);
           spawnFloatingText(c.x + c.w/2, c.y - 20, ptype.name, ptype.color);
           spawnFloatingText(c.x + c.w/2, c.y - 5, ptype.desc, '#ffffff');
-          state.screenFlash = 5; player.score += 150;
+          state.screenFlash = 5; addScore(150);
 
           // Trap crate: ~20% chance zombies burst out
           if (Math.random() < 0.2) {
@@ -569,7 +603,7 @@ function update() {
         spawnFloatingText(z.x + z.w/2, z.y - 10, `-${fireDmg}`, '#ff8800');
         if (z.hp <= 0) {
           z.alive = false;
-          player.score += z.type === 'big' ? 200 : 100;
+          addScore(z.type === 'big' ? 200 : 100);
           spawnParticles(z.x + z.w/2, z.y + z.h/2, '#ff8800', 15, 10);
           spawnFloatingText(z.x + z.w/2, z.y - 30, z.type === 'big' ? '+200' : '+100', '#ffff44');
         }
@@ -584,12 +618,12 @@ function update() {
         spawnParticles(boss.x + boss.w/2, boss.y + boss.h/2, '#ff6600', 3, 4);
         spawnFloatingText(boss.x + boss.w/2, boss.y - 10, `-${fireDmg}`, '#ff8800');
         if (boss.hp <= 0) {
-          boss.alive = false; player.score += 1000;
+          boss.alive = false; addScore(1000);
           state.screenShake = 20; state.screenFlash = 15;
           spawnParticles(boss.x + boss.w/2, boss.y + boss.h/2, '#ff8800', 40, 15);
           spawnFloatingText(boss.x + boss.w/2, boss.y - 40, 'BOSS DEFEATED! +1000', '#ffff44');
           state.diamond = { x: state.levelData.width - 150, y: GROUND_Y - 30, collected: false, glow: 0 };
-          spawnFloatingText(state.levelData.width - 150, GROUND_Y - 60, 'THE LEOPARD DIAMOND APPEARS!', '#00ffff');
+          spawnFloatingText(state.levelData.width - 150, GROUND_Y - 60, 'THE WILD DIAMOND APPEARS!', '#00ffff');
         }
       }
     }
@@ -610,7 +644,7 @@ function update() {
           state.screenShake = 6;
           if (z.hp <= 0) {
             z.alive = false;
-            player.score += z.type === 'big' ? 200 : 100;
+            addScore(z.type === 'big' ? 200 : 100);
             spawnParticles(z.x + z.w/2, z.y + z.h/2, '#ff4400', 20, 12);
             spawnFloatingText(z.x + z.w/2, z.y - 30, z.type === 'big' ? '+200' : '+100', '#ffff44');
           }
@@ -629,12 +663,12 @@ function update() {
           spawnFloatingText(boss.x + boss.w/2, boss.y - 10, `-${carDmg}`, '#cc2222');
           state.screenShake = 8;
           if (boss.hp <= 0) {
-            boss.alive = false; player.score += 1000;
+            boss.alive = false; addScore(1000);
             state.screenShake = 20; state.screenFlash = 15;
             spawnParticles(boss.x + boss.w/2, boss.y + boss.h/2, '#ff8800', 40, 15);
             spawnFloatingText(boss.x + boss.w/2, boss.y - 40, 'BOSS DEFEATED! +1000', '#ffff44');
             state.diamond = { x: state.levelData.width - 150, y: GROUND_Y - 30, collected: false, glow: 0 };
-            spawnFloatingText(state.levelData.width - 150, GROUND_Y - 60, 'THE LEOPARD DIAMOND APPEARS!', '#00ffff');
+            spawnFloatingText(state.levelData.width - 150, GROUND_Y - 60, 'THE WILD DIAMOND APPEARS!', '#00ffff');
           }
         }
       }
@@ -734,7 +768,7 @@ function update() {
           state.screenShake = 3;
           if (z.hp <= 0) {
             z.alive = false;
-            player.score += z.type === 'big' ? 200 : 100;
+            addScore(z.type === 'big' ? 200 : 100);
             spawnParticles(z.x + z.w/2, z.y + z.h/2, '#44ff44', 15, 10);
             spawnFloatingText(z.x + z.w/2, z.y - 30, z.type === 'big' ? '+200' : '+100', '#ffff44');
           }
@@ -752,12 +786,12 @@ function update() {
           spawnFloatingText(boss.x + boss.w/2, boss.y - 10, `-${proj.damage}`, '#ff6666');
           state.screenShake = 4;
           if (boss.hp <= 0) {
-            boss.alive = false; player.score += 1000;
+            boss.alive = false; addScore(1000);
             state.screenShake = 20; state.screenFlash = 15;
             spawnParticles(boss.x + boss.w/2, boss.y + boss.h/2, '#ff8800', 40, 15);
             spawnFloatingText(boss.x + boss.w/2, boss.y - 40, 'BOSS DEFEATED! +1000', '#ffff44');
             state.diamond = { x: state.levelData.width - 150, y: GROUND_Y - 30, collected: false, glow: 0 };
-            spawnFloatingText(state.levelData.width - 150, GROUND_Y - 60, 'THE LEOPARD DIAMOND APPEARS!', '#00ffff');
+            spawnFloatingText(state.levelData.width - 150, GROUND_Y - 60, 'THE WILD DIAMOND APPEARS!', '#00ffff');
           }
         }
       }
@@ -859,6 +893,7 @@ function draw() {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
   if (state.gameState === 'title') { drawTitleScreen(); return; }
+  if (state.gameState === 'difficulty') { drawDifficultyScreen(); return; }
   if (state.gameState === 'select') { drawSelectScreen(); return; }
   if (state.gameState === 'gameWin') { drawGameWin(); return; }
 

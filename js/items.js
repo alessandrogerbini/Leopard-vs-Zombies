@@ -1,6 +1,6 @@
 // Health pickups, powerup crates, armor crates, diamond, portal spawning
 import { GROUND_Y, state, player, POWERUP_TYPES, POWERUP_DURATION, ARMOR_TYPES, GLASSES_TYPE, SNEAKERS_TYPE, CLEATS_TYPE, HORSE_TYPE, keys } from './state.js';
-import { rectCollide, spawnParticles, spawnFloatingText } from './utils.js';
+import { rectCollide, spawnParticles, spawnFloatingText, addScore } from './utils.js';
 import { spawnAlly } from './enemies.js';
 
 export function spawnHealthPickups() {
@@ -73,11 +73,11 @@ export function updateDiamond() {
   const pbox = { x: player.x, y: player.y, w: player.w, h: player.h };
   if (rectCollide(pbox, dbox)) {
     d.collected = true;
-    player.score += 1000;
+    addScore(1000);
     state.screenFlash = 15;
     spawnParticles(d.x, d.y, '#00ffff', 30, 12);
     spawnParticles(d.x, d.y, '#ffffff', 20, 8);
-    spawnFloatingText(d.x, d.y - 40, 'LEOPARD DIAMOND!', '#00ffff');
+    spawnFloatingText(d.x, d.y - 40, 'WILD DIAMOND!', '#00ffff');
     state.gameState = 'levelComplete';
     state.transitionTimer = 120;
   }
@@ -144,7 +144,7 @@ export function updateArmorPickups() {
       spawnFloatingText(ap.x, ap.y - 50, ap.armorType.name, ap.armorType.color);
       spawnFloatingText(ap.x, ap.y - 35, 'EQUIPPED!', '#ffffff');
       state.screenFlash = 8;
-      player.score += 250;
+      addScore(250);
       keys['KeyE'] = false; // consume the key press
     }
   });
@@ -189,7 +189,7 @@ export function updateGlassesPickups() {
       spawnFloatingText(gp.x, gp.y - 50, GLASSES_TYPE.name, GLASSES_TYPE.color);
       spawnFloatingText(gp.x, gp.y - 35, 'EQUIPPED!', '#ffffff');
       state.screenFlash = 8;
-      player.score += 250;
+      addScore(250);
       keys['KeyE'] = false; // consume the key press
     }
   });
@@ -228,13 +228,21 @@ export function updateSneakersPickups() {
     const spBox = { x: sp.x - 20, y: sp.y - 40, w: 40, h: 50 };
     if (rectCollide(pbox, spBox) && keys['KeyE']) {
       sp.equipped = true;
+      // Footwear slot: discard other footwear
+      if (player.items.soccerCleats) {
+        player.items.soccerCleats = false;
+        spawnFloatingText(sp.x, sp.y - 65, 'SOCCER CLEATS DISCARDED', '#ff6666');
+      } else if (player.items.sneakers) {
+        spawnFloatingText(sp.x, sp.y - 65, 'SNEAKERS DISCARDED', '#ff6666');
+      }
+      player.items.sneakers = false;
       player.items.cowboyBoots = true;
       spawnParticles(sp.x, sp.y - 20, SNEAKERS_TYPE.color, 25, 10);
       spawnParticles(sp.x, sp.y - 20, '#ffffff', 15, 8);
       spawnFloatingText(sp.x, sp.y - 50, SNEAKERS_TYPE.name, SNEAKERS_TYPE.color);
       spawnFloatingText(sp.x, sp.y - 35, 'EQUIPPED!', '#ffffff');
       state.screenFlash = 8;
-      player.score += 250;
+      addScore(250);
       keys['KeyE'] = false; // consume the key press
     }
   });
@@ -273,13 +281,21 @@ export function updateCleatsPickups() {
     const cpBox = { x: cp.x - 20, y: cp.y - 40, w: 40, h: 50 };
     if (rectCollide(pbox, cpBox) && keys['KeyE']) {
       cp.equipped = true;
+      // Footwear slot: discard other footwear
+      if (player.items.cowboyBoots) {
+        player.items.cowboyBoots = false;
+        spawnFloatingText(cp.x, cp.y - 65, 'COWBOY BOOTS DISCARDED', '#ff6666');
+      } else if (player.items.sneakers) {
+        spawnFloatingText(cp.x, cp.y - 65, 'SNEAKERS DISCARDED', '#ff6666');
+      }
+      player.items.sneakers = false;
       player.items.soccerCleats = true;
       spawnParticles(cp.x, cp.y - 20, CLEATS_TYPE.color, 25, 10);
       spawnParticles(cp.x, cp.y - 20, '#ffffff', 15, 8);
       spawnFloatingText(cp.x, cp.y - 50, CLEATS_TYPE.name, CLEATS_TYPE.color);
       spawnFloatingText(cp.x, cp.y - 35, 'EQUIPPED!', '#ffffff');
       state.screenFlash = 8;
-      player.score += 250;
+      addScore(250);
       keys['KeyE'] = false; // consume the key press
     }
   });
@@ -320,15 +336,15 @@ export function updateHorsePickups() {
     if (rectCollide(pbox, hpBox) && keys['KeyE']) {
       hp.equipped = true;
       player.items.horse = true;
-      // Spawn the horse ally (invulnerable)
-      spawnAlly('horse', player.x + 60, GROUND_Y, true);
+      // Spawn the horse ally
+      spawnAlly('horse', player.x + 60, GROUND_Y);
       spawnParticles(hp.x, hp.y - 20, HORSE_TYPE.color, 30, 12);
       spawnParticles(hp.x, hp.y - 20, '#ffffff', 20, 8);
       spawnFloatingText(hp.x, hp.y - 60, HORSE_TYPE.name, HORSE_TYPE.color);
       spawnFloatingText(hp.x, hp.y - 40, 'HORSE ALLY JOINS YOU!', '#ffffff');
       state.screenFlash = 10;
       state.screenShake = 5;
-      player.score += 500;
+      addScore(500);
       keys['KeyE'] = false;
     }
   });

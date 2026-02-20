@@ -1,5 +1,5 @@
 // Collision, particles, floating text, powerup helpers
-import { state, player } from './state.js';
+import { state, player, DIFFICULTY_SETTINGS } from './state.js';
 
 export function rectCollide(a, b) {
   return a.x < b.x + b.w && a.x + a.w > b.x &&
@@ -50,4 +50,8 @@ export function getPlayerJumpForce() {
   let jf = player.baseJumpForce;
   if (player.powerups.jumpyBoots > 0) jf *= 1.5;
   return jf;
+}
+
+export function addScore(points) {
+  player.score += Math.floor(points * DIFFICULTY_SETTINGS[state.difficulty].scoreMult);
 }

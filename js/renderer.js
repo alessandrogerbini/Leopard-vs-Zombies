@@ -1,5 +1,5 @@
 // All drawing functions
-import { GROUND_Y, DRAW_SCALE, state, player, camera, ARMOR_TYPES, GLASSES_TYPE, SNEAKERS_TYPE, CLEATS_TYPE, HORSE_TYPE, ANIMAL_TYPES } from './state.js';
+import { GROUND_Y, DRAW_SCALE, state, player, camera, ARMOR_TYPES, GLASSES_TYPE, SNEAKERS_TYPE, CLEATS_TYPE, HORSE_TYPE, ANIMAL_TYPES, DIFFICULTY_SETTINGS } from './state.js';
 
 let canvas, ctx;
 
@@ -2122,6 +2122,11 @@ export function drawHUD() {
   ctx.fillStyle = '#ffcc00'; ctx.font = '16px "Courier New"'; ctx.textAlign = 'right';
   ctx.fillText(`SCORE: ${player.score}`, canvas.width - 20, 32); ctx.textAlign = 'left';
 
+  // Difficulty badge
+  const diff = DIFFICULTY_SETTINGS[state.difficulty];
+  ctx.fillStyle = diff.color; ctx.font = 'bold 11px "Courier New"'; ctx.textAlign = 'right';
+  ctx.fillText(`[${diff.label}]`, canvas.width - 20, 50); ctx.textAlign = 'left';
+
   ctx.fillStyle = '#ffffff'; ctx.font = '14px "Courier New"';
   ctx.fillText(`LEVEL ${state.currentLevel} - ${state.levelData.name}`, 15, 55);
 
@@ -2215,7 +2220,7 @@ export function drawHUD() {
       }
     } else if (state.gameState === 'bossFight' && state.boss && !state.boss.alive && state.diamond && !state.diamond.collected) {
       ctx.fillStyle = '#00ffff'; ctx.font = '14px "Courier New"';
-      ctx.fillText('>>> THE LEOPARD DIAMOND AWAITS! >>>', canvas.width / 2, canvas.height - 20);
+      ctx.fillText('>>> THE WILD DIAMOND AWAITS! >>>', canvas.width / 2, canvas.height - 20);
     }
     ctx.textAlign = 'left';
   }
@@ -2247,7 +2252,7 @@ export function drawBossIntro() {
   ctx.fillStyle = '#ffffff'; ctx.font = '20px "Courier New"';
   ctx.fillText('THE ZOMBIE LORD APPROACHES!', canvas.width / 2, canvas.height / 2 + 10);
   ctx.fillStyle = '#aaaaaa'; ctx.font = '14px "Courier New"';
-  ctx.fillText('Defeat the boss to claim the Leopard Diamond', canvas.width / 2, canvas.height / 2 + 50);
+  ctx.fillText('Defeat the boss to claim the Wild Diamond', canvas.width / 2, canvas.height / 2 + 50);
   ctx.textAlign = 'left';
 }
 
@@ -2333,7 +2338,7 @@ export function drawTitleScreen() {
   ctx.fillText('Space - Attack | E - Equip Items', titleCx, 370);
   ctx.fillText('Break crates for power-ups & armor!', titleCx, 400);
   ctx.fillText('3 Lives - Defeat zombies across 3 levels', titleCx, 430);
-  ctx.fillText('Capture the Leopard Diamond!', titleCx, 455);
+  ctx.fillText('Capture the Wild Diamond!', titleCx, 455);
 
   // Draw leaderboard on the right side when scores exist
   if (hasScores) {
@@ -2357,7 +2362,7 @@ export function drawLevelComplete() {
     ctx.fillText(`Advancing to Level ${state.currentLevel + 1}...`, canvas.width / 2, canvas.height / 2 + 30);
   } else {
     ctx.fillStyle = '#00ffff';
-    ctx.fillText('LEOPARD DIAMOND CAPTURED!', canvas.width / 2, canvas.height / 2 - 20);
+    ctx.fillText('WILD DIAMOND CAPTURED!', canvas.width / 2, canvas.height / 2 - 20);
     ctx.fillStyle = '#aaaaaa'; ctx.font = '18px "Courier New"';
     ctx.fillText('Victory is yours!', canvas.width / 2, canvas.height / 2 + 30);
   }
@@ -2389,13 +2394,16 @@ function _drawNameEntry(cx, y) {
 
 function _drawLeaderboard(cx, startY) {
   const lb = state.leaderboard;
+  const diff = DIFFICULTY_SETTINGS[state.difficulty];
   ctx.textAlign = 'center';
   ctx.fillStyle = '#ffcc00'; ctx.font = 'bold 20px "Courier New"';
   ctx.fillText('LEADERBOARD', cx, startY);
+  ctx.fillStyle = diff.color; ctx.font = 'bold 14px "Courier New"';
+  ctx.fillText(`[ ${diff.label} ]`, cx, startY + 18);
 
   if (lb.length === 0) {
     ctx.fillStyle = '#666666'; ctx.font = '14px "Courier New"';
-    ctx.fillText('No scores yet!', cx, startY + 30);
+    ctx.fillText('No scores yet!', cx, startY + 48);
     return;
   }
 
@@ -2457,7 +2465,7 @@ export function drawGameWin() {
   ctx.fillStyle = '#ffcc00'; ctx.font = 'bold 36px "Courier New"';
   ctx.fillText('VICTORY!', canvas.width / 2, 130);
   ctx.fillStyle = '#ffffff'; ctx.font = '16px "Courier New"';
-  ctx.fillText('The Leopard Diamond is yours!', canvas.width / 2, 158);
+  ctx.fillText('The Wild Diamond is yours!', canvas.width / 2, 158);
   ctx.fillStyle = '#e8a828'; ctx.font = 'bold 22px "Courier New"';
   ctx.fillText(`FINAL SCORE: ${player.score}`, canvas.width / 2, 192);
 
@@ -2490,6 +2498,88 @@ export function drawGameOver() {
       ctx.fillText('PRESS ENTER TO RETRY', canvas.width / 2, 510);
     }
   }
+  ctx.textAlign = 'left';
+}
+
+export function drawDifficultyScreen() {
+  const W = canvas.width, H = canvas.height;
+  ctx.fillStyle = '#0a0a0a'; ctx.fillRect(0, 0, W, H);
+  for (let i = 0; i < 30; i++) {
+    const px = (Date.now() * 0.02 * (i * 0.3 + 0.5) + i * 100) % W;
+    const py = (i * 47 + 10) % H;
+    ctx.fillStyle = `rgba(0,255,0,${0.1 + Math.sin(Date.now() * 0.001 + i) * 0.1})`;
+    ctx.fillRect(px, py, 2, 2);
+  }
+
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#ffcc00'; ctx.font = 'bold 36px "Courier New"';
+  ctx.fillText('SELECT DIFFICULTY', W / 2, 80);
+
+  const diffKeys = Object.keys(DIFFICULTY_SETTINGS);
+  const cardW = 200, cardH = 240, gap = 30;
+  const totalW = diffKeys.length * cardW + (diffKeys.length - 1) * gap;
+  const startX = (W - totalW) / 2;
+  const cardY = 130;
+  const sel = state.selectedDifficulty;
+  const t = Date.now() * 0.003;
+
+  for (let i = 0; i < diffKeys.length; i++) {
+    const d = DIFFICULTY_SETTINGS[diffKeys[i]];
+    const cx = startX + i * (cardW + gap);
+    const isSelected = i === sel;
+
+    if (isSelected) {
+      ctx.fillStyle = d.color;
+      ctx.fillRect(cx - 3, cardY - 3, cardW + 6, cardH + 6);
+    }
+    ctx.fillStyle = isSelected ? '#1a1a2a' : '#111118';
+    ctx.fillRect(cx, cardY, cardW, cardH);
+
+    // Difficulty label
+    ctx.fillStyle = d.color; ctx.font = 'bold 28px "Courier New"';
+    ctx.fillText(d.label, cx + cardW / 2, cardY + 50);
+
+    // HP multiplier display
+    ctx.fillStyle = '#ffffff'; ctx.font = '16px "Courier New"';
+    ctx.fillText(`HP: ${Math.floor(d.hpMult * 100)}%`, cx + cardW / 2, cardY + 90);
+
+    // Score multiplier display
+    ctx.fillStyle = '#ffcc00'; ctx.font = '16px "Courier New"';
+    ctx.fillText(`SCORE: ${d.scoreMult}x`, cx + cardW / 2, cardY + 120);
+
+    // HP bar visualization
+    const barX = cx + 30, barW = cardW - 60, barY = cardY + 140;
+    ctx.fillStyle = '#222222';
+    ctx.fillRect(barX, barY, barW, 16);
+    ctx.fillStyle = d.color;
+    ctx.fillRect(barX, barY, barW * d.hpMult, 16);
+    ctx.fillStyle = '#ffffff'; ctx.font = '10px "Courier New"';
+    ctx.fillText('HP', cx + cardW / 2, barY + 12);
+
+    // Description
+    ctx.fillStyle = '#aaaaaa'; ctx.font = '12px "Courier New"';
+    ctx.fillText(d.desc, cx + cardW / 2, cardY + 190);
+
+    // Selection arrow
+    if (isSelected) {
+      const arrowBob = Math.sin(t * 3) * 4;
+      ctx.fillStyle = '#ffcc00';
+      ctx.beginPath();
+      ctx.moveTo(cx + cardW / 2, cardY - 10 + arrowBob);
+      ctx.lineTo(cx + cardW / 2 - 10, cardY - 22 + arrowBob);
+      ctx.lineTo(cx + cardW / 2 + 10, cardY - 22 + arrowBob);
+      ctx.closePath(); ctx.fill();
+    }
+  }
+
+  ctx.fillStyle = '#666666'; ctx.font = '14px "Courier New"';
+  ctx.fillText('<  ARROW KEYS  >', W / 2, cardY + cardH + 30);
+
+  if (Math.sin(Date.now() * 0.005) > 0) {
+    ctx.fillStyle = '#ffcc00'; ctx.font = 'bold 20px "Courier New"';
+    ctx.fillText('PRESS ENTER TO CONTINUE', W / 2, cardY + cardH + 60);
+  }
+
   ctx.textAlign = 'left';
 }
 
@@ -3567,6 +3657,7 @@ export function drawAlly(ally) {
     ctx.save();
     ctx.translate(px + ally.w / 2, py + ally.h);
     if (f === -1) { ctx.scale(-1, 1); }
+    ctx.scale(1.6, 1.6); // 60% size increase
 
     const running = Math.abs(ally.vx) > 0.5;
     const legTime = Date.now() * (running ? 0.012 : 0.004);
@@ -3669,8 +3760,8 @@ export function drawAlly(ally) {
     const bodyBob = running ? Math.sin(allyLegTime * 2) * 1.5 : 0;
 
     // Scale to fit ally bounding box: player art is drawn in a ~48x48 space,
-    // ally box is 43x54. We use a scale factor to map player art to ally size.
-    const allyScale = ally.w / 48; // 43/48 = ~0.9 (90% of player size)
+    // ally box is 69x86. We use a scale factor to map player art to ally size.
+    const allyScale = ally.w / 48; // 69/48 = ~1.44 (144% of player size)
     ctx.scale(allyScale, allyScale);
 
     // Position the origin so the player drawing functions' coordinate space
@@ -3730,7 +3821,7 @@ export function drawAlly(ally) {
 
   // HP bar (for non-invulnerable allies)
   if (!ally.invulnerable && ally.hp < ally.maxHp) {
-    const barW = ally.type === 'horse' ? 40 : 30;
+    const barW = ally.type === 'horse' ? 64 : 48;
     const barX = px + (ally.w - barW) / 2;
     ctx.fillStyle = '#440000';
     ctx.fillRect(barX, py - 10, barW, 4);

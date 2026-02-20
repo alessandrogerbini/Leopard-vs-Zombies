@@ -8,6 +8,12 @@ export const DRAW_SCALE = 1.62;
 
 export const keys = {};
 
+export const DIFFICULTY_SETTINGS = {
+  easy:   { label: 'EASY',   color: '#44ff44', hpMult: 1.0,  scoreMult: 1,   desc: 'Full HP - Great for learning!' },
+  medium: { label: 'MEDIUM', color: '#ffaa00', hpMult: 0.55, scoreMult: 1.75, desc: '55% HP - A real challenge!' },
+  hard:   { label: 'HARD',   color: '#ff4444', hpMult: 0.35, scoreMult: 2.5,  desc: '35% HP - For hardcore players!' },
+};
+
 export const ANIMAL_TYPES = [
   { id: 'leopard', name: 'LEOPARD', color: '#e8a828', speed: 1.0, damage: 1.0, hp: 100, desc: 'Balanced fighter' },
   { id: 'redPanda', name: 'RED PANDA', color: '#cc4422', speed: 1.2, damage: 0.8, hp: 80, desc: 'Fast & agile' },
@@ -16,7 +22,9 @@ export const ANIMAL_TYPES = [
 ];
 
 export const state = {
-  gameState: 'title', // title, select, playing, bossIntro, bossFight, levelComplete, gameWin, gameOver
+  gameState: 'title', // title, difficulty, select, playing, bossIntro, bossFight, levelComplete, gameWin, gameOver
+  difficulty: 'easy',
+  selectedDifficulty: 0,
   selectedAnimal: 0,
   currentLevel: 1,
   screenShake: 0,
