@@ -2310,8 +2310,200 @@ function _drawTitleLeaderboard(cx, startY) {
   ctx.textAlign = 'center';
 }
 
+function _drawTitleStandoff() {
+  const t = Date.now();
+  const groundY = 435;
+
+  // === GROUND ===
+  ctx.fillStyle = '#1a2a1a';
+  ctx.fillRect(0, groundY, canvas.width, canvas.height - groundY);
+  ctx.fillStyle = '#2a4a2a';
+  ctx.fillRect(0, groundY, canvas.width, 2);
+  ctx.fillStyle = '#0d1a0d';
+  for (let i = 0; i < 24; i++) {
+    ctx.fillRect(i * 42 + 5, groundY + 8, 25, 2);
+    ctx.fillRect(i * 42 + 15, groundY + 20, 15, 2);
+  }
+
+  // === RED GLOW from boss side ===
+  const bossGlowPulse = 0.07 + Math.sin(t * 0.002) * 0.03;
+  const bossGlow = ctx.createRadialGradient(720, 360, 20, 720, 360, 200);
+  bossGlow.addColorStop(0, `rgba(255,0,0,${bossGlowPulse})`);
+  bossGlow.addColorStop(1, 'rgba(255,0,0,0)');
+  ctx.fillStyle = bossGlow;
+  ctx.fillRect(520, 160, 440, 300);
+
+  // === DUST PARTICLES in the gap ===
+  for (let i = 0; i < 15; i++) {
+    const dx = 430 + Math.sin(t * 0.0008 + i * 1.7) * 100;
+    const dy = 350 + Math.cos(t * 0.001 + i * 2.3) * 60;
+    const alpha = 0.06 + Math.sin(t * 0.002 + i) * 0.03;
+    ctx.fillStyle = `rgba(180,160,120,${alpha})`;
+    ctx.beginPath();
+    ctx.arc(dx, dy, 2 + Math.sin(t * 0.003 + i) * 1.5, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // === ANIMALS (facing right toward boss) ===
+  const animalScale = 2.2;
+  const legSwing = Math.sin(t * 0.003) * 1.5;
+
+  const animalDefs = [
+    { draw: _drawWalkingGator, x: 70, yOff: 3 },
+    { draw: _drawWalkingLion, x: 165, yOff: 0 },
+    { draw: _drawWalkingLeopard, x: 255, yOff: 0 },
+    { draw: _drawWalkingRedPanda, x: 335, yOff: 2 },
+  ];
+
+  for (const a of animalDefs) {
+    ctx.save();
+    ctx.translate(a.x, groundY - 2 + a.yOff);
+    ctx.scale(animalScale, animalScale);
+    a.draw(ctx, 0, -47, 0, legSwing);
+    ctx.restore();
+  }
+
+  // === ZOMBIE BOSS (facing left toward animals) ===
+  _drawTitleBoss(t, groundY);
+
+  // === TENSION SPARKS between groups ===
+  for (let i = 0; i < 6; i++) {
+    const sx = 470 + Math.sin(t * 0.004 + i * 1.1) * 50;
+    const sy = 385 + Math.cos(t * 0.005 + i * 1.9) * 25;
+    const sparkA = 0.15 + Math.sin(t * 0.008 + i * 2) * 0.15;
+    if (sparkA > 0.1) {
+      ctx.fillStyle = `rgba(255,255,100,${sparkA})`;
+      ctx.fillRect(sx, sy, 2, 2);
+    }
+  }
+}
+
+function _drawTitleBoss(t, groundY) {
+  const bx = 710;
+  const fy = groundY;
+
+  // Flip to face left (draw facing right, then mirror around bx)
+  ctx.save();
+  ctx.translate(bx, 0);
+  ctx.scale(-1, 1);
+  ctx.translate(-bx, 0);
+
+  // Shadow
+  ctx.fillStyle = 'rgba(0,0,0,0.35)';
+  ctx.beginPath();
+  ctx.ellipse(bx, fy + 3, 60, 10, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Back arm (behind body - left side in draw coords, appears right after flip)
+  const armSwing = Math.sin(t * 0.003) * 4;
+  ctx.fillStyle = '#1d3a1d';
+  ctx.fillRect(bx - 48, fy - 115 + armSwing, 16, 55);
+  ctx.fillRect(bx - 46, fy - 63 + armSwing, 13, 30);
+  ctx.fillStyle = '#aaaaaa';
+  for (let i = 0; i < 3; i++) {
+    ctx.fillRect(bx - 48 + i * 4, fy - 35 + armSwing, 3, 7);
+  }
+
+  // Legs
+  const legAnim = Math.sin(t * 0.002) * 2;
+  ctx.fillStyle = '#1a3a1a';
+  ctx.fillRect(bx - 25, fy - 45, 18, 45 + legAnim);
+  ctx.fillRect(bx + 8, fy - 45, 18, 45 - legAnim);
+  ctx.fillStyle = '#0d2a0d';
+  ctx.fillRect(bx - 28, fy - 2 + legAnim, 24, 5);
+  ctx.fillRect(bx + 5, fy - 2 - legAnim, 24, 5);
+
+  // Body (massive torso)
+  ctx.fillStyle = '#2a4a2a';
+  ctx.fillRect(bx - 38, fy - 120, 76, 78);
+  ctx.fillStyle = '#1d3a1d';
+  ctx.fillRect(bx - 28, fy - 95, 56, 30);
+  ctx.fillStyle = '#325a32';
+  ctx.fillRect(bx - 28, fy - 120, 25, 20);
+  ctx.fillRect(bx + 3, fy - 120, 25, 20);
+
+  // Exposed ribs
+  ctx.fillStyle = '#aaa888';
+  for (let i = 0; i < 3; i++) {
+    ctx.fillRect(bx - 20, fy - 88 + i * 10, 40, 2);
+  }
+
+  // Torn flesh marks
+  ctx.fillStyle = '#4a1a1a';
+  ctx.fillRect(bx - 38, fy - 75, 4, 18);
+  ctx.fillRect(bx + 34, fy - 85, 4, 22);
+  ctx.fillRect(bx - 15, fy - 100, 3, 12);
+
+  // Neck
+  ctx.fillStyle = '#254525';
+  ctx.fillRect(bx - 16, fy - 142, 32, 25);
+
+  // Head
+  ctx.fillStyle = '#2a4a2a';
+  ctx.fillRect(bx - 26, fy - 175, 52, 36);
+  // Brow ridge
+  ctx.fillStyle = '#1a3a1a';
+  ctx.fillRect(bx - 28, fy - 173, 56, 9);
+
+  // Horns
+  ctx.fillStyle = '#888844';
+  ctx.fillRect(bx - 28, fy - 198, 9, 26);
+  ctx.fillRect(bx + 19, fy - 198, 9, 26);
+  ctx.fillRect(bx - 5, fy - 205, 10, 33);
+  ctx.fillStyle = '#aaaa66';
+  ctx.fillRect(bx - 30, fy - 202, 7, 6);
+  ctx.fillRect(bx + 21, fy - 202, 7, 6);
+  ctx.fillRect(bx - 5, fy - 210, 10, 7);
+
+  // Eyes (right side in draw coords, appears left after flip = facing left)
+  const eyePulse = Math.sin(t * 0.005) * 1.5;
+  ctx.fillStyle = '#ff0000';
+  ctx.fillRect(bx + 2, fy - 166, 7 + eyePulse, 5 + eyePulse);
+  ctx.fillRect(bx + 14, fy - 166, 7 + eyePulse, 5 + eyePulse);
+  // Eye glow
+  ctx.fillStyle = `rgba(255,0,0,${0.2 + Math.sin(t * 0.007) * 0.1})`;
+  ctx.beginPath();
+  ctx.arc(bx + 6, fy - 163, 11, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.arc(bx + 18, fy - 163, 11, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Mouth
+  ctx.fillStyle = '#0a1a0a';
+  ctx.fillRect(bx - 4, fy - 153, 28, 10);
+  ctx.fillStyle = '#ccccaa';
+  for (let i = 0; i < 4; i++) {
+    ctx.fillRect(bx - 2 + i * 7, fy - 153, 4, 5);
+  }
+  // Bottom fangs
+  ctx.fillStyle = '#ddddbb';
+  ctx.fillRect(bx, fy - 144, 4, 7);
+  ctx.fillRect(bx + 16, fy - 144, 4, 7);
+  ctx.fillRect(bx + 8, fy - 144, 3, 5);
+
+  // Drool
+  const droolLen = 4 + Math.sin(t * 0.004) * 3;
+  ctx.fillStyle = 'rgba(100,200,100,0.5)';
+  ctx.fillRect(bx + 2, fy - 137, 2, droolLen);
+  ctx.fillRect(bx + 14, fy - 137, 2, droolLen + 2);
+
+  // Front arm (right side in draw coords, appears LEFT after flip = reaching toward animals)
+  ctx.fillStyle = '#2a4a2a';
+  ctx.fillRect(bx + 32, fy - 110 - armSwing, 16, 50);
+  ctx.fillRect(bx + 36, fy - 63 - armSwing, 14, 28);
+  ctx.fillStyle = '#ccccaa';
+  for (let i = 0; i < 4; i++) {
+    ctx.fillRect(bx + 38 + i * 4, fy - 37 - armSwing, 3, 8);
+  }
+
+  ctx.restore();
+}
+
 export function drawTitleScreen() {
   ctx.fillStyle = '#0a0a0a'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  // Background particles
   for (let i = 0; i < 30; i++) {
     const x = (Date.now() * 0.02 * (i * 0.3 + 0.5) + i * 100) % canvas.width;
     const y = (i * 47 + 10) % canvas.height;
@@ -2319,26 +2511,22 @@ export function drawTitleScreen() {
     ctx.fillRect(x, y, 2, 2);
   }
 
+  // Standoff scene (animals vs boss)
+  _drawTitleStandoff();
+
   const hasScores = state.leaderboard.length > 0;
-  // When leaderboard has entries, shift title/controls to the left to make room
   const titleCx = hasScores ? 270 : canvas.width / 2;
 
+  // Title
   ctx.fillStyle = '#e8a828'; ctx.font = 'bold 48px "Courier New"'; ctx.textAlign = 'center';
-  ctx.fillText('ANIMALS', titleCx, 150);
-  ctx.fillStyle = '#ff4444'; ctx.fillText('vs', titleCx, 200);
-  ctx.fillStyle = '#5a7a5a'; ctx.fillText('ZOMBIES', titleCx, 250);
+  ctx.fillText('ANIMALS', titleCx, 80);
+  ctx.fillStyle = '#ff4444'; ctx.fillText('vs', titleCx, 130);
+  ctx.fillStyle = '#5a7a5a'; ctx.fillText('ZOMBIES', titleCx, 180);
 
-  const dx = titleCx, dy = 295;
-  ctx.fillStyle = '#00ffff'; ctx.beginPath();
-  ctx.moveTo(dx, dy - 12); ctx.lineTo(dx + 10, dy); ctx.lineTo(dx, dy + 12); ctx.lineTo(dx - 10, dy);
-  ctx.closePath(); ctx.fill();
-
-  ctx.fillStyle = '#aaaaaa'; ctx.font = '16px "Courier New"';
-  ctx.fillText('Arrow Keys - Move & Jump', titleCx, 345);
-  ctx.fillText('Space - Attack | E - Equip Items', titleCx, 370);
-  ctx.fillText('Break crates for power-ups & armor!', titleCx, 400);
-  ctx.fillText('3 Lives - Defeat zombies across 3 levels', titleCx, 430);
-  ctx.fillText('Capture the Wild Diamond!', titleCx, 455);
+  // Controls (condensed)
+  ctx.fillStyle = '#999999'; ctx.font = '14px "Courier New"';
+  ctx.fillText('Arrows: Move/Jump | Space: Attack | E: Equip', titleCx, 460);
+  ctx.fillText('Break crates for power-ups! | 3 Lives | 3 Levels', titleCx, 480);
 
   // Draw leaderboard on the right side when scores exist
   if (hasScores) {
@@ -2347,7 +2535,7 @@ export function drawTitleScreen() {
 
   if (Math.sin(Date.now() * 0.005) > 0) {
     ctx.fillStyle = '#ffcc00'; ctx.font = 'bold 20px "Courier New"';
-    ctx.fillText('PRESS ENTER TO START', canvas.width / 2, 505);
+    ctx.fillText('PRESS ENTER TO START', canvas.width / 2, 515);
   }
   ctx.textAlign = 'left';
 }
@@ -2498,6 +2686,99 @@ export function drawGameOver() {
       ctx.fillText('PRESS ENTER TO RETRY', canvas.width / 2, 510);
     }
   }
+  ctx.textAlign = 'left';
+}
+
+export function drawModeSelectScreen() {
+  const W = canvas.width, H = canvas.height;
+  ctx.fillStyle = '#0a0a0a'; ctx.fillRect(0, 0, W, H);
+  for (let i = 0; i < 30; i++) {
+    const px = (Date.now() * 0.02 * (i * 0.3 + 0.5) + i * 100) % W;
+    const py = (i * 47 + 10) % H;
+    ctx.fillStyle = `rgba(0,255,0,${0.1 + Math.sin(Date.now() * 0.001 + i) * 0.1})`;
+    ctx.fillRect(px, py, 2, 2);
+  }
+
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#ffcc00'; ctx.font = 'bold 36px "Courier New"';
+  ctx.fillText('SELECT MODE', W / 2, 80);
+
+  const modes = [
+    { label: '2D CLASSIC', color: '#44ff88', lines: ['Side-scrolling action', '3 levels + boss fights', 'Multiple animals & items'] },
+    { label: '3D SURVIVOR', color: '#ff6644', lines: ['Top-down arena combat', 'Endless zombie waves', 'Level up & survive!'] },
+  ];
+  const cardW = 280, cardH = 260, gap = 60;
+  const totalW = modes.length * cardW + (modes.length - 1) * gap;
+  const startX = (W - totalW) / 2;
+  const cardY = 120;
+  const sel = state.selectedMode;
+  const t = Date.now() * 0.003;
+
+  for (let i = 0; i < modes.length; i++) {
+    const m = modes[i];
+    const cx = startX + i * (cardW + gap);
+    const isSelected = i === sel;
+
+    if (isSelected) {
+      ctx.fillStyle = m.color;
+      ctx.fillRect(cx - 3, cardY - 3, cardW + 6, cardH + 6);
+    }
+    ctx.fillStyle = isSelected ? '#1a1a2a' : '#111118';
+    ctx.fillRect(cx, cardY, cardW, cardH);
+
+    ctx.fillStyle = m.color; ctx.font = 'bold 28px "Courier New"';
+    ctx.fillText(m.label, cx + cardW / 2, cardY + 60);
+
+    ctx.fillStyle = '#cccccc'; ctx.font = '16px "Courier New"';
+    for (let j = 0; j < m.lines.length; j++) {
+      ctx.fillText(m.lines[j], cx + cardW / 2, cardY + 110 + j * 30);
+    }
+
+    // Icon area
+    if (i === 0) {
+      // 2D icon: small side-scrolling scene
+      ctx.fillStyle = '#44ff88';
+      ctx.fillRect(cx + cardW / 2 - 30, cardY + 200, 20, 20); // player box
+      ctx.fillStyle = '#4a6a4a';
+      ctx.fillRect(cx + cardW / 2 + 10, cardY + 205, 15, 15); // zombie box
+      ctx.fillRect(cx + cardW / 2 + 30, cardY + 208, 12, 12);
+      ctx.fillStyle = '#333';
+      ctx.fillRect(cx + 20, cardY + 225, cardW - 40, 4); // ground line
+    } else {
+      // 3D icon: top-down arena hint
+      ctx.strokeStyle = '#ff6644'; ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(cx + cardW / 2, cardY + 210, 25, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.fillStyle = '#ff6644';
+      ctx.fillRect(cx + cardW / 2 - 5, cardY + 205, 10, 10); // center player
+      // zombie dots around
+      for (let d = 0; d < 5; d++) {
+        const angle = (d / 5) * Math.PI * 2 + t;
+        ctx.fillStyle = '#4a6a4a';
+        ctx.fillRect(cx + cardW / 2 + Math.cos(angle) * 20 - 3, cardY + 210 + Math.sin(angle) * 20 - 3, 6, 6);
+      }
+    }
+
+    if (isSelected) {
+      const arrowBob = Math.sin(t * 3) * 4;
+      ctx.fillStyle = '#ffcc00';
+      ctx.beginPath();
+      ctx.moveTo(cx + cardW / 2, cardY - 10 + arrowBob);
+      ctx.lineTo(cx + cardW / 2 - 10, cardY - 22 + arrowBob);
+      ctx.lineTo(cx + cardW / 2 + 10, cardY - 22 + arrowBob);
+      ctx.closePath(); ctx.fill();
+    }
+  }
+
+  ctx.fillStyle = '#666666'; ctx.font = '14px "Courier New"';
+  ctx.fillText('<  ARROW KEYS  >', W / 2, cardY + cardH + 30);
+
+  if (Math.sin(Date.now() * 0.005) > 0) {
+    ctx.fillStyle = '#ffcc00'; ctx.font = 'bold 20px "Courier New"';
+    ctx.fillText('PRESS ENTER TO CONTINUE', W / 2, cardY + cardH + 60);
+  }
+
   ctx.textAlign = 'left';
 }
 

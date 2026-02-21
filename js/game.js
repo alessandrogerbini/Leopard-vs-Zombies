@@ -4,7 +4,8 @@ import { getLevelData } from './levels.js';
 import { rectCollide, getAttackBox, spawnParticles, spawnFloatingText, getPlayerDamage, getPlayerCooldown, getPlayerJumpForce, addScore } from './utils.js';
 import { spawnZombies, spawnBoss, updateZombieAI, updateBossAI, updateAllyAI, spawnAlly } from './enemies.js';
 import { spawnHealthPickups, spawnPowerupCrates, spawnArmorCrates, spawnGlassesCrates, spawnSneakersCrates, spawnCleatsCrates, spawnHorseCrates, updateHealthPickups, updateDiamond, updatePortal, updateArmorPickups, updateGlassesPickups, updateSneakersPickups, updateCleatsPickups, updateHorsePickups } from './items.js';
-import { initRenderer, getCtx, drawLeopard, drawZombie, drawBoss, drawBackground, drawHealthPickups, drawPowerupCrates, drawArmorCrates, drawArmorPickups, drawGlassesCrates, drawGlassesPickups, drawSneakersCrates, drawSneakersPickups, drawCleatsCrates, drawCleatsPickups, drawHorseCrates, drawHorsePickups, drawPortal, drawDiamond, drawParticles, drawFloatingTexts, drawHUD, drawBossIntro, drawDying, drawTitleScreen, drawLevelComplete, drawGameWin, drawGameOver, drawProjectiles, drawPaused, drawSelectScreen, drawDifficultyScreen, drawAlly } from './renderer.js';
+import { initRenderer, getCtx, drawLeopard, drawZombie, drawBoss, drawBackground, drawHealthPickups, drawPowerupCrates, drawArmorCrates, drawArmorPickups, drawGlassesCrates, drawGlassesPickups, drawSneakersCrates, drawSneakersPickups, drawCleatsCrates, drawCleatsPickups, drawHorseCrates, drawHorsePickups, drawPortal, drawDiamond, drawParticles, drawFloatingTexts, drawHUD, drawBossIntro, drawDying, drawTitleScreen, drawLevelComplete, drawGameWin, drawGameOver, drawProjectiles, drawPaused, drawSelectScreen, drawDifficultyScreen, drawModeSelectScreen, drawAlly } from './renderer.js';
+import { launch3DGame } from './game3d.js';
 
 const canvas = document.getElementById('game');
 initRenderer(canvas);
@@ -130,8 +131,33 @@ function update() {
   if (state.gameState === 'paused') return;
 
   if (state.gameState === 'title') {
-    if (keys['Enter'] && !state._enterHeld) { state._enterHeld = true; state.selectedDifficulty = 0; state.gameState = 'difficulty'; }
+    if (keys['Enter'] && !state._enterHeld) { state._enterHeld = true; state.selectedMode = 0; state.gameState = 'modeSelect'; }
     if (!keys['Enter']) state._enterHeld = false;
+    return;
+  }
+
+  if (state.gameState === 'modeSelect') {
+    if (keys['ArrowLeft'] && !state._selectLeftHeld) {
+      state._selectLeftHeld = true;
+      state.selectedMode = (state.selectedMode - 1 + 2) % 2;
+    }
+    if (!keys['ArrowLeft']) state._selectLeftHeld = false;
+    if (keys['ArrowRight'] && !state._selectRightHeld) {
+      state._selectRightHeld = true;
+      state.selectedMode = (state.selectedMode + 1) % 2;
+    }
+    if (!keys['ArrowRight']) state._selectRightHeld = false;
+    if (keys['Enter'] && !state._enterHeld) {
+      state._enterHeld = true;
+      // Both modes go through difficulty + animal select
+      state.selectedDifficulty = 0;
+      state.gameState = 'difficulty';
+    }
+    if (!keys['Enter']) state._enterHeld = false;
+    if (keys['Escape'] && !state._escHeld) {
+      state._escHeld = true;
+      state.gameState = 'title';
+    }
     return;
   }
 
@@ -157,7 +183,7 @@ function update() {
     if (!keys['Enter']) state._enterHeld = false;
     if (keys['Escape'] && !state._escHeld) {
       state._escHeld = true;
-      state.gameState = 'title';
+      state.gameState = 'modeSelect';
     }
     return;
   }
@@ -177,26 +203,44 @@ function update() {
       state._enterHeld = true;
       const animal = ANIMAL_TYPES[state.selectedAnimal];
       const diff = DIFFICULTY_SETTINGS[state.difficulty];
-      player.animal = animal.id;
-      player.baseSpeed = 2.8125 * animal.speed;
-      player.speed = player.baseSpeed;
-      player.baseDamage = 15 * animal.damage;
-      player.maxHp = Math.floor(animal.hp * diff.hpMult);
-      player.hp = player.maxHp;
-      player.lives = 3;
-      player.items.armor = null;
-      player.items.glasses = false;
-      player.items.sneakers = true;
-      player.items.cowboyBoots = false;
-      player.items.soccerCleats = false;
-      player.items.horse = false;
-      state.allies = [];
-      initLevel(1);
+      if (state.selectedMode === 1) {
+        // 3D Survivor mode
+        stopGameLoop();
+        canvas.style.display = 'none';
+        launch3DGame({
+          animal,
+          difficulty: diff,
+          onReturn: () => {
+            canvas.style.display = '';
+            // Clear all 2D keys to prevent ghost inputs
+            Object.keys(keys).forEach(k => { keys[k] = false; });
+            state.gameState = 'title';
+            startGameLoop();
+          }
+        });
+      } else {
+        // 2D Classic mode
+        player.animal = animal.id;
+        player.baseSpeed = 2.8125 * animal.speed;
+        player.speed = player.baseSpeed;
+        player.baseDamage = 15 * animal.damage;
+        player.maxHp = Math.floor(animal.hp * diff.hpMult);
+        player.hp = player.maxHp;
+        player.lives = 3;
+        player.items.armor = null;
+        player.items.glasses = false;
+        player.items.sneakers = true;
+        player.items.cowboyBoots = false;
+        player.items.soccerCleats = false;
+        player.items.horse = false;
+        state.allies = [];
+        initLevel(1);
+      }
     }
     if (!keys['Enter']) state._enterHeld = false;
     if (keys['Escape'] && !state._escHeld) {
       state._escHeld = true;
-      state.gameState = 'title';
+      state.gameState = 'difficulty';
     }
     return;
   }
@@ -893,6 +937,7 @@ function draw() {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
   if (state.gameState === 'title') { drawTitleScreen(); return; }
+  if (state.gameState === 'modeSelect') { drawModeSelectScreen(); return; }
   if (state.gameState === 'difficulty') { drawDifficultyScreen(); return; }
   if (state.gameState === 'select') { drawSelectScreen(); return; }
   if (state.gameState === 'gameWin') { drawGameWin(); return; }
@@ -939,10 +984,25 @@ function draw() {
   if (state.gameState === 'paused') drawPaused();
 }
 
+let animFrameId = null;
+
 function gameLoop() {
   update();
   draw();
-  requestAnimationFrame(gameLoop);
+  animFrameId = requestAnimationFrame(gameLoop);
 }
 
-gameLoop();
+function stopGameLoop() {
+  if (animFrameId !== null) {
+    cancelAnimationFrame(animFrameId);
+    animFrameId = null;
+  }
+}
+
+function startGameLoop() {
+  if (animFrameId === null) {
+    gameLoop();
+  }
+}
+
+startGameLoop();

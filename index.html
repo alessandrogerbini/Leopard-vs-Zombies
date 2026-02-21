@@ -15,14 +15,36 @@ body {
   overflow: hidden;
   font-family: 'Courier New', monospace;
 }
-canvas {
+#game-container {
+  position: relative;
+  width: 960px;
+  height: 540px;
+}
+canvas#game {
   border: 2px solid #333;
   image-rendering: pixelated;
+}
+canvas#game3d, canvas#hud3d {
+  display: none;
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 960px;
+  height: 540px;
+  border: 2px solid #333;
+}
+canvas#hud3d {
+  pointer-events: none;
 }
 </style>
 </head>
 <body>
-<canvas id="game" width="960" height="540"></canvas>
-<script type="module" src="js/game.js?v=2"></script>
+<div id="game-container">
+  <canvas id="game" width="960" height="540"></canvas>
+  <canvas id="game3d" width="960" height="540"></canvas>
+  <canvas id="hud3d" width="960" height="540"></canvas>
+</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script type="module" src="js/game.js?v=5"></script>
 </body>
 </html>

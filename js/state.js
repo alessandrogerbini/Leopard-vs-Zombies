@@ -22,7 +22,8 @@ export const ANIMAL_TYPES = [
 ];
 
 export const state = {
-  gameState: 'title', // title, difficulty, select, playing, bossIntro, bossFight, levelComplete, gameWin, gameOver
+  gameState: 'title', // title, modeSelect, difficulty, select, playing, bossIntro, bossFight, levelComplete, gameWin, gameOver
+  selectedMode: 0,
   difficulty: 'easy',
   selectedDifficulty: 0,
   selectedAnimal: 0,
