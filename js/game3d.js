@@ -1452,15 +1452,16 @@ export function launch3DGame(options) {
   }
 
   function findNearestEnemy(range) {
-    let nearest = null, nearDist = Infinity;
+    let nearest = null, nearDistSq = Infinity;
+    const rangeSq = range * range;
     for (const e of st.enemies) {
       if (!e.alive) continue;
       const dx = st.playerX - e.group.position.x;
       const dz = st.playerZ - e.group.position.z;
-      const dist = Math.sqrt(dx * dx + dz * dz);
-      if (dist < range && dist < nearDist) {
+      const distSq = dx * dx + dz * dz;
+      if (distSq < rangeSq && distSq < nearDistSq) {
         nearest = e;
-        nearDist = dist;
+        nearDistSq = distSq;
       }
     }
     return nearest;
@@ -1531,12 +1532,12 @@ export function launch3DGame(options) {
         st.weaponEffects.push({ mesh: slashMesh, life: 0.2, type: 'slash' });
       }
       // Hit all enemies in range
+      const rangeSqCS = range * range;
       for (const e of st.enemies) {
         if (!e.alive) continue;
         const dx = e.group.position.x - st.playerX;
         const dz = e.group.position.z - st.playerZ;
-        const dist = Math.sqrt(dx * dx + dz * dz);
-        if (dist < range) damageEnemy(e, dmg);
+        if (dx * dx + dz * dz < rangeSqCS) damageEnemy(e, dmg);
       }
     } else if (w.typeId === 'boneToss') {
       // Spinning bone shape (T-shape made of 2 boxes)
@@ -1627,13 +1628,13 @@ export function launch3DGame(options) {
 
           hit.add(current);
           prevX = ex; prevZ = ez;
-          let nextNearest = null, nextDist = Infinity;
+          let nextNearest = null, nextDistSq = Infinity;
           for (const e of st.enemies) {
             if (!e.alive || hit.has(e)) continue;
             const dx2 = prevX - e.group.position.x;
             const dz2 = prevZ - e.group.position.z;
-            const d2 = Math.sqrt(dx2 * dx2 + dz2 * dz2);
-            if (d2 < 5 && d2 < nextDist) { nextNearest = e; nextDist = d2; }
+            const d2Sq = dx2 * dx2 + dz2 * dz2;
+            if (d2Sq < 25 && d2Sq < nextDistSq) { nextNearest = e; nextDistSq = d2Sq; }
           }
           current = nextNearest;
         }
@@ -2764,15 +2765,16 @@ export function launch3DGame(options) {
         if (st.items.boots === 'cowboyBoots') range *= 1.2;
         if (st.rangedMode) range *= 2;
 
-        let nearest = null, nearDist = Infinity;
+        let nearest = null, nearDistSq = Infinity;
+        const rangeSqAA = range * range;
         for (const e of st.enemies) {
           if (!e.alive) continue;
           const dx = st.playerX - e.group.position.x;
           const dz = st.playerZ - e.group.position.z;
-          const dist = Math.sqrt(dx * dx + dz * dz);
-          if (dist < range && dist < nearDist) {
+          const distSq = dx * dx + dz * dz;
+          if (distSq < rangeSqAA && distSq < nearDistSq) {
             nearest = e;
-            nearDist = dist;
+            nearDistSq = distSq;
           }
         }
         if (nearest) {
@@ -2830,12 +2832,12 @@ export function launch3DGame(options) {
         if (st.items.gloves && Math.random() < 0.15) dmg *= 2;
 
         // Hit all enemies in range (AoE power attack)
+        const rangeSqPA = range * range;
         for (const e of st.enemies) {
           if (!e.alive) continue;
           const dx = st.playerX - e.group.position.x;
           const dz = st.playerZ - e.group.position.z;
-          const dist = Math.sqrt(dx * dx + dz * dz);
-          if (dist < range) {
+          if (dx * dx + dz * dz < rangeSqPA) {
             e.hp -= dmg;
             e.hurtTimer = 0.2;
             st.attackLines.push(createAttackLine(st.playerX, py, st.playerZ, e.group.position.x, e.group.position.y + 0.8, e.group.position.z));
@@ -2938,18 +2940,19 @@ export function launch3DGame(options) {
         if (!c.alive) continue;
         const dx = st.playerX - c.x;
         const dz = st.playerZ - c.z;
-        const dist = Math.sqrt(dx * dx + dz * dz);
+        const distSq = dx * dx + dz * dz;
 
         // Show label if glasses equipped
-        c.showLabel = st.items.glasses && dist < 8;
+        c.showLabel = st.items.glasses && distSq < 64; // 8*8
 
         // Auto-attack hits crates
-        if (dist < st.attackRange * 1.5 && st.autoAttackTimer <= 0) {
+        const atkRng15 = st.attackRange * 1.5;
+        if (distSq < atkRng15 * atkRng15 && st.autoAttackTimer <= 0) {
           // Handled by proximity - player walks into crate to break
         }
         // Walk into crate to break (must be at similar height)
         const cdy = Math.abs(st.playerY - c.group.position.y);
-        if (dist < 1.2 && cdy < 2.0) {
+        if (distSq < 1.44 && cdy < 2.0) { // 1.2*1.2
           c.hp--;
           if (c.hp <= 0) {
             c.alive = false;
@@ -2981,9 +2984,9 @@ export function launch3DGame(options) {
         item.mesh.rotation.y += dt * 1.5;
         const dx = st.playerX - item.x;
         const dz = st.playerZ - item.z;
-        const dist = Math.sqrt(dx * dx + dz * dz);
+        const distSq = dx * dx + dz * dz;
         const idy = Math.abs(st.playerY - item.mesh.position.y);
-        if (dist < 1.5 && idy < 2.0) {
+        if (distSq < 2.25 && idy < 2.0) { // 1.5*1.5
           // Equip item
           const it = item.itype;
           if (it.slot === 'armor') st.items.armor = it.id;
@@ -3027,9 +3030,10 @@ export function launch3DGame(options) {
         // Check if auto-attack or power attack hits shrine
         const dx = st.playerX - shrine.x;
         const dz = st.playerZ - shrine.z;
-        const dist = Math.sqrt(dx * dx + dz * dz);
+        const distSq = dx * dx + dz * dz;
+        const shrineRng = st.attackRange * 1.5;
         const sdy = Math.abs(st.playerY - shrine.group.position.y);
-        if (dist < st.attackRange * 1.5 && sdy < 2.5 && st.autoAttackTimer <= 0.05) {
+        if (distSq < shrineRng * shrineRng && sdy < 2.5 && st.autoAttackTimer <= 0.05) {
           shrine.hp--;
           if (shrine.hp <= 0) {
             shrine.alive = false;
@@ -3060,9 +3064,10 @@ export function launch3DGame(options) {
         // Check if player attacks totem
         const tdx = st.playerX - totem.x;
         const tdz = st.playerZ - totem.z;
-        const tdist = Math.sqrt(tdx * tdx + tdz * tdz);
+        const tdistSq = tdx * tdx + tdz * tdz;
+        const totemRng = st.attackRange * 1.5;
         const tdy = Math.abs(st.playerY - totem.y);
-        if (tdist < st.attackRange * 1.5 && tdy < 2.5 && st.autoAttackTimer <= 0.05) {
+        if (tdistSq < totemRng * totemRng && tdy < 2.5 && st.autoAttackTimer <= 0.05) {
           totem.hp--;
           if (totem.hp <= 0) {
             totem.alive = false;
