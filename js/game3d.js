@@ -66,6 +66,18 @@ const POWERUPS_3D = [
   { id: 'raceCar', name: 'RACE CAR', color: '#cc2222', colorHex: 0xcc2222, desc: '2x Speed + Fire!', duration: 12, apply: s => { s.speedBoost = 2; s.fireAura = true; }, remove: s => { s.speedBoost = 1; s.fireAura = false; } },
   { id: 'bananaCannon', name: 'BANANA CANNON', color: '#ffdd00', colorHex: 0xffdd00, desc: 'Ranged Attack!', duration: 15, apply: s => { s.rangedMode = true; }, remove: s => { s.rangedMode = false; } },
   { id: 'wings', name: 'ANGEL WINGS', color: '#aaddff', colorHex: 0xaaddff, desc: 'Fly Anywhere!', duration: 15, apply: s => { s.flying = true; }, remove: s => { s.flying = false; } },
+  { id: 'frostNova', name: 'FROST NOVA', color: '#88ccff', colorHex: 0x88ccff, desc: 'Freeze Nearby Zombies!', duration: 1, apply: s => { s.frostNova = true; }, remove: s => { s.frostNova = false; } },
+  { id: 'berserkerRage', name: 'BERSERKER RAGE', color: '#881111', colorHex: 0x881111, desc: '+50% Dmg, +30% Spd, +25% Vuln', duration: 20, apply: s => { s.dmgBoost = 1.5; s.speedBoost = 1.3; s.berserkVulnerable = true; }, remove: s => { s.dmgBoost = 1; s.speedBoost = 1; s.berserkVulnerable = false; } },
+  { id: 'ghostForm', name: 'GHOST FORM', color: '#eeeeff', colorHex: 0xeeeeff, desc: 'Invulnerable, Can\'t Attack', duration: 8, apply: s => { s.ghostForm = true; s.invincible = 999; }, remove: s => { s.ghostForm = false; s.invincible = 0; } },
+  { id: 'earthquakeStomp', name: 'EARTHQUAKE STOMP', color: '#8B6914', colorHex: 0x8B6914, desc: 'Landings Create Shockwaves!', duration: 15, apply: s => { s.earthquakeStomp = true; }, remove: s => { s.earthquakeStomp = false; } },
+  { id: 'vampireFangs', name: 'VAMPIRE FANGS', color: '#6a0dad', colorHex: 0x6a0dad, desc: 'Passive HP Regen!', duration: 20, apply: s => { s.vampireHeal = true; }, remove: s => { s.vampireHeal = false; } },
+  { id: 'lightningShield', name: 'LIGHTNING SHIELD', color: '#44aaff', colorHex: 0x44aaff, desc: 'Zap Nearby Enemies!', duration: 15, apply: s => { s.lightningShield = true; s.lightningShieldTimer = 0; }, remove: s => { s.lightningShield = false; } },
+  { id: 'giantGrowth', name: 'GIANT GROWTH', color: '#22cc44', colorHex: 0x22cc44, desc: '2x Size & Dmg, -30% Speed', duration: 15, apply: s => { s.dmgBoost = 2; s.speedBoost = 0.7; s.giantMode = true; }, remove: s => { s.dmgBoost = 1; s.speedBoost = 1; s.giantMode = false; } },
+  { id: 'timeWarp', name: 'TIME WARP', color: '#9944ff', colorHex: 0x9944ff, desc: 'Slow All Zombies!', duration: 10, apply: s => { s.timeWarp = true; for (const e of s.enemies) e.speed *= 0.25; }, remove: s => { s.timeWarp = false; for (const e of s.enemies) e.speed *= 4; } },
+  { id: 'magnetAura', name: 'MAGNET AURA', color: '#aaaaaa', colorHex: 0xaaaaaa, desc: '5x Pickup Radius!', duration: 20, apply: s => { s.collectRadius *= 5; }, remove: s => { s.collectRadius /= 5; } },
+  { id: 'mirrorImage', name: 'MIRROR IMAGE', color: '#44ffff', colorHex: 0x44ffff, desc: 'AI Clones Fight For You!', duration: 15, apply: s => { s.mirrorClones = true; }, remove: s => { s.mirrorClones = false; } },
+  { id: 'bombTrail', name: 'BOMB TRAIL', color: '#ff6622', colorHex: 0xff6622, desc: 'Leave Explosive Bombs!', duration: 12, apply: s => { s.bombTrail = true; s.bombTrailTimer = 0; }, remove: s => { s.bombTrail = false; } },
+  { id: 'regenBurst', name: 'REGEN BURST', color: '#33ff33', colorHex: 0x33ff33, desc: 'Rapidly Heal To Full!', duration: 5, apply: s => { s.regenBurst = true; }, remove: s => { s.regenBurst = false; } },
 ];
 
 // Item definitions for 3D
@@ -152,6 +164,22 @@ export function launch3DGame(options) {
     fireAura: false,
     rangedMode: false,
     flying: false,
+    frostNova: false,
+    berserkVulnerable: false,
+    ghostForm: false,
+    earthquakeStomp: false,
+    vampireHeal: false,
+    lightningShield: false,
+    lightningShieldTimer: 0,
+    giantMode: false,
+    timeWarp: false,
+    mirrorClones: false,
+    mirrorCloneGroups: [],
+    bombTrail: false,
+    bombTrailTimer: 0,
+    bombTrailBombs: [],
+    regenBurst: false,
+    wasAirborne: false,
     // Items (permanent)
     items: { armor: null, glasses: false, boots: null },
     // UI
@@ -1949,6 +1977,343 @@ export function launch3DGame(options) {
         }
       }
 
+      // === FROST NOVA (freeze nearby enemies on activation) ===
+      if (st.frostNova) {
+        for (const e of st.enemies) {
+          if (!e.alive) continue;
+          const dx = st.playerX - e.group.position.x;
+          const dz = st.playerZ - e.group.position.z;
+          if (dx * dx + dz * dz < 64) { // range 8
+            e.frozen = true;
+            e.frozenTimer = 5;
+          }
+        }
+        // Spawn burst of frost particles
+        for (let i = 0; i < 20; i++) {
+          const angle = Math.random() * Math.PI * 2;
+          const dist = Math.random() * 8;
+          const fp = new THREE.Mesh(fireGeo, fireMat.clone());
+          fp.material.color.setHex(0x88ccff);
+          fp.position.set(st.playerX + Math.cos(angle) * dist, st.playerY + 0.5 + Math.random(), st.playerZ + Math.sin(angle) * dist);
+          scene.add(fp);
+          fireParticles.push({ mesh: fp, life: 1.0 });
+        }
+        st.frostNova = false; // instant burst, only triggers once
+      }
+      // Update frozen enemies
+      for (const e of st.enemies) {
+        if (!e.alive || !e.frozen) continue;
+        e.frozenTimer -= dt;
+        if (e.frozenTimer <= 0) {
+          e.frozen = false;
+          e.body.material.color.setHex(e.bodyColor);
+          e.head.material.color.setHex(e.headColor);
+        } else {
+          // Frozen tint
+          e.body.material.color.setHex(0x88ccff);
+          e.head.material.color.setHex(0xaaddff);
+        }
+      }
+
+      // === BERSERKER RAGE visual (red aura particles) ===
+      if (st.berserkVulnerable && Math.random() < 0.25) {
+        const fp = new THREE.Mesh(fireGeo, fireMat.clone());
+        fp.material.color.setHex(0x881111);
+        fp.position.set(
+          st.playerX + (Math.random() - 0.5) * 1.5,
+          st.playerY + 0.3 + Math.random() * 0.8,
+          st.playerZ + (Math.random() - 0.5) * 1.5
+        );
+        scene.add(fp);
+        fireParticles.push({ mesh: fp, life: 0.4 });
+      }
+
+      // === GHOST FORM visual (transparent player + ghost particles) ===
+      if (st.ghostForm) {
+        playerGroup.traverse(child => {
+          if (child.isMesh && child.material) {
+            child.material.transparent = true;
+            child.material.opacity = 0.3 + Math.sin(clock.elapsedTime * 6) * 0.15;
+          }
+        });
+        if (Math.random() < 0.2) {
+          const fp = new THREE.Mesh(fireGeo, fireMat.clone());
+          fp.material.color.setHex(0xeeeeff);
+          fp.material.transparent = true;
+          fp.material.opacity = 0.5;
+          fp.position.set(
+            st.playerX + (Math.random() - 0.5) * 1,
+            st.playerY + Math.random() * 1.5,
+            st.playerZ + (Math.random() - 0.5) * 1
+          );
+          scene.add(fp);
+          fireParticles.push({ mesh: fp, life: 0.6 });
+        }
+      } else {
+        // Restore opacity when ghost form ends
+        playerGroup.traverse(child => {
+          if (child.isMesh && child.material && child.material.transparent && child.material.opacity < 0.9) {
+            child.material.opacity = 1;
+            child.material.transparent = false;
+          }
+        });
+      }
+
+      // === EARTHQUAKE STOMP (shockwave on landing) ===
+      if (st.earthquakeStomp) {
+        const currentlyAirborne = !st.onGround;
+        if (st.wasAirborne && st.onGround) {
+          // Just landed - create shockwave!
+          const stompDmg = st.attackDamage * st.dmgBoost * 1.5;
+          for (const e of st.enemies) {
+            if (!e.alive) continue;
+            const dx = st.playerX - e.group.position.x;
+            const dz = st.playerZ - e.group.position.z;
+            if (dx * dx + dz * dz < 25) { // range 5
+              e.hp -= stompDmg;
+              e.hurtTimer = 0.15;
+            }
+          }
+          // Visual: expanding ring of brown particles
+          for (let i = 0; i < 24; i++) {
+            const angle = (i / 24) * Math.PI * 2;
+            const fp = new THREE.Mesh(fireGeo, fireMat.clone());
+            fp.material.color.setHex(0x8B6914);
+            fp.position.set(
+              st.playerX + Math.cos(angle) * 2,
+              st.playerY + 0.2,
+              st.playerZ + Math.sin(angle) * 2
+            );
+            scene.add(fp);
+            fireParticles.push({ mesh: fp, life: 0.8 });
+          }
+        }
+        st.wasAirborne = currentlyAirborne;
+      }
+
+      // === VAMPIRE FANGS (passive regen 3 HP/s) ===
+      if (st.vampireHeal) {
+        st.hp = Math.min(st.hp + 3 * dt, st.maxHp);
+        if (Math.random() < 0.15) {
+          const fp = new THREE.Mesh(fireGeo, fireMat.clone());
+          fp.material.color.setHex(0x6a0dad);
+          fp.position.set(
+            st.playerX + (Math.random() - 0.5) * 0.8,
+            st.playerY + 0.5 + Math.random() * 0.5,
+            st.playerZ + (Math.random() - 0.5) * 0.8
+          );
+          scene.add(fp);
+          fireParticles.push({ mesh: fp, life: 0.5 });
+        }
+      }
+
+      // === LIGHTNING SHIELD (zap nearest enemy every 0.5s) ===
+      if (st.lightningShield) {
+        st.lightningShieldTimer -= dt;
+        if (st.lightningShieldTimer <= 0) {
+          st.lightningShieldTimer = 0.5;
+          let nearest = null, nearestDist = 25; // range 5 squared
+          for (const e of st.enemies) {
+            if (!e.alive) continue;
+            const dx = st.playerX - e.group.position.x;
+            const dz = st.playerZ - e.group.position.z;
+            const distSq = dx * dx + dz * dz;
+            if (distSq < nearestDist) {
+              nearestDist = distSq;
+              nearest = e;
+            }
+          }
+          if (nearest) {
+            nearest.hp -= 10 * st.dmgBoost;
+            nearest.hurtTimer = 0.15;
+            // Lightning bolt visual (line of particles from player to enemy)
+            const ex = nearest.group.position.x, ez = nearest.group.position.z;
+            const ey = nearest.group.position.y + 0.5;
+            for (let i = 0; i < 6; i++) {
+              const t = i / 5;
+              const fp = new THREE.Mesh(fireGeo, fireMat.clone());
+              fp.material.color.setHex(0x44aaff);
+              fp.position.set(
+                st.playerX + (ex - st.playerX) * t + (Math.random() - 0.5) * 0.3,
+                st.playerY + 1 + (ey - st.playerY - 1) * t,
+                st.playerZ + (ez - st.playerZ) * t + (Math.random() - 0.5) * 0.3
+              );
+              scene.add(fp);
+              fireParticles.push({ mesh: fp, life: 0.3 });
+            }
+          }
+        }
+        // Orbiting spark particles
+        if (Math.random() < 0.3) {
+          const angle = clock.elapsedTime * 4 + Math.random() * Math.PI;
+          const fp = new THREE.Mesh(fireGeo, fireMat.clone());
+          fp.material.color.setHex(0x44aaff);
+          fp.position.set(
+            st.playerX + Math.cos(angle) * 1.5,
+            st.playerY + 0.8 + Math.random() * 0.5,
+            st.playerZ + Math.sin(angle) * 1.5
+          );
+          scene.add(fp);
+          fireParticles.push({ mesh: fp, life: 0.4 });
+        }
+      }
+
+      // === GIANT GROWTH (scale player model) ===
+      if (st.giantMode) {
+        playerGroup.scale.set(2, 2, 2);
+      } else {
+        if (playerGroup.scale.x > 1.01) {
+          playerGroup.scale.set(1, 1, 1);
+        }
+      }
+
+      // === TIME WARP visual (purple distortion particles around player) ===
+      if (st.timeWarp && Math.random() < 0.2) {
+        const angle = Math.random() * Math.PI * 2;
+        const fp = new THREE.Mesh(fireGeo, fireMat.clone());
+        fp.material.color.setHex(0x9944ff);
+        fp.material.transparent = true;
+        fp.material.opacity = 0.6;
+        fp.position.set(
+          st.playerX + Math.cos(angle) * 3,
+          st.playerY + Math.random() * 2,
+          st.playerZ + Math.sin(angle) * 3
+        );
+        scene.add(fp);
+        fireParticles.push({ mesh: fp, life: 0.7 });
+      }
+
+      // === MIRROR IMAGE (2 orbiting clones that damage enemies) ===
+      if (st.mirrorClones) {
+        // Create clone groups if they don't exist
+        if (st.mirrorCloneGroups.length === 0) {
+          for (let c = 0; c < 2; c++) {
+            const clone = new THREE.Group();
+            const cloneBody = new THREE.Mesh(
+              new THREE.BoxGeometry(0.5, 0.7, 0.4),
+              new THREE.MeshLambertMaterial({ color: 0x44ffff, transparent: true, opacity: 0.6 })
+            );
+            cloneBody.position.y = 0.5;
+            clone.add(cloneBody);
+            const cloneHead = new THREE.Mesh(
+              new THREE.BoxGeometry(0.35, 0.35, 0.35),
+              new THREE.MeshLambertMaterial({ color: 0x88ffff, transparent: true, opacity: 0.6 })
+            );
+            cloneHead.position.y = 1.1;
+            clone.add(cloneHead);
+            scene.add(clone);
+            st.mirrorCloneGroups.push({ group: clone, attackTimer: 0 });
+          }
+        }
+        // Update clone positions (orbit around player)
+        for (let c = 0; c < st.mirrorCloneGroups.length; c++) {
+          const cloneData = st.mirrorCloneGroups[c];
+          const angle = clock.elapsedTime * 2 + (c * Math.PI);
+          const orbitR = 2.5;
+          cloneData.group.position.set(
+            st.playerX + Math.cos(angle) * orbitR,
+            st.playerY,
+            st.playerZ + Math.sin(angle) * orbitR
+          );
+          cloneData.group.rotation.y = angle + Math.PI;
+          // Clone attacks nearby enemies every 0.8s
+          cloneData.attackTimer -= dt;
+          if (cloneData.attackTimer <= 0) {
+            cloneData.attackTimer = 0.8;
+            for (const e of st.enemies) {
+              if (!e.alive) continue;
+              const dx = cloneData.group.position.x - e.group.position.x;
+              const dz = cloneData.group.position.z - e.group.position.z;
+              if (dx * dx + dz * dz < 9) { // range 3
+                e.hp -= st.attackDamage * st.dmgBoost * 0.5;
+                e.hurtTimer = 0.1;
+                break; // one target per attack
+              }
+            }
+          }
+        }
+      } else {
+        // Remove clones when powerup ends
+        if (st.mirrorCloneGroups.length > 0) {
+          for (const cloneData of st.mirrorCloneGroups) {
+            cloneData.group.traverse(child => {
+              if (child.geometry) child.geometry.dispose();
+              if (child.material) child.material.dispose();
+            });
+            scene.remove(cloneData.group);
+          }
+          st.mirrorCloneGroups = [];
+        }
+      }
+
+      // === BOMB TRAIL (drop bombs as player moves) ===
+      if (st.bombTrail) {
+        st.bombTrailTimer -= dt;
+        if (st.bombTrailTimer <= 0) {
+          st.bombTrailTimer = 0.5;
+          // Create bomb at player position
+          const bomb = new THREE.Mesh(
+            new THREE.SphereGeometry(0.3, 8, 8),
+            new THREE.MeshLambertMaterial({ color: 0xff6622 })
+          );
+          bomb.position.set(st.playerX, st.playerY + 0.3, st.playerZ);
+          scene.add(bomb);
+          st.bombTrailBombs.push({ mesh: bomb, timer: 1.5, x: st.playerX, z: st.playerZ });
+        }
+      }
+      // Update bombs (countdown + explosion)
+      for (let i = st.bombTrailBombs.length - 1; i >= 0; i--) {
+        const b = st.bombTrailBombs[i];
+        b.timer -= dt;
+        // Flashing as timer runs down
+        const flash = Math.sin(b.timer * 12) > 0;
+        b.mesh.material.color.setHex(flash ? 0xff6622 : 0xff2200);
+        if (b.timer <= 0) {
+          // Explode! Damage enemies within range 3
+          for (const e of st.enemies) {
+            if (!e.alive) continue;
+            const dx = b.x - e.group.position.x;
+            const dz = b.z - e.group.position.z;
+            if (dx * dx + dz * dz < 9) {
+              e.hp -= st.attackDamage * st.dmgBoost;
+              e.hurtTimer = 0.15;
+            }
+          }
+          // Explosion particles
+          for (let j = 0; j < 10; j++) {
+            const fp = new THREE.Mesh(fireGeo, fireMat.clone());
+            fp.material.color.setHex(Math.random() > 0.5 ? 0xff6622 : 0xff2200);
+            fp.position.set(
+              b.x + (Math.random() - 0.5) * 2,
+              b.mesh.position.y + Math.random() * 1.5,
+              b.z + (Math.random() - 0.5) * 2
+            );
+            scene.add(fp);
+            fireParticles.push({ mesh: fp, life: 0.5 });
+          }
+          scene.remove(b.mesh);
+          b.mesh.geometry.dispose();
+          b.mesh.material.dispose();
+          st.bombTrailBombs.splice(i, 1);
+        }
+      }
+
+      // === REGEN BURST (rapid healing) ===
+      if (st.regenBurst) {
+        st.hp = Math.min(st.hp + (st.maxHp / 5) * dt, st.maxHp);
+        if (Math.random() < 0.25) {
+          const fp = new THREE.Mesh(fireGeo, fireMat.clone());
+          fp.material.color.setHex(0x33ff33);
+          fp.position.set(
+            st.playerX + (Math.random() - 0.5) * 1,
+            st.playerY + 0.3 + Math.random() * 1.2,
+            st.playerZ + (Math.random() - 0.5) * 1
+          );
+          scene.add(fp);
+          fireParticles.push({ mesh: fp, life: 0.6 });
+        }
+      }
+
       // === WEAPONS (auto-fire) ===
       updateWeapons(dt);
       updateWeaponProjectiles(dt);
@@ -1972,6 +2337,7 @@ export function launch3DGame(options) {
       // === ENEMY AI ===
       for (const e of st.enemies) {
         if (!e.alive) continue;
+        if (e.frozen) continue; // Frost Nova: frozen enemies don't move
         const dx = st.playerX - e.group.position.x;
         const dz = st.playerZ - e.group.position.z;
         const dist = Math.sqrt(dx * dx + dz * dz);
@@ -2001,6 +2367,7 @@ export function launch3DGame(options) {
           if (st.items.armor === 'leather') dmg *= 0.75;
           else if (st.items.armor === 'chainmail') dmg *= 0.6;
           dmg *= (1 - st.augmentArmor);
+          if (st.berserkVulnerable) dmg *= 1.25; // Berserker Rage: +25% damage taken
           st.hp -= dmg;
           st.invincible = 0.2;
         }
@@ -2071,7 +2438,7 @@ export function launch3DGame(options) {
 
       // === AUTO-ATTACK ===
       st.autoAttackTimer -= dt;
-      if (st.autoAttackTimer <= 0) {
+      if (st.autoAttackTimer <= 0 && !st.ghostForm) {
         let range = st.attackRange;
         if (st.items.boots === 'cowboyBoots') range *= 1.2;
         if (st.rangedMode) range *= 2;
@@ -2797,6 +3164,10 @@ export function launch3DGame(options) {
 
     // Dispose fire particles
     fireParticles.forEach(fp => { scene.remove(fp.mesh); fp.mesh.geometry.dispose(); fp.mesh.material.dispose(); });
+    // Dispose mirror clone groups
+    st.mirrorCloneGroups.forEach(cd => { cd.group.traverse(c => { if (c.geometry) c.geometry.dispose(); if (c.material) c.material.dispose(); }); scene.remove(cd.group); });
+    // Dispose bomb trail bombs
+    st.bombTrailBombs.forEach(b => { scene.remove(b.mesh); b.mesh.geometry.dispose(); b.mesh.material.dispose(); });
 
     // Dispose weapon projectiles and effects
     st.weaponProjectiles.forEach(p => { scene.remove(p.mesh); p.mesh.geometry.dispose(); p.mesh.material.dispose(); });
