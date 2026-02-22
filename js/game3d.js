@@ -65,7 +65,7 @@ const POWERUPS_3D = [
   { id: 'superFangs', name: 'SUPER FANGS', color: '#ff44ff', colorHex: 0xff44ff, desc: '2x Attack Speed', duration: 20, apply: s => { s.atkSpeedBoost = 2; }, remove: s => { s.atkSpeedBoost = 1; } },
   { id: 'raceCar', name: 'RACE CAR', color: '#cc2222', colorHex: 0xcc2222, desc: '2x Speed + Fire!', duration: 12, apply: s => { s.speedBoost = 2; s.fireAura = true; }, remove: s => { s.speedBoost = 1; s.fireAura = false; } },
   { id: 'bananaCannon', name: 'BANANA CANNON', color: '#ffdd00', colorHex: 0xffdd00, desc: 'Ranged Attack!', duration: 15, apply: s => { s.rangedMode = true; }, remove: s => { s.rangedMode = false; } },
-  { id: 'wings', name: 'ANGEL WINGS', color: '#aaddff', colorHex: 0xaaddff, desc: 'Fly Anywhere!', duration: 15, apply: s => { s.flying = true; }, remove: s => { s.flying = false; } },
+  { id: 'wings', name: 'ANGEL WINGS', color: '#aaddff', colorHex: 0xaaddff, desc: 'Fly Anywhere!', duration: 15, apply: s => { s.flying = true; }, remove: s => { s.flying = false; s.gManeuver = false; s.gManeuverPitch = 0; } },
 ];
 
 // Item definitions for 3D
@@ -152,6 +152,9 @@ export function launch3DGame(options) {
     fireAura: false,
     rangedMode: false,
     flying: false,
+    // G-force maneuver state (Top Gun style loops/dives while flying)
+    gManeuver: false,       // currently in a G maneuver
+    gManeuverPitch: 0,      // accumulated pitch rotation during maneuver
     // Items (permanent)
     items: { armor: null, glasses: false, boots: null },
     // UI
@@ -1794,6 +1797,46 @@ export function launch3DGame(options) {
         else st.playerVY *= 0.9;
         st.playerY += st.playerVY * dt;
         st.onGround = false;
+
+        // G-force maneuvers: Alt + forward/backward while flying
+        const altKey = keys3d['AltLeft'] || keys3d['AltRight'];
+        if (altKey) {
+          const pitchRate = Math.PI * 1.2; // ~1.2 rad/s = full loop in ~5.2s
+
+          if (keys3d['KeyW'] || keys3d['ArrowUp']) {
+            // Pull up — forward loop (like pulling back on stick)
+            st.gManeuver = true;
+            st.gManeuverPitch += pitchRate * dt;
+          } else if (keys3d['KeyS'] || keys3d['ArrowDown']) {
+            // Push over — dive loop
+            st.gManeuver = true;
+            st.gManeuverPitch -= pitchRate * dt;
+          }
+
+          if (st.gManeuver) {
+            // Speed boost during maneuver
+            let maneuverSpeed = st.playerSpeed * st.speedBoost * 1.5;
+            if (st.items.boots === 'soccerCleats') maneuverSpeed *= 1.15;
+            // Move in the direction the player is facing through the loop
+            const facingAngle = playerGroup.rotation.y;
+            const pitchAngle = st.gManeuverPitch;
+            st.playerX += Math.sin(facingAngle) * Math.cos(pitchAngle) * maneuverSpeed * dt;
+            st.playerZ += Math.cos(facingAngle) * Math.cos(pitchAngle) * maneuverSpeed * dt;
+            st.playerY += Math.sin(pitchAngle) * maneuverSpeed * dt;
+
+            // Prevent going underground
+            const gManeuverGroundH = getGroundAt(st.playerX, st.playerZ) + 1.0;
+            if (st.playerY < gManeuverGroundH) st.playerY = gManeuverGroundH;
+          }
+        } else {
+          // Not maneuvering — smoothly return to normal
+          if (st.gManeuver) {
+            st.gManeuver = false;
+          }
+          st.gManeuverPitch *= 0.9; // Decay toward 0 when not holding Alt
+          // Zero out tiny residual pitch
+          if (Math.abs(st.gManeuverPitch) < 0.01) st.gManeuverPitch = 0;
+        }
       } else {
         if (keys3d['Space'] && st.onGround) {
           st.playerVY = st.jumpForce * st.jumpBoost;
@@ -1881,10 +1924,17 @@ export function launch3DGame(options) {
       // Angel wings visibility + flapping + superman pose
       wingGroup.visible = st.flying;
       if (st.flying) {
-        // Tilt model forward into superman flying pose
-        const targetTilt = -Math.PI / 2.5; // ~72 degrees forward
-        playerGroup.rotation.x += (targetTilt - playerGroup.rotation.x) * 0.1;
-        const flap = Math.sin(clock.elapsedTime * 8) * 0.3;
+        if (st.gManeuver) {
+          // During G maneuver: pitch follows the maneuver angle on top of superman tilt
+          playerGroup.rotation.x = -Math.PI / 2.5 + st.gManeuverPitch;
+        } else {
+          // Normal superman flying pose, smoothly blend back from any residual maneuver pitch
+          const targetTilt = -Math.PI / 2.5 + st.gManeuverPitch; // includes decaying pitch
+          playerGroup.rotation.x += (targetTilt - playerGroup.rotation.x) * 0.1;
+        }
+        // Faster wing flapping during maneuvers for dramatic effect
+        const flapSpeed = st.gManeuver ? 12 : 8;
+        const flap = Math.sin(clock.elapsedTime * flapSpeed) * 0.3;
         wingL1.rotation.z = 0.3 + flap;
         wingL2.rotation.z = 0.5 + flap * 1.2;
         wingL3.rotation.z = 0.6 + flap * 1.4;
