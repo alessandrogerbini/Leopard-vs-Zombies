@@ -2,6 +2,7 @@
 // Uses Three.js (loaded globally via CDN) + HUD overlay canvas
 
 const ARENA_SIZE = 80;
+const SHRINE_COUNT = 20;
 const CHUNK_SIZE = 16;
 const GRAVITY_3D = 22;
 const JUMP_FORCE = 10;
@@ -701,42 +702,26 @@ export function launch3DGame(options) {
   }
 
   function generateShrines(cx, cz) {
-    const key = getChunkKey(cx, cz);
-    if (st.shrinesByChunk[key]) return;
-    // Skip chunks outside map bounds
-    const csMinX = cx * CHUNK_SIZE, csMaxX = csMinX + CHUNK_SIZE;
-    const csMinZ = cz * CHUNK_SIZE, csMaxZ = csMinZ + CHUNK_SIZE;
-    if (csMaxX < -MAP_HALF || csMinX > MAP_HALF || csMaxZ < -MAP_HALF || csMinZ > MAP_HALF) return;
-    st.shrinesByChunk[key] = [];
-
-    const ox = cx * CHUNK_SIZE, oz = cz * CHUNK_SIZE;
-    // 30% chance per chunk
-    if (noise2D(cx * 7 + 41, cz * 7 + 43) < 0.3) {
-      const sx = ox + 2 + noise2D(cx + 47, cz + 53) * (CHUNK_SIZE - 4);
-      const sz = oz + 2 + noise2D(cx + 59, cz + 61) * (CHUNK_SIZE - 4);
-      const shrine = createShrineMesh(sx, sz);
-      st.shrines.push(shrine);
-      st.shrinesByChunk[key].push(shrine);
-    }
+    // Shrines are now finite and pre-placed at game start — skip chunk generation
+    return;
   }
 
   function unloadShrines(cx, cz) {
-    const key = getChunkKey(cx, cz);
-    const shrines = st.shrinesByChunk[key];
-    if (!shrines) return;
-    shrines.forEach(s => {
-      s.alive = false;
-      scene.remove(s.group);
-      s.group.traverse(c => { if (c.geometry) c.geometry.dispose(); if (c.material) c.material.dispose(); });
-      const idx = st.shrines.indexOf(s);
-      if (idx >= 0) st.shrines.splice(idx, 1);
-    });
-    delete st.shrinesByChunk[key];
+    // Shrines are now finite and pre-placed — never unload them
+    return;
   }
 
-  // Initial terrain + platforms + shrines
+  // Initial terrain + platforms
   updateChunks(0, 0);
   updatePlatformChunks(0, 0);
+
+  // Pre-generate finite shrines across the map
+  for (let i = 0; i < SHRINE_COUNT; i++) {
+    const sx = (Math.random() - 0.5) * (ARENA_SIZE * 2 - 20);
+    const sz = (Math.random() - 0.5) * (ARENA_SIZE * 2 - 20);
+    const shrine = createShrineMesh(sx, sz);
+    st.shrines.push(shrine);
+  }
 
   // === PLAYER MODEL ===
   // Helper to add a box mesh to a group
@@ -1428,6 +1413,26 @@ export function launch3DGame(options) {
     }
     st.totalKills++;
     st.killsByTier[(e.tier || 1) - 1]++;
+    // Loot drop roll — higher tier zombies drop more often
+    const dropChance = [0.03, 0.06, 0.10, 0.15, 0.15, 0.20, 0.20, 0.30, 0.30, 0.50][(e.tier || 1) - 1];
+    if (Math.random() < dropChance) {
+      const dropX = e.group.position.x;
+      const dropZ = e.group.position.z;
+      const roll = Math.random();
+      if (roll < 0.6) {
+        // Powerup crate (60% of drops)
+        st.powerupCrates.push(createPowerupCrate(dropX, dropZ));
+      } else if (roll < 0.85) {
+        // Health orb (25% of drops) — heal 15% max HP
+        st.hp = Math.min(st.hp + st.maxHp * 0.15, st.maxHp);
+        st.floatingTexts3d.push({ text: '+HEALTH', color: '#44ff44', x: dropX, y: terrainHeight(dropX, dropZ) + 2, z: dropZ, life: 1.5 });
+      } else {
+        // XP burst (15% of drops) — bonus XP gems
+        for (let g = 0; g < 3; g++) {
+          st.xpGems.push(createXpGem(dropX + (Math.random() - 0.5) * 2, dropZ + (Math.random() - 0.5) * 2));
+        }
+      }
+    }
     disposeEnemy(e);
   }
 
@@ -2702,17 +2707,7 @@ export function launch3DGame(options) {
             st.projectiles.push(createProjectile(st.playerX, py, st.playerZ, dx / d * 15, dz / d * 15));
           }
 
-          if (nearest.hp <= 0) {
-            const pts = Math.floor((10 + st.wave * 2) * (nearest.tier || 1) * st.scoreMult);
-            st.score += pts;
-            st.xpGems.push(createXpGem(nearest.group.position.x, nearest.group.position.z));
-            for (let g = 1; g < (nearest.tier || 1); g++) {
-              st.xpGems.push(createXpGem(nearest.group.position.x + (Math.random() - 0.5), nearest.group.position.z + (Math.random() - 0.5)));
-            }
-            st.totalKills++;
-            st.killsByTier[(nearest.tier || 1) - 1]++;
-            disposeEnemy(nearest);
-          }
+          if (nearest.hp <= 0 && nearest.alive) killEnemy(nearest);
           st.autoAttackTimer = 1 / (st.attackSpeed * st.atkSpeedBoost);
         }
       }
@@ -2758,17 +2753,7 @@ export function launch3DGame(options) {
             e.hp -= dmg;
             e.hurtTimer = 0.2;
             st.attackLines.push(createAttackLine(st.playerX, py, st.playerZ, e.group.position.x, e.group.position.y + 0.8, e.group.position.z));
-            if (e.hp <= 0) {
-              const pts = Math.floor((10 + st.wave * 2) * (e.tier || 1) * st.scoreMult);
-              st.score += pts;
-              st.xpGems.push(createXpGem(e.group.position.x, e.group.position.z));
-              for (let g = 1; g < (e.tier || 1); g++) {
-                st.xpGems.push(createXpGem(e.group.position.x + (Math.random() - 0.5), e.group.position.z + (Math.random() - 0.5)));
-              }
-              st.totalKills++;
-              st.killsByTier[(e.tier || 1) - 1]++;
-              disposeEnemy(e);
-            }
+            if (e.hp <= 0 && e.alive) killEnemy(e);
           }
         }
         // Flash effect
@@ -2827,17 +2812,7 @@ export function launch3DGame(options) {
             e.hp -= st.attackDamage * st.dmgBoost * 0.8;
             e.hurtTimer = 0.15;
             p.hitEnemies.add(e);
-            if (e.hp <= 0) {
-              const pts = Math.floor((10 + st.wave * 2) * (e.tier || 1) * st.scoreMult);
-              st.score += pts;
-              st.xpGems.push(createXpGem(e.group.position.x, e.group.position.z));
-              for (let g = 1; g < (e.tier || 1); g++) {
-                st.xpGems.push(createXpGem(e.group.position.x + (Math.random() - 0.5), e.group.position.z + (Math.random() - 0.5)));
-              }
-              st.totalKills++;
-              st.killsByTier[(e.tier || 1) - 1]++;
-              disposeEnemy(e);
-            }
+            if (e.hp <= 0 && e.alive) killEnemy(e);
           }
         }
       }
