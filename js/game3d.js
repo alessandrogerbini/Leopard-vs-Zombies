@@ -1852,7 +1852,19 @@ export function launch3DGame(options) {
         let diff = targetAngle - playerGroup.rotation.y;
         while (diff > Math.PI) diff -= Math.PI * 2;
         while (diff < -Math.PI) diff += Math.PI * 2;
-        playerGroup.rotation.y += diff * 0.15;
+        if (st.flying) {
+          // Slower turning when flying (feels more like flight)
+          playerGroup.rotation.y += diff * 0.08;
+          // Bank/roll into turns (subtle, clamped)
+          const targetRoll = -diff * 0.6;
+          const clampedRoll = Math.max(-0.35, Math.min(0.35, targetRoll)); // Max ~20 degrees
+          playerGroup.rotation.z += (clampedRoll - playerGroup.rotation.z) * 0.1;
+        } else {
+          playerGroup.rotation.y += diff * 0.15;
+        }
+      } else if (st.flying) {
+        // Return to level flight when not turning
+        playerGroup.rotation.z *= 0.9;
       }
 
       // Bipedal leg + arm animation
@@ -1884,13 +1896,16 @@ export function launch3DGame(options) {
         // Tilt model forward into superman flying pose
         const targetTilt = -Math.PI / 2.5; // ~72 degrees forward
         playerGroup.rotation.x += (targetTilt - playerGroup.rotation.x) * 0.1;
-        const flap = Math.sin(clock.elapsedTime * 8) * 0.3;
-        wingL1.rotation.z = 0.3 + flap;
-        wingL2.rotation.z = 0.5 + flap * 1.2;
-        wingL3.rotation.z = 0.6 + flap * 1.4;
-        wingR1.rotation.z = -0.3 - flap;
-        wingR2.rotation.z = -0.5 - flap * 1.2;
-        wingR3.rotation.z = -0.6 - flap * 1.4;
+        // Counter-rotate wings to stay in the horizontal flight plane
+        wingGroup.rotation.x = -playerGroup.rotation.x;
+        // Flap with slightly slower frequency and gentler amplitude for graceful flight
+        const flap = Math.sin(clock.elapsedTime * 6) * 0.25;
+        wingL1.rotation.z = 0.2 + flap;
+        wingL2.rotation.z = 0.35 + flap * 1.1;
+        wingL3.rotation.z = 0.45 + flap * 1.2;
+        wingR1.rotation.z = -0.2 - flap;
+        wingR2.rotation.z = -0.35 - flap * 1.1;
+        wingR3.rotation.z = -0.45 - flap * 1.2;
       } else {
         // Return to upright
         if (Math.abs(playerGroup.rotation.x) > 0.01) {
@@ -1898,6 +1913,13 @@ export function launch3DGame(options) {
         } else {
           playerGroup.rotation.x = 0;
         }
+        // Reset roll from flight banking
+        if (Math.abs(playerGroup.rotation.z) > 0.01) {
+          playerGroup.rotation.z *= 0.85;
+        } else {
+          playerGroup.rotation.z = 0;
+        }
+        wingGroup.rotation.x = 0;
       }
 
       // Invincibility timer
