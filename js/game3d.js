@@ -1856,20 +1856,29 @@ export function launch3DGame(options) {
       }
 
       // Bipedal leg + arm animation
-      const walkSpeed = len > 0 ? 10 : 0;
-      const walkPhase = clock.elapsedTime * walkSpeed;
-      const legSwing = Math.sin(walkPhase) * 0.5;
-      const legLift = Math.abs(Math.sin(walkPhase)) * 0.08;
-      if (legs[0]) { legs[0].position.z = legSwing * 0.25; legs[0].position.y = 0.25 + (len > 0 ? legLift : 0); }
-      if (legs[1]) { legs[1].position.z = -legSwing * 0.25; legs[1].position.y = 0.25 + (len > 0 ? Math.abs(Math.sin(walkPhase + Math.PI)) * 0.08 : 0); }
-      // Arm swing (opposite to legs, bigger)
-      if (arms[0]) arms[0].position.z = -legSwing * 0.2;
-      if (arms[1]) arms[1].position.z = legSwing * 0.2;
-      // Body bob when walking
-      if (len > 0) {
-        playerGroup.position.y = st.playerY + Math.abs(Math.sin(walkPhase * 2)) * 0.04;
+      if (st.flying) {
+        // Flying pose: legs trail behind, arms reach forward
+        if (legs[0]) { legs[0].position.z = -0.15; legs[0].position.y = 0.25; }
+        if (legs[1]) { legs[1].position.z = -0.15; legs[1].position.y = 0.25; }
+        if (arms[0]) arms[0].position.z = 0.2;
+        if (arms[1]) arms[1].position.z = 0.2;
+        // No body bob when flying
+      } else {
+        const walkSpeed = len > 0 ? 10 : 0;
+        const walkPhase = clock.elapsedTime * walkSpeed;
+        const legSwing = Math.sin(walkPhase) * 0.5;
+        const legLift = Math.abs(Math.sin(walkPhase)) * 0.08;
+        if (legs[0]) { legs[0].position.z = legSwing * 0.25; legs[0].position.y = 0.25 + (len > 0 ? legLift : 0); }
+        if (legs[1]) { legs[1].position.z = -legSwing * 0.25; legs[1].position.y = 0.25 + (len > 0 ? Math.abs(Math.sin(walkPhase + Math.PI)) * 0.08 : 0); }
+        // Arm swing (opposite to legs, bigger)
+        if (arms[0]) arms[0].position.z = -legSwing * 0.2;
+        if (arms[1]) arms[1].position.z = legSwing * 0.2;
+        // Body bob when walking
+        if (len > 0) {
+          playerGroup.position.y = st.playerY + Math.abs(Math.sin(walkPhase * 2)) * 0.04;
+        }
       }
-      // Tail wag
+      // Tail wag always plays
       if (tail) tail.rotation.y = Math.sin(clock.elapsedTime * 3) * 0.4;
 
       // Muscle growth per level (0.08 per level = very visible)
