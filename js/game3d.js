@@ -2391,7 +2391,7 @@ export function launch3DGame(options) {
    */
   function updateWeapons(dt) {
     for (const w of st.weapons) {
-      w.cooldownTimer -= dt;
+      w.cooldownTimer = Math.max(0, w.cooldownTimer - dt);
       if (w.cooldownTimer <= 0) {
         const hasTarget = findNearestEnemy(getWeaponRange(w));
         if (hasTarget) {
@@ -2542,19 +2542,19 @@ export function launch3DGame(options) {
 
       if (eff.type === 'explosion') {
         if (eff.mesh.material) {
-          eff.mesh.material.opacity = eff.life / 0.3 * 0.5;
+          eff.mesh.material.opacity = Math.min(1, Math.max(0, eff.life / 0.3 * 0.5));
         }
         eff.mesh.scale.y = Math.max(0.01, eff.life / 0.3);
       }
 
       if (eff.type === 'slash') {
         // Fade out slash lines
-        if (eff.mesh.material) eff.mesh.material.opacity = eff.life / 0.2 * 0.7;
+        if (eff.mesh.material) eff.mesh.material.opacity = Math.min(1, Math.max(0, eff.life / 0.2 * 0.7));
       }
 
       if (eff.type === 'bolt') {
         // Fade lightning segments
-        if (eff.mesh.material) eff.mesh.material.opacity = eff.life / 0.15;
+        if (eff.mesh.material) eff.mesh.material.opacity = Math.min(1, Math.max(0, eff.life / 0.15));
       }
 
       if (eff.life <= 0) {
