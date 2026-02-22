@@ -241,8 +241,7 @@ export function launch3DGame(options) {
         cleanup();
         onReturn();
       }
-    }
-    if (st.upgradeMenu && !st.gameOver) {
+    } else if (st.upgradeMenu && !st.gameOver) {
       if (e.code === 'ArrowLeft' || e.code === 'KeyA') st.selectedUpgrade = (st.selectedUpgrade - 1 + st.upgradeChoices.length) % st.upgradeChoices.length;
       if (e.code === 'ArrowRight' || e.code === 'KeyD') st.selectedUpgrade = (st.selectedUpgrade + 1) % st.upgradeChoices.length;
       if (e.code === 'Enter' || e.code === 'Space') {
@@ -255,24 +254,17 @@ export function launch3DGame(options) {
         st.rerolls--;
         showUpgradeMenu(); // re-generates choices
       }
-    }
-    if (!st.gameOver && !st.upgradeMenu && e.code === 'Escape') {
-      if (st.pauseMenu) {
-        // Unpause
+    } else if (st.pauseMenu && !st.gameOver) {
+      // Pause menu navigation
+      if (e.code === 'Escape') {
+        // Unpause via Escape
         st.paused = false;
         st.pauseMenu = false;
-      } else {
-        // Pause
-        st.paused = true;
-        st.pauseMenu = true;
-        st.selectedPauseOption = 0;
-      }
-    }
-    // Pause menu navigation
-    if (st.pauseMenu && !st.gameOver) {
-      if (e.code === 'ArrowLeft' || e.code === 'KeyA') st.selectedPauseOption = (st.selectedPauseOption - 1 + 3) % 3;
-      if (e.code === 'ArrowRight' || e.code === 'KeyD') st.selectedPauseOption = (st.selectedPauseOption + 1) % 3;
-      if (e.code === 'Enter' || e.code === 'Space') {
+      } else if (e.code === 'ArrowLeft' || e.code === 'KeyA') {
+        st.selectedPauseOption = (st.selectedPauseOption - 1 + 3) % 3;
+      } else if (e.code === 'ArrowRight' || e.code === 'KeyD') {
+        st.selectedPauseOption = (st.selectedPauseOption + 1) % 3;
+      } else if (e.code === 'Enter' || e.code === 'Space') {
         if (st.selectedPauseOption === 0) {
           // Resume
           st.paused = false;
@@ -286,6 +278,14 @@ export function launch3DGame(options) {
           cleanup();
           onReturn();
         }
+      }
+    } else if (!st.gameOver && !st.upgradeMenu && !st.pauseMenu) {
+      // Normal gameplay — Enter/NumpadEnter/B handled by power attack in game loop via keys3d
+      // Escape opens pause menu
+      if (e.code === 'Escape') {
+        st.paused = true;
+        st.pauseMenu = true;
+        st.selectedPauseOption = 0;
       }
     }
   }
