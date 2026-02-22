@@ -2357,6 +2357,8 @@ export function launch3DGame(options) {
       for (const e of st.enemies) {
         if (!e.alive) continue;
         if (e.frozen) continue; // Frost Nova: frozen enemies don't move
+        // Lazy-init jump state fields
+        if (e.jumpVY === undefined) { e.jumpVY = 0; e.jumpCooldown = 0; e.onPlatform = false; }
         const dx = st.playerX - e.group.position.x;
         const dz = st.playerZ - e.group.position.z;
         const dist = Math.sqrt(dx * dx + dz * dz);
@@ -2365,10 +2367,56 @@ export function launch3DGame(options) {
           const nz = dz / dist;
           e.group.position.x += nx * e.speed * dt;
           e.group.position.z += nz * e.speed * dt;
-          // Enemy follows terrain with offset to prevent clipping
+          e.group.rotation.y = Math.atan2(nx, nz);
+        }
+
+        // Platform jumping logic
+        if (e.jumpCooldown > 0) e.jumpCooldown -= dt;
+
+        // Check if player is on a platform and zombie is close horizontally
+        if (st.onPlatformY !== null && dist < 6 && !e.onPlatform) {
+          const targetY = st.onPlatformY;
+          const zombieY = e.group.position.y;
+          if (targetY > zombieY + 0.5 && e.jumpCooldown <= 0 && e.jumpVY === 0) {
+            // Jump! Higher tiers jump more reliably
+            const tierJumpChance = 0.02 + ((e.tier || 1) - 1) * 0.015;
+            if (Math.random() < tierJumpChance) {
+              e.jumpVY = 8 + ((e.tier || 1) - 1) * 0.5;
+              e.jumpCooldown = 2;
+            }
+          }
+        }
+
+        // Apply jump physics or normal ground following
+        if (e.jumpVY !== 0 || e.onPlatform) {
+          e.jumpVY -= GRAVITY_3D * dt;
+          e.group.position.y += e.jumpVY * dt;
+
+          // Check platform landing
+          for (const p of platforms) {
+            const halfW = p.w / 2, halfD = p.d / 2;
+            if (e.group.position.x > p.x - halfW && e.group.position.x < p.x + halfW &&
+                e.group.position.z > p.z - halfD && e.group.position.z < p.z + halfD) {
+              const platTop = p.y + 0.2;
+              if (e.jumpVY <= 0 && e.group.position.y >= platTop - 0.5 && e.group.position.y <= platTop + 1.0) {
+                e.group.position.y = platTop + 0.45;
+                e.jumpVY = 0;
+                e.onPlatform = true;
+              }
+            }
+          }
+
+          // Ground collision
+          const groundH = getGroundAt(e.group.position.x, e.group.position.z) + 0.45;
+          if (e.group.position.y <= groundH) {
+            e.group.position.y = groundH;
+            e.jumpVY = 0;
+            e.onPlatform = false;
+          }
+        } else {
+          // Normal ground following
           const eh = getGroundAt(e.group.position.x, e.group.position.z) + 0.45;
           e.group.position.y = eh;
-          e.group.rotation.y = Math.atan2(nx, nz);
         }
         // Walking animation: arm swing + leg shuffle
         e.walkPhase += dt * e.speed * 3;
