@@ -1091,21 +1091,33 @@ export function launch3DGame(options) {
       }
     }
     // Unload far platforms + shrines
+    // Collect keys first to avoid mutation-during-iteration
+    const platformKeysToUnload = [];
     for (const key in platformsByChunk) {
       const [cx, cz] = key.split(',').map(Number);
       if (Math.abs(cx - Math.floor(px / CHUNK_SIZE)) > VIEW_DIST + 1 ||
           Math.abs(cz - Math.floor(pz / CHUNK_SIZE)) > VIEW_DIST + 1) {
-        unloadPlatforms(cx, cz);
-        unloadShrines(cx, cz);
+        platformKeysToUnload.push(key);
       }
     }
+    for (const key of platformKeysToUnload) {
+      const [cx, cz] = key.split(',').map(Number);
+      unloadPlatforms(cx, cz);
+      unloadShrines(cx, cz);
+    }
     // Also unload shrines in chunks not covered by platforms
+    // Collect keys first to avoid mutation-during-iteration
+    const shrineKeysToUnload = [];
     for (const key in st.shrinesByChunk) {
       const [cx, cz] = key.split(',').map(Number);
       if (Math.abs(cx - Math.floor(px / CHUNK_SIZE)) > VIEW_DIST + 1 ||
           Math.abs(cz - Math.floor(pz / CHUNK_SIZE)) > VIEW_DIST + 1) {
-        unloadShrines(cx, cz);
+        shrineKeysToUnload.push(key);
       }
+    }
+    for (const key of shrineKeysToUnload) {
+      const [cx, cz] = key.split(',').map(Number);
+      unloadShrines(cx, cz);
     }
   }
 
