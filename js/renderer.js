@@ -1,15 +1,107 @@
+/**
+ * @module renderer
+ * @description All 2D canvas drawing functions for Animals vs Zombies Classic mode.
+ * Handles character sprites, world backgrounds, pickup/crate rendering, particle
+ * effects, HUD overlays, and full-screen menu/state screens. Every exported
+ * function operates on the shared module-level canvas 2D context set by
+ * initRenderer().
+ *
+ * Dependencies: state.js (GROUND_Y, DRAW_SCALE, state, player, camera,
+ *   ARMOR_TYPES, GLASSES_TYPE, SNEAKERS_TYPE, CLEATS_TYPE, HORSE_TYPE,
+ *   ANIMAL_TYPES, DIFFICULTY_SETTINGS)
+ * Exports: 35 functions (2 setup + 33 draw functions)
+ *
+ * Key concepts:
+ * - All pixel art is drawn procedurally using ctx.fillRect / ctx.arc / ctx.beginPath.
+ * - Animal sprites support four species (leopard, redPanda, lion, gator) with
+ *   three visual modes each: walking, in race car, in litter box.
+ * - Powerup visuals (jumpy boots, claws, fangs, banana cannon, wings, armor,
+ *   glasses, footwear) are overlaid on top of the base animal sprite.
+ * - Camera offset (camera.x) is subtracted from world-space x coordinates.
+ * - DRAW_SCALE controls the overall sprite scaling factor.
+ *
+ * Section layout:
+ * 1. Character Drawing (drawLeopard, drawZombie, drawBoss, drawAlly + private helpers)
+ * 2. World Drawing (drawBackground)
+ * 3. Pickup/Crate Drawing (16 functions for items, portals, diamonds)
+ * 4. Effects (drawParticles, drawFloatingTexts, drawProjectiles)
+ * 5. HUD/UI (drawHUD)
+ * 6. Screen Overlays (drawDying, drawBossIntro, drawTitleScreen, drawLevelComplete,
+ *    drawGameWin, drawGameOver, drawModeSelectScreen, drawDifficultyScreen,
+ *    drawSelectScreen, drawPaused)
+ */
+
 // All drawing functions
 import { GROUND_Y, DRAW_SCALE, state, player, camera, ARMOR_TYPES, GLASSES_TYPE, SNEAKERS_TYPE, CLEATS_TYPE, HORSE_TYPE, ANIMAL_TYPES, DIFFICULTY_SETTINGS } from './state.js';
 
-let canvas, ctx;
+/** @type {HTMLCanvasElement} Module-level canvas reference, set by initRenderer(). */
+let canvas;
+/** @type {CanvasRenderingContext2D} Module-level 2D rendering context. */
+let ctx;
 
+/**
+ * Initialize the renderer with a canvas element.
+ *
+ * @param {HTMLCanvasElement} c - The canvas element to render to.
+ */
 export function initRenderer(c) {
   canvas = c;
   ctx = c.getContext('2d');
 }
 
+/**
+ * Get the shared 2D rendering context.
+ *
+ * @returns {CanvasRenderingContext2D} The canvas 2D context.
+ */
 export function getCtx() { return ctx; }
 
+// ═══════════════════════════════════════════════════════════════════
+// ██  CHARACTER DRAWING
+// ██  drawLeopard, drawZombie, drawBoss, drawAlly
+// ██  + private helpers: _drawWalkingAnimal, _drawWalkingLeopard,
+// ██    _drawWalkingRedPanda, _drawWalkingLion, _drawWalkingGator,
+// ██    _drawAnimalInCar, _drawAnimalInLitterBox, _drawAnimalPortrait,
+// ██    _drawTitleStandoff, _drawTitleBoss, _drawTitleLeaderboard,
+// ██    _drawNameEntry, _drawLeaderboard
+// ═══════════════════════════════════════════════════════════════════
+
+/**
+ * Draw the player character at the given screen position.
+ *
+ * Despite the name "drawLeopard", this function renders whichever animal
+ * the player has selected (leopard, redPanda, lion, or gator). The name
+ * is historical from when leopard was the only playable character.
+ *
+ * The function handles three major visual modes based on active powerups:
+ * 1. **Race Car** (player.powerups.raceCar > 0): Draws a detailed race car
+ *    with the animal sitting inside, jet fire behind, animated wheels, and
+ *    exhaust particles. The car provides visual armor and contact damage.
+ * 2. **Litter Box** (player.powerups.litterBox > 0): Draws a wheeled litter
+ *    box with the animal peeking out. Used for the litter-throw attack.
+ * 3. **Walking** (default): Draws the animal on all fours with animated
+ *    legs, tail wag, and species-specific details (spots, mane, scales, etc.).
+ *
+ * After the base form, powerup visual overlays are drawn in order:
+ * - Jumpy boots (green spring boots on all four paws)
+ * - Claws of steel (glowing orange claw marks)
+ * - Super fangs (pink fang extensions)
+ * - Banana cannon with monkey loader (cannon + monkey on the animal's back)
+ * - Armor overlay (leather or chainmail, drawn on body and head)
+ * - Aviator glasses overlay (positioned per animal and per vehicle mode)
+ * - Footwear overlay (sneakers, cowboy boots, or soccer cleats on paws)
+ * - Angel wings (animated feathered wings with glow)
+ * - Fire breath attack effect (cone of particles from mouth during attack)
+ *
+ * Invincibility is shown as a flickering alpha. Facing direction is handled
+ * by a ctx.scale(-1,1) flip -- all art is drawn facing right, then mirrored.
+ *
+ * @param {number} x - Screen-space X position (already camera-adjusted by caller).
+ * @param {number} y - Screen-space Y position.
+ * @see _drawWalkingAnimal
+ * @see _drawAnimalInCar
+ * @see _drawAnimalInLitterBox
+ */
 export function drawLeopard(x, y) {
   const f = player.facing;
   const alpha = player.invincible > 0 ? (player.invincible % 4 < 2 ? 0.4 : 1) : 1;
@@ -34,7 +126,11 @@ export function drawLeopard(x, y) {
   const by = bounceY;
 
   if (player.powerups.raceCar > 0) {
-    // === RACE CAR ===
+    // === RACE CAR POWERUP VISUAL ===
+    // Draws a complete race car sprite: body panels, spoiler, windshield,
+    // cockpit, racing stripe, side vents, headlights/taillights, animated
+    // wheels with spinning spokes, exhaust smoke, the animal sitting inside,
+    // and a jet fire effect trailing behind the car.
     // Car body main
     ctx.fillStyle = '#cc2222';
     ctx.fillRect(px - 4, py + 30 + by, 50, 16);
@@ -155,7 +251,9 @@ export function drawLeopard(x, y) {
     }
 
   } else if (player.powerups.litterBox > 0) {
-    // === LITTER BOX ON WHEELS ===
+    // === LITTER BOX ON WHEELS POWERUP VISUAL ===
+    // Draws a wheeled litter box: box body with rim, visible sand/granules
+    // inside, wheels with rims, and the animal peeking out above the box.
     // Box body
     ctx.fillStyle = '#8a7a6a';
     ctx.fillRect(px - 2, py + 25 + by, 46, 22);
@@ -182,11 +280,19 @@ export function drawLeopard(x, y) {
     _drawAnimalInLitterBox(ctx, player.animal, px, py, by);
 
   } else {
-    // === WALKING ANIMAL ON ALL FOURS (dispatches by player.animal) ===
+    // === BASE WALKING FORM (no vehicle powerup active) ===
+    // Dispatches to species-specific drawing function based on player.animal.
+    // Each draws the animal on all fours with animated leg swing, tail wag,
+    // and species-unique features (leopard spots, red panda stripes, lion
+    // mane, gator scales/teeth).
     _drawWalkingAnimal(ctx, player.animal, px, py, by);
   }
 
-  // Powerup visuals
+  // === POWERUP VISUAL OVERLAYS ===
+  // Each overlay is drawn on top of the base animal form. Vehicle powerups
+  // (raceCar, litterBox) suppress certain overlays since the animal is inside.
+
+  // --- Jumpy Boots overlay (green spring-loaded boots on all 4 paws) ---
   if (player.powerups.jumpyBoots > 0 && player.powerups.raceCar <= 0 && player.powerups.litterBox <= 0) {
     const runSpeed2 = Math.abs(player.vx) > 0.5;
     const legTime2 = Date.now() * (runSpeed2 ? 0.012 : 0.004);
@@ -226,18 +332,22 @@ export function drawLeopard(x, y) {
     drawJumpyBoot(px + 26, py + 36 + by - legSwing2);
     drawJumpyBoot(px + 32, py + 36 + by + legSwing2);
   }
+  // --- Claws of Steel overlay (glowing orange claw slash marks) ---
   if (player.powerups.clawsOfSteel > 0) {
     ctx.fillStyle = 'rgba(255,136,68,0.4)';
     ctx.fillRect(px + 36, py + 10 + by, 5, 2);
     ctx.fillRect(px + 38, py + 13 + by, 5, 2);
     ctx.fillRect(px + 36, py + 16 + by, 5, 2);
   }
+  // --- Super Fangs overlay (pink fang extensions at mouth) ---
   if (player.powerups.superFangs > 0) {
     ctx.fillStyle = '#ff44ff';
     ctx.fillRect(px + 34, py + 12 + by, 2, 3);
     ctx.fillRect(px + 37, py + 12 + by, 2, 3);
   }
-  // Banana cannon with monkey loader
+  // --- Banana Cannon with Monkey Loader overlay ---
+  // Draws a wooden cannon mount on the animal's back with a barrel, plus a
+  // small monkey sitting behind the cannon loading a banana into the breach.
   if (player.powerups.bananaCannon > 0 && player.powerups.raceCar <= 0 && player.powerups.litterBox <= 0) {
     const cx = px + 10;
     const cy = py + 10 + by;
@@ -323,7 +433,10 @@ export function drawLeopard(x, y) {
     ctx.fillRect(mx - 3, my + 4, 1, 2);
   }
 
-  // Armor overlay (drawn on top of leopard body)
+  // --- Armor Overlay (leather or chainmail, drawn on body/head) ---
+  // Only visible when not in a vehicle. Leather draws brown armor pieces with
+  // straps and buckles. Chainmail draws silver mesh with pauldrons, animated
+  // metallic glint, and a coif over the head.
   if (player.items.armor && player.powerups.raceCar <= 0 && player.powerups.litterBox <= 0) {
     if (player.items.armor === 'leather') {
       // Leather armor - brown/tan armor pieces on body and head
@@ -410,7 +523,10 @@ export function drawLeopard(x, y) {
     }
   }
 
-  // Aviator glasses overlay (drawn on top of animal face)
+  // --- Aviator Glasses Overlay (drawn on top of animal face) ---
+  // Position varies by animal species and by vehicle mode (raceCar, litterBox,
+  // or walking). The glasses have dark lenses, frames, a bridge, temple arms,
+  // and a subtle lens glint highlight.
   if (player.items.glasses) {
     if (player.powerups.raceCar > 0) {
       if (player.animal === 'gator') {
@@ -587,7 +703,10 @@ export function drawLeopard(x, y) {
     }
   }
 
-  // Footwear overlay (always drawn on leopard paws when not in vehicle)
+  // --- Footwear Overlay (sneakers, cowboy boots, or soccer cleats) ---
+  // Always drawn on the animal's four paws when not in a vehicle powerup.
+  // Three types: cowboy boots (brown leather with star), soccer cleats
+  // (green with white studs), or default sneakers (red high-tops with laces).
   if (player.powerups.raceCar <= 0 && player.powerups.litterBox <= 0) {
     const runSpeedS = Math.abs(player.vx) > 0.5;
     const legTimeS = Date.now() * (runSpeedS ? 0.012 : 0.004);
@@ -687,7 +806,12 @@ export function drawLeopard(x, y) {
     }
   }
 
-  // Angel Wings rendering
+  // --- Angel Wings Powerup Overlay ---
+  // Draws two animated feathered wings attached to the animal's back,
+  // with flapping motion driven by sin(Date.now()). Each wing uses
+  // quadratic curves for feather shapes with three luminosity layers
+  // (outer, middle, inner highlight) plus feather-edge stroke lines.
+  // A pulsing glow circle surrounds the wing attachment point.
   if (player.powerups.wings > 0) {
     const wingFlap = Math.sin(Date.now() * 0.008) * 0.4;
     const wingX = px + 12; // attach near the back/middle of the body
@@ -777,7 +901,14 @@ export function drawLeopard(x, y) {
 
   ctx.restore(); // undo the facing flip
 
-  // Fire breath attack effect (drawn in screen-relative space so it faces correctly)
+  // --- Fire Breath Attack Effect ---
+  // Drawn when the player is attacking with a standard melee (not banana/litter).
+  // Rendered in screen-relative space (after the facing-flip restore) so the
+  // fire always extends in the correct direction. Uses layered circular
+  // particles forming a cone from the mouth outward, with color gradient:
+  //   - Normal: white-hot core -> yellow -> orange -> red at tips
+  //   - Claws of Steel active: blue-white -> light blue -> blue -> dark blue
+  // A bright core stream runs along the center for added intensity.
   if (player.attacking && player.powerups.bananaCannon <= 0 && player.powerups.litterBox <= 0) {
     const fireProgress = player.attackTimer / 12;
     ctx.globalAlpha = alpha * fireProgress;
@@ -845,6 +976,12 @@ export function drawLeopard(x, y) {
   ctx.restore();
 }
 
+/**
+ * Draw a single zombie enemy sprite with hurt-flash, size scaling, animated
+ * arms/legs, red eyes, and an HP bar when damaged.
+ *
+ * @param {object} z - Zombie entity object from state.zombies[].
+ */
 export function drawZombie(z) {
   if (!z.alive) return;
   const px = Math.floor(z.x - camera.x);
@@ -882,6 +1019,22 @@ export function drawZombie(z) {
   }
 }
 
+/**
+ * Draw the Zombie Lord boss character and all active telegraph indicators.
+ *
+ * The boss is drawn with a two-phase visual system: phase 1 is green-toned,
+ * phase 2 (below 50% HP) shifts to red-toned. Features include a massive
+ * torso, animated swinging arms with claw fingers, animated legs, pulsing
+ * red eyes with glow, a toothed mouth, and three horn-like protrusions.
+ *
+ * Telegraph indicators warn the player of incoming attacks:
+ * 1. **Skull telegraph**: Pulsing red dashed targeting line + crosshair at aim point.
+ * 2. **AOE telegraph**: Expanding warning ellipse on the ground with center marker.
+ * 3. **Mortar telegraph**: Pulsing circles at each mortar landing position.
+ *
+ * Also draws the boss name label ("ZOMBIE LORD"), an HP bar with white border,
+ * and a charge-warning ring when the boss is preparing to charge.
+ */
 export function drawBoss() {
   const boss = state.boss;
   if (!boss || !boss.alive) return;
@@ -1097,6 +1250,31 @@ export function drawBoss() {
   }
 }
 
+// ═══════════════════════════════════════════════════════════════════
+// ██  WORLD DRAWING
+// ██  drawBackground
+// ═══════════════════════════════════════════════════════════════════
+
+/**
+ * Draw the complete level background, including sky, celestial objects,
+ * terrain decorations, ground surface, and platforms.
+ *
+ * The background varies by level:
+ * - **Level 1 (Forest)**: Dark green gradient sky, crescent moon, twinkling
+ *   stars, parallax-scrolling trees with two-tone foliage, brown ground.
+ * - **Level 2 (Highway)**: Dark blue gradient, moon, stars, dashed yellow
+ *   road center line, wrecked cars with wheels, road signs, lampposts with
+ *   radial light glow, grey ground.
+ * - **Level 3 (Ice)**: Dark teal gradient, moon, stars, hanging icicles with
+ *   inner highlights, snow mounds, frozen trees with ice sparkle animation,
+ *   falling snowflakes, icy blue ground.
+ *
+ * All levels draw platforms with level-appropriate coloring (wood, concrete,
+ * or ice) including top highlights and support posts. Parallax scrolling
+ * is applied to background decorations (0.5x-0.7x camera speed).
+ *
+ * @see state.levelData
+ */
 export function drawBackground() {
   const ld = state.levelData;
   const currentLevel = state.currentLevel;
@@ -1271,6 +1449,16 @@ export function drawBackground() {
   });
 }
 
+// ═══════════════════════════════════════════════════════════════════
+// ██  PICKUP / CRATE DRAWING
+// ██  drawHealthPickups, drawPowerupCrates, drawArmorCrates,
+// ██  drawArmorPickups, drawGlassesCrates, drawGlassesPickups,
+// ██  drawSneakersCrates, drawSneakersPickups, drawCleatsCrates,
+// ██  drawCleatsPickups, drawHorseCrates, drawHorsePickups,
+// ██  drawPortal, drawDiamond
+// ═══════════════════════════════════════════════════════════════════
+
+/** Draw all uncollected health pickups as green crosses with a soft glow. */
 export function drawHealthPickups() {
   state.healthPickups.forEach(h => {
     if (h.collected) return;
@@ -1284,6 +1472,7 @@ export function drawHealthPickups() {
   });
 }
 
+/** Draw all unbroken powerup crates with wooden styling, a "?" icon, HP pips, glow, and aviator glasses reveal. */
 export function drawPowerupCrates() {
   state.powerupCrates.forEach(c => {
     if (c.broken) return;
@@ -1326,6 +1515,7 @@ export function drawPowerupCrates() {
   });
 }
 
+/** Draw all unbroken armor crates with metallic styling, a shield icon, corner rivets, and HP pips. */
 export function drawArmorCrates() {
   state.armorCrates.forEach(c => {
     if (c.broken) return;
@@ -1376,6 +1566,7 @@ export function drawArmorCrates() {
   });
 }
 
+/** Draw all unequipped floating armor pickups with halo glow, item sprite, name label, and "Press E" prompt. */
 export function drawArmorPickups() {
   state.armorPickups.forEach(ap => {
     if (ap.equipped) return;
@@ -1452,6 +1643,7 @@ export function drawArmorPickups() {
   });
 }
 
+/** Draw all unbroken glasses crates with golden-tinted metallic styling and a sunglasses icon. */
 export function drawGlassesCrates() {
   state.glassesCrates.forEach(c => {
     if (c.broken) return;
@@ -1515,6 +1707,7 @@ export function drawGlassesCrates() {
   });
 }
 
+/** Draw all unequipped floating aviator glasses pickups with golden halo and "Press E" prompt. */
 export function drawGlassesPickups() {
   state.glassesPickups.forEach(gp => {
     if (gp.equipped) return;
@@ -1580,6 +1773,7 @@ export function drawGlassesPickups() {
   });
 }
 
+/** Draw all unbroken sneakers (cowboy boots) crates with brown-tinted metallic styling and a boot icon. */
 export function drawSneakersCrates() {
   state.sneakersCrates.forEach(c => {
     if (c.broken) return;
@@ -1638,6 +1832,7 @@ export function drawSneakersCrates() {
   });
 }
 
+/** Draw all unequipped floating cowboy boot pickups with brown halo and paired boot sprites. */
 export function drawSneakersPickups() {
   state.sneakersPickups.forEach(sp => {
     if (sp.equipped) return;
@@ -1725,6 +1920,7 @@ export function drawSneakersPickups() {
   });
 }
 
+/** Draw all unbroken soccer cleats crates with green-tinted metallic styling and a cleat icon. */
 export function drawCleatsCrates() {
   state.cleatsCrates.forEach(c => {
     if (c.broken) return;
@@ -1783,6 +1979,7 @@ export function drawCleatsCrates() {
   });
 }
 
+/** Draw all unequipped floating soccer cleat pickups with green halo and paired cleat sprites. */
 export function drawCleatsPickups() {
   state.cleatsPickups.forEach(cp => {
     if (cp.equipped) return;
@@ -1871,6 +2068,7 @@ export function drawCleatsPickups() {
   });
 }
 
+/** Draw the end-of-level portal with animated spinning particles, concentric rings, and a "Level N" label. */
 export function drawPortal() {
   const portal = state.portal;
   if (!portal || portal.entered) return;
@@ -1908,6 +2106,7 @@ export function drawPortal() {
   ctx.textAlign = 'left';
 }
 
+/** Draw the Wild Diamond collectible with cyan radial glow, diamond shape, inner facet, and sparkle rays. */
 export function drawDiamond() {
   const d = state.diamond;
   if (!d || d.collected) return;
@@ -1933,6 +2132,12 @@ export function drawDiamond() {
   ctx.fillRect(dx - 18, dy - 1, 6, 2); ctx.fillRect(dx + 12, dy - 1, 6, 2);
 }
 
+// ═══════════════════════════════════════════════════════════════════
+// ██  EFFECTS
+// ██  drawParticles, drawFloatingTexts, drawProjectiles
+// ═══════════════════════════════════════════════════════════════════
+
+/** Draw all active particles with fading alpha based on remaining life. */
 export function drawParticles() {
   state.particles.forEach(p => {
     ctx.globalAlpha = p.life / p.maxLife;
@@ -1942,6 +2147,7 @@ export function drawParticles() {
   ctx.globalAlpha = 1;
 }
 
+/** Draw all floating damage/score text labels with fading alpha. */
 export function drawFloatingTexts() {
   state.floatingTexts.forEach(t => {
     ctx.globalAlpha = t.life / 60;
@@ -1953,6 +2159,7 @@ export function drawFloatingTexts() {
   ctx.globalAlpha = 1;
 }
 
+/** Draw all active projectiles (banana, litter, bossSkull, bossAOE, bossMortar) with type-specific visuals and trails. */
 export function drawProjectiles() {
   state.projectiles.forEach(proj => {
     const px = proj.x - camera.x;
@@ -2104,6 +2311,16 @@ export function drawProjectiles() {
   });
 }
 
+// ═══════════════════════════════════════════════════════════════════
+// ██  HUD / UI
+// ██  drawHUD
+// ═══════════════════════════════════════════════════════════════════
+
+/**
+ * Draw the heads-up display: HP bar, lives, score, difficulty badge, level
+ * info, zombie count, combo indicator, active powerup list, equipped items,
+ * allied animal names, and contextual hints (boss fight, diamond prompt).
+ */
 export function drawHUD() {
   ctx.fillStyle = 'rgba(0,0,0,0.7)'; ctx.fillRect(15, 15, 204, 24);
   ctx.fillStyle = '#440000'; ctx.fillRect(17, 17, 200, 20);
@@ -2226,6 +2443,14 @@ export function drawHUD() {
   }
 }
 
+// ═══════════════════════════════════════════════════════════════════
+// ██  SCREEN OVERLAYS
+// ██  drawDying, drawBossIntro, drawTitleScreen, drawLevelComplete,
+// ██  drawGameWin, drawGameOver, drawModeSelectScreen,
+// ██  drawDifficultyScreen, drawSelectScreen, drawPaused
+// ═══════════════════════════════════════════════════════════════════
+
+/** Draw the death overlay with red vignette, "YOU DIED!" text, and remaining lives count. */
 export function drawDying() {
   const t = state.deathTimer;
   ctx.fillStyle = `rgba(100,0,0,${0.5 * (1 - t / 90)})`;
@@ -2244,6 +2469,14 @@ export function drawDying() {
   ctx.textAlign = 'left';
 }
 
+/**
+ * Draw the boss introduction warning overlay.
+ *
+ * Shows a pulsing dark backdrop with a shaking "WARNING!" header in red,
+ * "THE ZOMBIE LORD APPROACHES!" subtitle, and instructions to defeat
+ * the boss to claim the Wild Diamond. Displayed for 90 frames (1.5s at 60fps)
+ * before transitioning to the bossFight state.
+ */
 export function drawBossIntro() {
   ctx.fillStyle = `rgba(0,0,0,${0.3 + Math.sin(Date.now() * 0.005) * 0.15})`;
   ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -2256,6 +2489,12 @@ export function drawBossIntro() {
   ctx.textAlign = 'left';
 }
 
+/**
+ * Draw a compact leaderboard panel for the title screen.
+ *
+ * @param {number} cx - Center X position.
+ * @param {number} startY - Top Y position for the panel.
+ */
 function _drawTitleLeaderboard(cx, startY) {
   const lb = state.leaderboard;
   const maxEntries = Math.min(lb.length, 5);
@@ -2310,6 +2549,10 @@ function _drawTitleLeaderboard(cx, startY) {
   ctx.textAlign = 'center';
 }
 
+/**
+ * Draw the title screen standoff scene: four playable animals facing the Zombie Lord boss
+ * with ground, atmospheric lighting, dust particles, and tension sparks.
+ */
 function _drawTitleStandoff() {
   const t = Date.now();
   const groundY = 435;
@@ -2378,6 +2621,12 @@ function _drawTitleStandoff() {
   }
 }
 
+/**
+ * Draw the large Zombie Lord boss for the title screen standoff scene.
+ *
+ * @param {number} t - Current timestamp (Date.now()) for animation.
+ * @param {number} groundY - Y coordinate of the ground line.
+ */
 function _drawTitleBoss(t, groundY) {
   const bx = 710;
   const fy = groundY;
@@ -2500,6 +2749,7 @@ function _drawTitleBoss(t, groundY) {
   ctx.restore();
 }
 
+/** Draw the full title screen: background particles, standoff scene, game title, controls, leaderboard, and blinking "PRESS ENTER" prompt. */
 export function drawTitleScreen() {
   ctx.fillStyle = '#0a0a0a'; ctx.fillRect(0, 0, canvas.width, canvas.height);
 
@@ -2540,6 +2790,7 @@ export function drawTitleScreen() {
   ctx.textAlign = 'left';
 }
 
+/** Draw the level complete overlay with level number or "WILD DIAMOND CAPTURED!" and transition text. */
 export function drawLevelComplete() {
   ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillRect(0, 0, canvas.width, canvas.height);
   ctx.font = 'bold 36px "Courier New"'; ctx.textAlign = 'center';
@@ -2557,6 +2808,12 @@ export function drawLevelComplete() {
   ctx.textAlign = 'left';
 }
 
+/**
+ * Draw the name entry UI: label, input box with blinking cursor, and helper text.
+ *
+ * @param {number} cx - Center X position.
+ * @param {number} y - Top Y position for the name entry section.
+ */
 function _drawNameEntry(cx, y) {
   ctx.textAlign = 'center';
   ctx.fillStyle = '#ffcc00'; ctx.font = 'bold 20px "Courier New"';
@@ -2580,6 +2837,12 @@ function _drawNameEntry(cx, y) {
   ctx.fillText('Type your name and press ENTER', cx, boxY + 55);
 }
 
+/**
+ * Draw the full leaderboard table with difficulty badge, column headers, and up to 10 ranked entries.
+ *
+ * @param {number} cx - Center X position.
+ * @param {number} startY - Top Y position for the leaderboard section.
+ */
 function _drawLeaderboard(cx, startY) {
   const lb = state.leaderboard;
   const diff = DIFFICULTY_SETTINGS[state.difficulty];
@@ -2631,6 +2894,7 @@ function _drawLeaderboard(cx, startY) {
   ctx.textAlign = 'center';
 }
 
+/** Draw the victory screen with confetti, diamond, final score, name entry or leaderboard, and replay prompt. */
 export function drawGameWin() {
   ctx.fillStyle = '#0a0a1a'; ctx.fillRect(0, 0, canvas.width, canvas.height);
   for (let i = 0; i < 40; i++) {
@@ -2669,6 +2933,7 @@ export function drawGameWin() {
   ctx.textAlign = 'left';
 }
 
+/** Draw the game over screen with red backdrop, score summary, name entry or leaderboard, and retry prompt. */
 export function drawGameOver() {
   ctx.fillStyle = 'rgba(80,0,0,0.85)'; ctx.fillRect(0, 0, canvas.width, canvas.height);
   ctx.textAlign = 'center';
@@ -2689,6 +2954,7 @@ export function drawGameOver() {
   ctx.textAlign = 'left';
 }
 
+/** Draw the mode selection screen with "2D CLASSIC" and "3D SURVIVOR" cards, icons, descriptions, and arrow navigation. */
 export function drawModeSelectScreen() {
   const W = canvas.width, H = canvas.height;
   ctx.fillStyle = '#0a0a0a'; ctx.fillRect(0, 0, W, H);
@@ -2782,6 +3048,7 @@ export function drawModeSelectScreen() {
   ctx.textAlign = 'left';
 }
 
+/** Draw the difficulty selection screen with cards showing HP/score multipliers, HP bar visualization, and descriptions. */
 export function drawDifficultyScreen() {
   const W = canvas.width, H = canvas.height;
   ctx.fillStyle = '#0a0a0a'; ctx.fillRect(0, 0, W, H);
@@ -2864,6 +3131,7 @@ export function drawDifficultyScreen() {
   ctx.textAlign = 'left';
 }
 
+/** Draw the animal selection screen with portrait cards, stat bars (SPD/DMG/HP), names, descriptions, and arrow navigation. */
 export function drawSelectScreen() {
   const W = canvas.width, H = canvas.height;
   // Background
@@ -2976,6 +3244,16 @@ export function drawSelectScreen() {
 // === WALKING ANIMAL DRAWING FUNCTIONS ===
 // Each animal has its own detailed pixel art on all fours, matching the style of the original leopard
 
+/**
+ * Dispatch to the correct species-specific walking draw function.
+ *
+ * @param {CanvasRenderingContext2D} ctx - Rendering context.
+ * @param {string} animal - Animal id ('leopard', 'redPanda', 'lion', 'gator').
+ * @param {number} px - X offset within the drawing coordinate space.
+ * @param {number} py - Y offset within the drawing coordinate space.
+ * @param {number} by - Bounce Y offset for walk cycle.
+ * @param {number} [overrideVx] - Override velocity for leg animation (used for allies).
+ */
 function _drawWalkingAnimal(ctx, animal, px, py, by, overrideVx) {
   const vx = overrideVx !== undefined ? overrideVx : player.vx;
   const runSpeed = Math.abs(vx) > 0.5;
@@ -2995,6 +3273,13 @@ function _drawWalkingAnimal(ctx, animal, px, py, by, overrideVx) {
   }
 }
 
+/**
+ * Draw a leopard on all fours with spots, tail wag, animated legs, green eyes, and whiskers.
+ *
+ * @param {CanvasRenderingContext2D} ctx - Rendering context.
+ * @param {number} px - X offset. @param {number} py - Y offset.
+ * @param {number} by - Bounce Y. @param {number} legSwing - Leg animation offset.
+ */
 function _drawWalkingLeopard(ctx, px, py, by, legSwing) {
   // Tail (drawn first, behind body)
   const tailWag = Math.sin(Date.now() * 0.006) * 5;
@@ -3104,6 +3389,13 @@ function _drawWalkingLeopard(ctx, px, py, by, legSwing) {
   ctx.fillRect(px + 44, py + 8 + by, 2, 2);
 }
 
+/**
+ * Draw a red panda on all fours with bushy striped tail, white face mask, dark eye patches, and large pointed ears.
+ *
+ * @param {CanvasRenderingContext2D} ctx - Rendering context.
+ * @param {number} px - X offset. @param {number} py - Y offset.
+ * @param {number} by - Bounce Y. @param {number} legSwing - Leg animation offset.
+ */
 function _drawWalkingRedPanda(ctx, px, py, by, legSwing) {
   // Tail (long, bushy, straight - signature red panda feature)
   const tailWag = Math.sin(Date.now() * 0.006) * 3;
@@ -3207,6 +3499,13 @@ function _drawWalkingRedPanda(ctx, px, py, by, legSwing) {
   ctx.stroke();
 }
 
+/**
+ * Draw a lion on all fours with large mane, tufted tail, amber eyes, and thick legs.
+ *
+ * @param {CanvasRenderingContext2D} ctx - Rendering context.
+ * @param {number} px - X offset. @param {number} py - Y offset.
+ * @param {number} by - Bounce Y. @param {number} legSwing - Leg animation offset.
+ */
 function _drawWalkingLion(ctx, px, py, by, legSwing) {
   // Tail (long, with tuft at end)
   const tailWag = Math.sin(Date.now() * 0.006) * 5;
@@ -3316,6 +3615,13 @@ function _drawWalkingLion(ctx, px, py, by, legSwing) {
   ctx.stroke();
 }
 
+/**
+ * Draw a gator on all fours with long snout, visible teeth, protruding eyes, back ridges, and stubby clawed legs.
+ *
+ * @param {CanvasRenderingContext2D} ctx - Rendering context.
+ * @param {number} px - X offset. @param {number} py - Y offset.
+ * @param {number} by - Bounce Y. @param {number} legSwing - Leg animation offset.
+ */
 function _drawWalkingGator(ctx, px, py, by, legSwing) {
   // Tail (long, thick, tapering - extends far behind)
   const tailWag = Math.sin(Date.now() * 0.005) * 4;
@@ -3444,6 +3750,13 @@ function _drawWalkingGator(ctx, px, py, by, legSwing) {
 }
 
 // === ANIMAL IN RACE CAR ===
+/**
+ * Draw the animal sitting inside the race car (head, body, paws on steering, tail sticking up).
+ *
+ * @param {CanvasRenderingContext2D} ctx - Rendering context.
+ * @param {string} animal - Animal id.
+ * @param {number} px - X offset. @param {number} py - Y offset. @param {number} by - Bounce Y.
+ */
 function _drawAnimalInCar(ctx, animal, px, py, by) {
   const tailWagCar = Math.sin(Date.now() * 0.005) * 4;
 
@@ -3607,6 +3920,13 @@ function _drawAnimalInCar(ctx, animal, px, py, by) {
 }
 
 // === ANIMAL IN LITTER BOX ===
+/**
+ * Draw the animal peeking out of the litter box (head, partial body, paws gripping rim).
+ *
+ * @param {CanvasRenderingContext2D} ctx - Rendering context.
+ * @param {string} animal - Animal id.
+ * @param {number} px - X offset. @param {number} py - Y offset. @param {number} by - Bounce Y.
+ */
 function _drawAnimalInLitterBox(ctx, animal, px, py, by) {
   if (animal === 'leopard') {
     // Head
@@ -3738,6 +4058,15 @@ function _drawAnimalInLitterBox(ctx, animal, px, py, by) {
   }
 }
 
+/**
+ * Draw an animal portrait for the character selection screen card.
+ *
+ * @param {string} id - Animal id.
+ * @param {number} px - Portrait area X. @param {number} py - Portrait area Y.
+ * @param {number} pw - Portrait width. @param {number} ph - Portrait height.
+ * @param {string} color - Animal's primary color.
+ * @param {number} t - Animation time (0 if not selected).
+ */
 function _drawAnimalPortrait(id, px, py, pw, ph, color, t) {
   const cx = px + pw / 2;
   const cy = py + ph / 2;
@@ -3922,6 +4251,11 @@ function _drawAnimalPortrait(id, px, py, pw, ph, color, t) {
   }
 }
 
+/**
+ * Draw an allied animal companion with species-specific art, HP bar, lives dots, type label, and attack effect.
+ *
+ * @param {object} ally - Ally entity object from state.allies[].
+ */
 export function drawAlly(ally) {
   if (!ally.alive) return;
   const px = Math.floor(ally.x - camera.x);
@@ -4129,6 +4463,7 @@ export function drawAlly(ally) {
   ctx.restore();
 }
 
+/** Draw all unbroken horse crates with golden-brown wooden styling and a horse silhouette icon. */
 export function drawHorseCrates() {
   state.horseCrates.forEach(c => {
     if (c.broken) return;
@@ -4181,6 +4516,7 @@ export function drawHorseCrates() {
   });
 }
 
+/** Draw all unequipped floating war horse pickups with golden halo, horse silhouette, and "Press E" prompt. */
 export function drawHorsePickups() {
   state.horsePickups.forEach(hp => {
     if (hp.equipped) return;
@@ -4252,6 +4588,7 @@ export function drawHorsePickups() {
   });
 }
 
+/** Draw the pause overlay with semi-transparent backdrop, "PAUSED" text, and ESC resume hint. */
 export function drawPaused() {
   ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillRect(0, 0, canvas.width, canvas.height);
   ctx.fillStyle = '#ffffff'; ctx.font = 'bold 42px "Courier New"'; ctx.textAlign = 'center';

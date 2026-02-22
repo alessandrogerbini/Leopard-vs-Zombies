@@ -1,3 +1,64 @@
+/**
+ * @module game
+ * @description Application entry point for Animals vs Zombies. Owns the main game loop,
+ * state machine transitions, player input handling, physics, combat logic, and
+ * rendering orchestration for the 2D Classic mode. Also acts as the launcher for
+ * the 3D Survivor mode via launch3DGame.
+ *
+ * Dependencies: state.js, levels.js, utils.js, enemies.js, items.js, renderer.js, game3d.js
+ * Exports: none (side-effect module -- bootstraps the game on import)
+ *
+ * Key concepts:
+ * - Finite state machine drives all screen transitions (see diagram below).
+ * - requestAnimationFrame loop calls update() then draw() every frame.
+ * - Player physics use simple Euler integration with gravity and knockback.
+ * - Powerups are ammo-counted (clawsOfSteel, jumpyBoots, bananaCannon, litterBox, superFangs)
+ *   or frame-timed (raceCar, wings).
+ * - 3 lives system with per-level respawn and game-over on depletion.
+ * - Leaderboard is stored per-difficulty in localStorage (top 10).
+ */
+
+/*
+ * ============================================================
+ *  STATE MACHINE TRANSITION DIAGRAM
+ * ============================================================
+ *
+ *   title ──[Enter]──> modeSelect ──[Enter]──> difficulty ──[Enter]──> select
+ *     ^                   |  ^                    |  ^                   |
+ *     |                  [Esc]                   [Esc]                  [Esc]
+ *     |                   v  |                    v  |                   |
+ *     |                 title                  modeSelect               |
+ *     |                                                                 |
+ *     |          ┌──────────────────────────────────────────────────────┘
+ *     |          |                   [Enter on mode=0 (2D)]
+ *     |          v
+ *     |       playing ──[all zombies dead, level<3]──> portal ──[enter portal]──> levelComplete
+ *     |          |                                                                    |
+ *     |          |  ┌───────[timer expires, level<3]──────────────────────────────────┘
+ *     |          |  v                                                  [timer expires, level=3]
+ *     |       playing ──[all zombies dead, level=3]──> bossIntro ──> bossFight         |
+ *     |          |                                                      |              v
+ *     |         [Esc]──> paused ──[Esc]──> (previous state)             |          gameWin
+ *     |          |                                                      |            |
+ *     |          |  ┌──[boss killed, diamond collected]─────────────────┘            |
+ *     |          |  v                                                                |
+ *     |       levelComplete ──[timer, level=3]──> gameWin ──[Enter]──> title          |
+ *     |          |                                                                    |
+ *     |         [hp<=0]                                                               |
+ *     |          v                                                                    |
+ *     |       dying ──[timer, lives>0]──> playing (re-init level)                     |
+ *     |          |                                                                    |
+ *     |         [timer, lives=0]                                                      |
+ *     |          v                                                                    |
+ *     |       gameOver ──[Enter]──> title                                             |
+ *     |                                                                               |
+ *     └───────────────────────────────────────────────────────────────────────────────┘
+ *
+ *   select ──[Enter on mode=1 (3D)]──> (stops 2D loop, launches 3D) ──[onReturn]──> title
+ *
+ * ============================================================
+ */
+
 // Main game loop, update logic, initialization
 import { GRAVITY, GROUND_Y, keys, state, player, camera, POWERUP_DURATION, POWERUP_AMMO, ANIMAL_TYPES, DIFFICULTY_SETTINGS } from './state.js';
 import { getLevelData } from './levels.js';
@@ -7,14 +68,24 @@ import { spawnHealthPickups, spawnPowerupCrates, spawnArmorCrates, spawnGlassesC
 import { initRenderer, getCtx, drawLeopard, drawZombie, drawBoss, drawBackground, drawHealthPickups, drawPowerupCrates, drawArmorCrates, drawArmorPickups, drawGlassesCrates, drawGlassesPickups, drawSneakersCrates, drawSneakersPickups, drawCleatsCrates, drawCleatsPickups, drawHorseCrates, drawHorsePickups, drawPortal, drawDiamond, drawParticles, drawFloatingTexts, drawHUD, drawBossIntro, drawDying, drawTitleScreen, drawLevelComplete, drawGameWin, drawGameOver, drawProjectiles, drawPaused, drawSelectScreen, drawDifficultyScreen, drawModeSelectScreen, drawAlly } from './renderer.js';
 import { launch3DGame } from './game3d.js';
 
+/** @type {HTMLCanvasElement} The main game canvas element. */
 const canvas = document.getElementById('game');
 initRenderer(canvas);
 
-// Input
+// --- Input System ---
+// Two keydown listeners are registered:
+// 1. A generic handler that sets keys[code] for movement/action polling each frame.
+// 2. A name-entry handler that captures printable characters for the leaderboard.
+// keyup clears the key flags.
+// NOTE: preventDefault() is called on both keydown and keyup to stop browser
+// scrolling and other default behavior while the game canvas is focused.
 window.addEventListener('keydown', e => { keys[e.code] = true; e.preventDefault(); });
 window.addEventListener('keyup', e => { keys[e.code] = false; e.preventDefault(); });
 
-// Name entry input (captures actual key characters for text entry)
+// Name entry input (captures actual key characters for text entry).
+// Active only when state.nameEntryActive is true (game-over / game-win screens).
+// Backspace deletes last character; Enter submits if at least 1 character typed;
+// printable single-char keys are appended (max 10 characters, uppercased).
 window.addEventListener('keydown', e => {
   if (state.nameEntryActive) {
     if (e.key === 'Backspace') {
@@ -28,12 +99,29 @@ window.addEventListener('keydown', e => {
   }
 });
 
-// Leaderboard persistence (per-difficulty)
+// --- Leaderboard Persistence ---
+// Scores are stored per-difficulty in localStorage under keys like
+// "avz-leaderboard-normal". Each entry includes name, score, animal, level,
+// difficulty, and date. Lists are sorted descending by score, capped at 10.
+
+/**
+ * Load the leaderboard array for a given difficulty from localStorage.
+ *
+ * @param {string} difficulty - Difficulty key (e.g. 'easy', 'normal', 'hard').
+ * @returns {Array<{name:string, score:number, animal:string, level:number, difficulty:string, date:number}>}
+ *   Parsed leaderboard entries, or an empty array if none exist.
+ */
 function loadLeaderboard(difficulty) {
   return JSON.parse(localStorage.getItem(`avz-leaderboard-${difficulty}`) || '[]');
 }
 state.leaderboard = loadLeaderboard(state.difficulty);
 
+/**
+ * Save the current player's score to the leaderboard for the active difficulty.
+ * Pushes a new entry with the player's name, score, animal, current level,
+ * difficulty, and timestamp. The list is then sorted descending by score and
+ * truncated to the top 10 entries before persisting to localStorage.
+ */
 function saveScore() {
   const diff = state.difficulty;
   const lb = loadLeaderboard(diff);
@@ -50,6 +138,19 @@ function saveScore() {
   localStorage.setItem(`avz-leaderboard-${diff}`, JSON.stringify(state.leaderboard));
 }
 
+/**
+ * Initialize (or re-initialize) a level for 2D Classic mode.
+ *
+ * Resets the player's position, velocity, HP, attack state, powerups, and
+ * camera. Clears transient state (particles, floating texts, diamond, boss,
+ * portal, projectiles). Spawns zombies, health pickups, and all crate types
+ * for the new level. Re-positions or respawns existing allies near the player.
+ * Finally transitions the game state to 'playing'.
+ *
+ * @param {number} level - Level number to load (1, 2, or 3).
+ * @see getLevelData
+ * @see spawnZombies
+ */
 function initLevel(level) {
   state.currentLevel = level;
   state.levelData = getLevelData(level);
@@ -116,8 +217,35 @@ function initLevel(level) {
   state.gameState = 'playing';
 }
 
+/**
+ * Main per-frame update tick for 2D Classic mode.
+ *
+ * Runs the finite state machine, processes player physics and input, handles
+ * combat (melee attacks, projectile updates, powerup damage), ticks AI for
+ * zombies/boss/allies, checks level completion conditions, manages the
+ * death/lives system, updates the camera, and decays particles and effects.
+ *
+ * The function is structured in clearly delineated subsystem sections:
+ * 1. Pause toggle
+ * 2. State machine transitions (title, modeSelect, difficulty, select,
+ *    levelComplete, bossIntro, gameWin/gameOver, dying)
+ * 3. Powerup frame timers (raceCar, wings countdown)
+ * 4. Player movement (ground, air, flight modes)
+ * 5. Player attack logic (banana cannon, litter box, standard melee)
+ * 6. Knockback decay
+ * 7. Player physics (gravity, position integration, ground/platform collision)
+ * 8. Animation frame cycling
+ * 9. Attack hit detection (melee vs zombies, boss, crates of all types)
+ * 10. Jet fire / race car contact damage (powerup-specific damage zones)
+ * 11. AI updates (zombies, boss, allies, pickups)
+ * 12. Projectile updates and collision (banana, litter, boss skulls/AOE/mortars)
+ * 13. Level completion / boss spawn triggers
+ * 14. Death / lives system
+ * 15. Camera follow (smooth lerp toward player)
+ * 16. Particle and floating text decay, screen shake/flash cooldown
+ */
 function update() {
-  // Pause toggle
+  // ── Section 1: Pause Toggle ──────────────────────────────────────
   if (keys['Escape'] && !state._escHeld) {
     state._escHeld = true;
     if (state.gameState === 'paused') {
@@ -130,6 +258,9 @@ function update() {
   if (!keys['Escape']) state._escHeld = false;
   if (state.gameState === 'paused') return;
 
+  // ── Section 2: State Machine Transitions ──────────────────────────
+  // Each state handles its own input and either returns early or falls through
+  // to the gameplay subsections below.
   if (state.gameState === 'title') {
     if (keys['Enter'] && !state._enterHeld) { state._enterHeld = true; state.selectedMode = 0; state.gameState = 'modeSelect'; }
     if (!keys['Enter']) state._enterHeld = false;
@@ -204,7 +335,14 @@ function update() {
       const animal = ANIMAL_TYPES[state.selectedAnimal];
       const diff = DIFFICULTY_SETTINGS[state.difficulty];
       if (state.selectedMode === 1) {
-        // 3D Survivor mode
+        // ── 3D Mode Launch Integration ──────────────────────────────
+        // When the player selects 3D Survivor mode:
+        // 1. The 2D RAF loop is stopped via stopGameLoop().
+        // 2. The 2D canvas is hidden.
+        // 3. launch3DGame() is called with the chosen animal, difficulty
+        //    settings, and an onReturn callback.
+        // 4. The onReturn callback re-shows the 2D canvas, clears ghost
+        //    key inputs, resets to the title state, and restarts the 2D loop.
         stopGameLoop();
         canvas.style.display = 'none';
         launch3DGame({
@@ -292,11 +430,16 @@ function update() {
   const ld = state.levelData;
   const inBossFight = state.gameState === 'bossFight';
 
-  // Powerup timers (only frame-based powerups tick down per frame)
+  // ── Section 3: Powerup Frame Timers ──────────────────────────────
+  // raceCar and wings are frame-counted powerups that decrement each tick.
+  // Ammo-based powerups (jumpyBoots, clawsOfSteel, etc.) decrement on use instead.
   if (player.powerups.raceCar > 0) player.powerups.raceCar--;
   if (player.powerups.wings > 0) player.powerups.wings--;
 
-  // Player movement
+  // ── Section 4: Player Movement ────────────────────────────────────
+  // Three movement modes: flight (wings powerup), ground, and airborne.
+  // Soccer cleats grant a 15% speed bonus. Flight uses smooth deceleration
+  // for a floaty feel. Air movement uses partial acceleration (0.55 lerp).
   // Apply soccer cleats speed bonus
   const moveSpeed = player.items.soccerCleats ? player.speed * 1.15 : player.speed;
   if (player.powerups.wings > 0) {
@@ -327,7 +470,11 @@ function update() {
     if (player.powerups.jumpyBoots > 0) player.powerups.jumpyBoots--;
   }
 
-  // Attack
+  // ── Section 5: Player Attack Logic ────────────────────────────────
+  // Three attack modes depending on active powerup:
+  // - Banana cannon: fires a boomerang banana projectile (one at a time)
+  // - Litter box: fires 5 litter chunks in a spread behind the player
+  // - Standard melee: 12-frame attack animation with fire breath visual
   const cooldown = getPlayerCooldown();
   if (keys['Space'] && player.attackCooldown <= 0 && !player.attacking) {
     if (player.powerups.bananaCannon > 0) {
@@ -368,11 +515,14 @@ function update() {
   if (player.invincible > 0) player.invincible--;
   if (player.comboTimer > 0) { player.comboTimer--; if (player.comboTimer <= 0) player.combo = 0; }
 
-  // Knockback
+  // ── Section 6: Knockback Decay ────────────────────────────────────
   player.knockbackX *= 0.8;
   if (Math.abs(player.knockbackX) < 0.3) player.knockbackX = 0;
 
-  // Physics
+  // ── Section 7: Player Physics ─────────────────────────────────────
+  // Euler integration: apply gravity (halved near apex if sneakers equipped
+  // for extra hangtime), integrate position, clamp to ground/ceiling, and
+  // resolve platform collisions (one-way from above).
   if (player.powerups.wings <= 0) {
     let grav = GRAVITY;
     if (player.items.sneakers && !player.onGround && Math.abs(player.vy) < 4) {
@@ -407,7 +557,7 @@ function update() {
 
   player.x = Math.max(0, Math.min(player.x, ld.width - player.w));
 
-  // Animation
+  // ── Section 8: Animation Frame Cycling ────────────────────────────
   player.frameTimer++;
   if (Math.abs(player.vx) > 0) {
     if (player.frameTimer > 6) { player.frame = (player.frame + 1) % 4; player.frameTimer = 0; }
@@ -415,7 +565,11 @@ function update() {
     if (player.frameTimer > 12) { player.frame = (player.frame + 1) % 2; player.frameTimer = 0; }
   }
 
-  // Attack hits
+  // ── Section 9: Melee Attack Hit Detection ─────────────────────────
+  // Fires on the 2nd frame of the 12-frame attack animation (timer === 10).
+  // Checks the attack hitbox against all zombies, the boss, and every crate
+  // type (powerup, armor, glasses, sneakers, cleats, horse). Crates have HP
+  // and break to spawn their contents; powerup crates have a 20% trap chance.
   if (player.attacking && player.attackTimer === 10) {
     const atkBox = getAttackBox();
     const dmg = getPlayerDamage();
@@ -629,6 +783,11 @@ function update() {
     });
   }
 
+  // ── Section 10: Race Car Powerup Damage ───────────────────────────
+  // When the race car powerup is active, three damage sources are checked:
+  // a) Jet fire: a 240px-wide hitbox behind the car deals 8 dmg at 15% chance/frame
+  // b) Contact damage: 30 dmg with a 20-frame per-enemy cooldown
+  // Both sources apply to zombies and the boss independently.
   // Jet fire damage (race car)
   if (player.powerups.raceCar > 0 && state.gameState !== 'dying') {
     // Fire jet damages enemies behind the car
@@ -719,7 +878,7 @@ function update() {
     }
   }
 
-  // AI updates
+  // ── Section 11: AI & Pickup Updates ───────────────────────────────
   updateZombieAI();
   updateBossAI();
   updateAllyAI();
@@ -732,7 +891,15 @@ function update() {
   updateCleatsPickups();
   updateHorsePickups();
 
-  // Update projectiles
+  // ── Section 12: Projectile Updates & Collision ────────────────────
+  // Each projectile type has unique movement behavior:
+  // - banana: flies forward, then boomerangs back to the player
+  // - litter: gravity-affected chunks that slow and fall
+  // - bossSkull: straight-line projectile, consumed on player hit
+  // - bossAOE: expanding shockwave ring, hits player in annular zone
+  // - bossMortar: arcing gravity projectile, burst on ground impact
+  // Player projectiles track which enemies they have already hit (Set).
+  // Boss projectiles apply damage reduction if race car powerup is active.
   state.projectiles = state.projectiles.filter(proj => {
     proj.life--;
     if (proj.life <= 0) return false;
@@ -887,7 +1054,10 @@ function update() {
     return true;
   });
 
-  // Level completion
+  // ── Section 13: Level Completion / Boss Spawn Triggers ─────────────
+  // Levels 1-2: all zombies dead -> spawn portal. Level 3: all zombies dead
+  // -> spawn boss + bossIntro. After boss is killed, the Wild Diamond glows
+  // until collected, triggering levelComplete -> gameWin.
   if (state.currentLevel < 3) {
     if (state.zombies.every(z => !z.alive) && !state.portal) {
       state.portal = {
@@ -909,7 +1079,9 @@ function update() {
     state.diamond.glow += 0.02;
   }
 
-  // Death / lives
+  // ── Section 14: Death / Lives System ──────────────────────────────
+  // When HP hits 0, decrement lives, enter 'dying' state for 90 frames,
+  // then either re-init the current level (lives > 0) or transition to gameOver.
   if (player.hp <= 0) {
     player.hp = 0;
     player.lives--;
@@ -919,12 +1091,14 @@ function update() {
     spawnParticles(player.x + player.w/2, player.y + player.h/2, '#ff0000', 20, 10);
   }
 
-  // Camera
+  // ── Section 15: Camera Follow ─────────────────────────────────────
+  // Smooth lerp (8%) toward the player with the player offset to the left
+  // third of the screen. Clamped to level bounds.
   const targetX = player.x - canvas.width / 3;
   camera.x += (targetX - camera.x) * 0.08;
   camera.x = Math.max(0, Math.min(camera.x, ld.width - canvas.width));
 
-  // Particles & text
+  // ── Section 16: Particle / Effect Decay ───────────────────────────
   state.particles = state.particles.filter(p => { p.x += p.vx; p.y += p.vy; p.vy += 0.15; p.life--; return p.life > 0; });
   state.floatingTexts = state.floatingTexts.filter(t => { t.y -= 1; t.life--; return t.life > 0; });
 
@@ -932,10 +1106,34 @@ function update() {
   if (state.screenFlash > 0) state.screenFlash--;
 }
 
+/**
+ * Main per-frame render function. Delegates to specialized drawing functions
+ * from renderer.js based on the current game state.
+ *
+ * Draw order for gameplay states (back to front):
+ * 1. Background (sky gradient, moon, stars, terrain features, ground, platforms)
+ * 2. Pickups & Crates (health, powerup, armor, glasses, sneakers, cleats, horse)
+ * 3. Portal & Diamond (end-of-level objects)
+ * 4. Enemies (zombies via forEach)
+ * 5. Boss
+ * 6. Allies (allied animal companions via forEach)
+ * 7. Player character (drawLeopard -- name is historical, draws any animal)
+ * 8. Projectiles (bananas, litter, boss skulls/AOE/mortars)
+ * 9. Particles & floating damage/score texts
+ * 10. Screen flash overlay (white flash on big hits/pickups)
+ * 11. HUD (HP bar, score, level info, powerup indicators, item display)
+ * 12. State overlays (bossIntro, dying, levelComplete, gameOver, paused)
+ *
+ * Menu states (title, modeSelect, difficulty, select, gameWin) render their
+ * own full-screen overlay and return early, skipping gameplay draw layers.
+ *
+ * Screen shake is applied via ctx.translate before the gameplay layers.
+ */
 function draw() {
   const ctx = getCtx();
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
+  // Full-screen menu states: render and return early (no gameplay layers)
   if (state.gameState === 'title') { drawTitleScreen(); return; }
   if (state.gameState === 'modeSelect') { drawModeSelectScreen(); return; }
   if (state.gameState === 'difficulty') { drawDifficultyScreen(); return; }
@@ -984,14 +1182,28 @@ function draw() {
   if (state.gameState === 'paused') drawPaused();
 }
 
+// --- RAF (requestAnimationFrame) Loop Management ---
+// NOTE: animFrameId is used both as an active-loop flag and to allow
+// cancellation. When the 3D mode launches, stopGameLoop() is called to
+// suspend the 2D loop; startGameLoop() resumes it on return.
+
+/** @type {number|null} Current requestAnimationFrame handle, or null if stopped. */
 let animFrameId = null;
 
+/**
+ * Single iteration of the main game loop. Calls update() then draw(),
+ * and schedules the next frame via requestAnimationFrame.
+ */
 function gameLoop() {
   update();
   draw();
   animFrameId = requestAnimationFrame(gameLoop);
 }
 
+/**
+ * Stop the RAF game loop by cancelling the pending animation frame.
+ * Safe to call when already stopped (no-op).
+ */
 function stopGameLoop() {
   if (animFrameId !== null) {
     cancelAnimationFrame(animFrameId);
@@ -999,10 +1211,15 @@ function stopGameLoop() {
   }
 }
 
+/**
+ * Start the RAF game loop if it is not already running.
+ * Calls gameLoop() which self-schedules via requestAnimationFrame.
+ */
 function startGameLoop() {
   if (animFrameId === null) {
     gameLoop();
   }
 }
 
+// Bootstrap: kick off the game loop on module load.
 startGameLoop();

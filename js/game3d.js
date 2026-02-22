@@ -1,15 +1,55 @@
-// 3D Roguelike Survivor Mode
-// Uses Three.js (loaded globally via CDN) + HUD overlay canvas
+/**
+ * @module game3d
+ * @description 3D Roguelike Survivor mode — the primary gameplay module for Leopard vs Zombies.
+ *
+ * This module implements a complete 3D survivor game using a closure-based architecture.
+ * The sole export, `launch3DGame(options)`, encapsulates all game state, rendering, physics,
+ * combat, UI, and cleanup within a single function scope. Three.js handles 3D rendering while
+ * a transparent HUD canvas overlay provides 2D UI elements (health bars, menus, score display).
+ *
+ * The world uses chunk-based infinite terrain with procedural noise-driven biomes (forest,
+ * desert, plains). Enemies follow a 10-tier zombie merge system where same-tier zombies
+ * collide and combine into stronger variants. The player has an auto-attack system,
+ * a hold-to-charge power attack, up to 4 weapon slots with 6 weapon types, passive scrolls,
+ * shrine augments, difficulty totems, 18 temporary powerups, and 11 permanent items.
+ *
+ * Dependencies: Three.js (global, loaded via CDN in index.html)
+ * Exports: 1 — launch3DGame(options)
+ *
+ * Key concepts:
+ * - Closure architecture: all state is local to launch3DGame; no module-level mutation
+ * - Dual rendering: Three.js WebGLRenderer for 3D scene + Canvas2D overlay for HUD
+ * - Chunk system: 16x16 terrain/platform/shrine chunks loaded around the player
+ * - Zombie tiers 1-10: visual upgrades (eyes, horns, auras) and stat scaling per tier
+ * - Weapon slot system: auto-fire weapons with per-type projectile/effect logic
+ * - Level-up menu: random draw from weapons, upgrades, scrolls; 3 rerolls per game
+ */
 
+/** @constant {number} ARENA_SIZE - Half-size of the initial spawn area for shrines/totems (80 = 160x160 spawn zone). */
 const ARENA_SIZE = 80;
+/** @constant {number} SHRINE_COUNT - Total number of finite shrines pre-placed at game start. */
 const SHRINE_COUNT = 20;
+/** @constant {number} CHUNK_SIZE - Width/depth of each terrain chunk in world units. */
 const CHUNK_SIZE = 16;
+/** @constant {number} GRAVITY_3D - Downward acceleration in units/s^2 for player and zombie jumping. */
 const GRAVITY_3D = 22;
+/** @constant {number} JUMP_FORCE - Base upward velocity applied on jump (modified by jumpBoost). */
 const JUMP_FORCE = 10;
+/** @constant {number} GROUND_Y - Baseline Y coordinate for flat ground (before terrain noise). */
 const GROUND_Y = 0;
+/** @constant {number} MAP_HALF - Half the map dimension; world extends from -MAP_HALF to +MAP_HALF on X and Z. */
 const MAP_HALF = 128; // 256x256 total map (extends -128 to +128 on both axes)
 
-// Animal color palettes for 3D models
+/**
+ * Color palettes for each playable animal's 3D box model.
+ * Each palette provides hex colors for body, head, accent details, spot markings, and tail.
+ *
+ * @constant {Object.<string, {body: number, head: number, accent: number, spot: number, tail: number}>}
+ * @property {Object} leopard  - Golden-yellow tones with dark amber spots.
+ * @property {Object} redPanda - Reddish-brown with dark accents and cream markings.
+ * @property {Object} lion     - Warm golden-brown with tawny mane coloring.
+ * @property {Object} gator    - Deep green with lighter belly tones.
+ */
 const ANIMAL_PALETTES = {
   leopard: { body: 0xe8a828, head: 0xf0c050, accent: 0xd09020, spot: 0xa06810, tail: 0xc08818 },
   redPanda: { body: 0xcc4422, head: 0xdd6644, accent: 0xaa3311, spot: 0x882200, tail: 0xbb3318 },
@@ -17,7 +57,19 @@ const ANIMAL_PALETTES = {
   gator: { body: 0x44aa44, head: 0x55cc55, accent: 0x338833, spot: 0x226622, tail: 0x2a7a2a },
 };
 
-// Weapon types for weapon slot system
+/**
+ * Weapon type definitions for the weapon slot system.
+ * Each weapon has a unique attack pattern, base stats, and 5 level-up tiers.
+ * Weapons auto-fire at the nearest enemy within range when their cooldown expires.
+ *
+ * @constant {Object.<string, {id: string, name: string, type: string, color: string, desc: string, baseDamage: number, baseCooldown: number, baseRange: number, maxLevel: number, levelDescs: string[]}>}
+ * @property {Object} clawSwipe     - Melee AoE arc slash hitting all enemies in range.
+ * @property {Object} boneToss      - Ranged projectile(s) that fly toward targets; gains extra projectiles at levels 2/5.
+ * @property {Object} poisonCloud   - AoE damage-over-time cloud placed at enemy position.
+ * @property {Object} lightningBolt - Chain lightning that jumps between enemies; gains chains at levels 1/3/5.
+ * @property {Object} fireball      - Projectile that explodes on impact dealing AoE damage.
+ * @property {Object} boomerang     - Piercing cross-shaped disc that arcs out and returns to player.
+ */
 const WEAPON_TYPES = {
   clawSwipe: {
     id: 'clawSwipe', name: 'CLAW SWIPE', type: 'melee', color: '#ff8844',
@@ -51,6 +103,18 @@ const WEAPON_TYPES = {
   },
 };
 
+/**
+ * Scroll type definitions — passive global buffs selected during level-up.
+ * Scrolls stack multiplicatively and affect all weapons simultaneously.
+ *
+ * @constant {Object.<string, {id: string, name: string, color: string, desc: string, maxLevel: number}>}
+ * @property {Object} power    - +15% all weapon damage per level (max 5).
+ * @property {Object} haste    - -15% all weapon cooldowns per level (max 5, floor 0.3x).
+ * @property {Object} arcane   - +1 projectile count for multi-shot weapons (max 3).
+ * @property {Object} vitality - +20 max HP and instant heal per level (max 5).
+ * @property {Object} fortune  - +30% XP gain per level (max 3).
+ * @property {Object} range    - +20% weapon range per level (max 5).
+ */
 const SCROLL_TYPES = {
   power: { id: 'power', name: 'POWER SCROLL', color: '#ff4444', desc: '+15% all weapon damage', maxLevel: 5 },
   haste: { id: 'haste', name: 'HASTE SCROLL', color: '#ffaa44', desc: '-15% all cooldowns', maxLevel: 5 },
@@ -60,7 +124,33 @@ const SCROLL_TYPES = {
   range: { id: 'range', name: 'RANGE SCROLL', color: '#44aaff', desc: '+20% weapon range', maxLevel: 5 },
 };
 
-// Powerup definitions for 3D (adapted from 2D)
+/**
+ * Temporary powerup definitions for 3D mode. Found in crates and zombie drops.
+ * Each powerup has an `apply(st)` that activates the effect and a `remove(st)` that reverses it.
+ * Only one powerup can be active at a time; activating a new one removes the previous.
+ *
+ * 18 powerups total:
+ * - jumpyBoots: +50% jump height (15s)
+ * - clawsOfSteel: 2x attack damage (20s)
+ * - superFangs: 2x attack speed (20s)
+ * - raceCar: 2x speed + fire aura trail damage (12s)
+ * - bananaCannon: Ranged banana projectile mode (15s)
+ * - wings: Free flight with Alt+W/S G-force maneuvers (15s)
+ * - frostNova: Instant freeze burst on all nearby zombies (1s, one-shot)
+ * - berserkerRage: +50% dmg, +30% speed, but +25% vulnerability (20s)
+ * - ghostForm: Full invulnerability, cannot attack (8s)
+ * - earthquakeStomp: Landing from jumps creates AoE shockwaves (15s)
+ * - vampireFangs: Passive 3 HP/s regeneration (20s)
+ * - lightningShield: Zaps nearest enemy every 0.5s for 10 dmg (15s)
+ * - giantGrowth: 2x size/dmg, -30% speed (15s)
+ * - timeWarp: Slow all zombies to 25% speed (10s)
+ * - magnetAura: 5x pickup radius (20s)
+ * - mirrorImage: 2 AI clone allies that orbit and attack (15s)
+ * - bombTrail: Drop explosive bombs every 0.5s while moving (12s)
+ * - regenBurst: Rapidly heal to full at maxHP/5 per second (5s)
+ *
+ * @constant {Array.<{id: string, name: string, color: string, colorHex: number, desc: string, duration: number, apply: function(State3D): void, remove: function(State3D): void}>}
+ */
 const POWERUPS_3D = [
   { id: 'jumpyBoots', name: 'JUMPY BOOTS', color: '#44ff88', colorHex: 0x44ff88, desc: '+50% Jump Height', duration: 15, apply: s => { s.jumpBoost = 1.5; }, remove: s => { s.jumpBoost = 1; } },
   { id: 'clawsOfSteel', name: 'CLAWS OF STEEL', color: '#ff8844', colorHex: 0xff8844, desc: '2x Attack Damage', duration: 20, apply: s => { s.dmgBoost = 2; }, remove: s => { s.dmgBoost = 1; } },
@@ -82,7 +172,23 @@ const POWERUPS_3D = [
   { id: 'regenBurst', name: 'REGEN BURST', color: '#33ff33', colorHex: 0x33ff33, desc: 'Rapidly Heal To Full!', duration: 5, apply: s => { s.regenBurst = true; }, remove: s => { s.regenBurst = false; } },
 ];
 
-// Item definitions for 3D
+/**
+ * Permanent item definitions for 3D mode. Found as floating pickups on the map.
+ * Items occupy named equipment slots; only one item per slot (armor allows tier upgrade).
+ *
+ * 11 items across 9 slots:
+ * - leather/chainmail (armor slot, tier 1/2): -25%/-40% damage taken
+ * - glasses (glasses slot): Reveals crate/pickup contents through HUD labels
+ * - cowboyBoots/soccerCleats (boots slot): +20% attack range / +15% move speed
+ * - magnetRing (ring slot): +50% pickup radius (permanent)
+ * - luckyCharm (charm slot): +50% zombie loot drop rate
+ * - thornedVest (vest slot): Reflects 20% of contact damage back to attacker
+ * - healthPendant (pendant slot): +1 HP/s passive regeneration
+ * - shieldBracelet (bracelet slot): Blocks 1 hit every 30 seconds
+ * - critGloves (gloves slot): 15% chance for 2x damage on attacks
+ *
+ * @constant {Array.<{id: string, name: string, color: string, colorHex: number, desc: string, slot: string, tier?: number}>}
+ */
 const ITEMS_3D = [
   { id: 'leather', name: 'LEATHER ARMOR', color: '#b08040', colorHex: 0xb08040, desc: '-25% Damage Taken', slot: 'armor', tier: 1 },
   { id: 'chainmail', name: 'CHAINMAIL', color: '#aaaacc', colorHex: 0xaaaacc, desc: '-40% Damage Taken', slot: 'armor', tier: 2 },
@@ -97,7 +203,22 @@ const ITEMS_3D = [
   { id: 'critGloves', name: 'CRIT GLOVES', color: '#ff4488', colorHex: 0xff4488, desc: '15% Chance 2x Damage', slot: 'gloves' },
 ];
 
-// Shrine augment types
+/**
+ * Shrine augment types — permanent micro-buffs obtained by destroying shrines.
+ * Each shrine grants a random augment. Augments stack indefinitely.
+ *
+ * 8 augment types:
+ * - maxHp: +5% max HP + 10 HP instant heal
+ * - xpGain: +5% XP gain (multiplicative via augmentXpMult)
+ * - damage: +5% damage (multiplicative via augmentDmgMult)
+ * - moveSpeed: +5% movement speed (multiplicative on playerSpeed)
+ * - atkSpeed: +5% attack speed (multiplicative on attackSpeed)
+ * - pickupRadius: +10% pickup radius (multiplicative on collectRadius)
+ * - armor: +3% flat damage reduction (additive on augmentArmor)
+ * - regen: +0.5 HP/s regeneration (additive on augmentRegen)
+ *
+ * @constant {Array.<{id: string, name: string, color: string, apply: function(State3D): void}>}
+ */
 const SHRINE_AUGMENTS = [
   { id: 'maxHp', name: '+5% Max HP', color: '#44ff44', apply: s => { s.maxHp = Math.floor(s.maxHp * 1.05); s.hp = Math.min(s.hp + 10, s.maxHp); } },
   { id: 'xpGain', name: '+5% XP Gain', color: '#44aaff', apply: s => { s.augmentXpMult = (s.augmentXpMult || 1) * 1.05; } },
@@ -109,7 +230,18 @@ const SHRINE_AUGMENTS = [
   { id: 'regen', name: '+0.5 HP/s Regen', color: '#88ffaa', apply: s => { s.augmentRegen = (s.augmentRegen || 0) + 0.5; } },
 ];
 
-// "NOT HARD ENOUGH" difficulty totem effects
+/**
+ * Difficulty totem effect multipliers — applied per totem destroyed.
+ * Totems are a risk/reward mechanic: destroying one increases zombie difficulty
+ * but also boosts XP and score gains. All multipliers are cumulative (multiplicative).
+ *
+ * @constant {Object}
+ * @property {number} zombieHpMult    - 1.15 = +15% zombie HP per totem destroyed.
+ * @property {number} zombieSpeedMult - 1.10 = +10% zombie movement speed per totem.
+ * @property {number} spawnRateMult   - 1.15 = +15% spawn rate per totem.
+ * @property {number} xpBonusMult     - 1.25 = +25% XP gain per totem.
+ * @property {number} scoreBonusMult  - 1.25 = +25% score gain per totem.
+ */
 const TOTEM_EFFECT = {
   zombieHpMult: 1.15,     // +15% zombie HP per totem
   zombieSpeedMult: 1.10,  // +10% zombie speed per totem
@@ -118,6 +250,178 @@ const TOTEM_EFFECT = {
   scoreBonusMult: 1.25,   // +25% score per totem
 };
 
+/**
+ * @typedef {Object} State3D
+ * The central game state object (`st`) containing all mutable runtime data.
+ * Organized by subsystem below.
+ *
+ * --- Player Stats ---
+ * @property {number} hp             - Current hit points.
+ * @property {number} maxHp          - Maximum hit points (scaled by animal HP * difficulty hpMult).
+ * @property {number} playerSpeed    - Base movement speed (5 * animal.speed).
+ * @property {number} attackSpeed    - Auto-attacks per second (base 1.2).
+ * @property {number} attackDamage   - Base auto-attack damage (15 * animal.damage).
+ * @property {number} attackRange    - Auto-attack reach in world units (base 3).
+ * @property {number} collectRadius  - XP gem / item pickup radius (base 2).
+ * @property {number} jumpForce      - Jump velocity (equals JUMP_FORCE constant).
+ * @property {number} attackTimer    - Legacy timer kept for crate proximity checks.
+ *
+ * --- Position / Movement ---
+ * @property {number} playerX        - Player world X position.
+ * @property {number} playerY        - Player world Y position (includes terrain height).
+ * @property {number} playerZ        - Player world Z position.
+ * @property {number} playerVY       - Vertical velocity (positive = up).
+ * @property {boolean} onGround      - True if player is on terrain or platform.
+ * @property {number|null} onPlatformY - Y coordinate of platform the player stands on, or null.
+ * @property {{x: number, z: number}} moveDir - Normalized input direction this frame.
+ *
+ * --- Score / Wave / Spawn ---
+ * @property {number} scoreMult      - Difficulty-based score multiplier.
+ * @property {number} zombieDmgMult  - Difficulty-based zombie contact damage multiplier (2/3/4).
+ * @property {number} score          - Accumulated score.
+ * @property {number} wave           - Current wave number (increments on wave event).
+ * @property {number} ambientSpawnTimer  - Countdown to next ambient zombie spawn (resets to 3s).
+ * @property {number} waveEventTimer     - Countdown to next wave event (resets to 240s).
+ * @property {number} waveWarning        - Seconds remaining in wave warning countdown (0 = none).
+ * @property {boolean} waveActive        - Whether a wave event is currently active.
+ * @property {number} ambientCrateTimer  - Countdown to next ambient crate spawn (resets to 30s).
+ * @property {number} gameTime           - Total elapsed game time in seconds.
+ *
+ * --- XP / Leveling ---
+ * @property {number} xp             - Current XP toward next level.
+ * @property {number} xpToNext       - XP required for next level (scales by 1.5x).
+ * @property {number} level          - Current player level.
+ *
+ * --- Entity Arrays ---
+ * @property {Array.<Enemy>} enemies        - All live zombie enemies.
+ * @property {Array.<XpGem>} xpGems         - All active XP gem pickups.
+ * @property {Array} attackLines            - Visual attack line effects.
+ * @property {Array} powerupCrates          - Breakable powerup crate objects.
+ * @property {Array} itemPickups            - Floating item pickup objects.
+ * @property {Array} projectiles            - Active banana cannon projectiles.
+ *
+ * --- Active Powerup Flags ---
+ * @property {Object|null} activePowerup    - Current active powerup {def, timer} or null.
+ * @property {number} jumpBoost             - Jump force multiplier (default 1).
+ * @property {number} dmgBoost              - Damage multiplier (default 1).
+ * @property {number} atkSpeedBoost         - Attack speed multiplier (default 1).
+ * @property {number} speedBoost            - Movement speed multiplier (default 1).
+ * @property {boolean} fireAura             - Race Car fire aura active.
+ * @property {boolean} rangedMode           - Banana Cannon ranged mode active.
+ * @property {boolean} flying               - Angel Wings flight mode active.
+ * @property {boolean} frostNova            - Frost Nova burst pending (single-use flag).
+ * @property {boolean} berserkVulnerable    - Berserker Rage vulnerability active.
+ * @property {boolean} ghostForm            - Ghost Form invulnerability active.
+ * @property {boolean} earthquakeStomp      - Earthquake Stomp landing shockwaves active.
+ * @property {boolean} vampireHeal          - Vampire Fangs passive regen active.
+ * @property {boolean} lightningShield      - Lightning Shield periodic zap active.
+ * @property {number} lightningShieldTimer  - Countdown to next lightning zap.
+ * @property {boolean} giantMode            - Giant Growth scale-up active.
+ * @property {boolean} timeWarp             - Time Warp enemy slow active.
+ * @property {boolean} mirrorClones         - Mirror Image clones active.
+ * @property {Array} mirrorCloneGroups      - Three.js groups for mirror clones.
+ * @property {boolean} bombTrail            - Bomb Trail dropping active.
+ * @property {number} bombTrailTimer        - Countdown to next bomb drop.
+ * @property {Array} bombTrailBombs         - Active bomb objects on the ground.
+ * @property {boolean} regenBurst           - Regen Burst rapid healing active.
+ * @property {boolean} wasAirborne          - Previous-frame airborne state for stomp detection.
+ *
+ * --- G-Force Maneuver (flight) ---
+ * @property {boolean} gManeuver      - Whether a G-force maneuver (loop/dive) is in progress.
+ * @property {number} gManeuverPitch  - Current pitch angle during maneuver (radians).
+ *
+ * --- Items (permanent equipment) ---
+ * @property {Object} items                 - Equipment slots.
+ * @property {string|null} items.armor      - 'leather', 'chainmail', or null.
+ * @property {boolean} items.glasses        - Aviator Glasses equipped.
+ * @property {string|null} items.boots      - 'cowboyBoots', 'soccerCleats', or null.
+ * @property {boolean} items.ring           - Magnet Ring equipped.
+ * @property {boolean} items.charm          - Lucky Charm equipped.
+ * @property {boolean} items.vest           - Thorned Vest equipped.
+ * @property {boolean} items.pendant        - Health Pendant equipped.
+ * @property {boolean} items.bracelet       - Shield Bracelet equipped.
+ * @property {boolean} items.gloves         - Crit Gloves equipped.
+ * @property {number} shieldBraceletTimer   - Cooldown remaining for Shield Bracelet.
+ * @property {boolean} shieldBraceletReady  - Whether Shield Bracelet can absorb a hit.
+ *
+ * --- UI State ---
+ * @property {boolean} gameOver             - True after player death.
+ * @property {boolean} paused               - True when game is paused (menu or upgrade).
+ * @property {boolean} upgradeMenu          - True when level-up upgrade menu is shown.
+ * @property {Array} upgradeChoices         - Current upgrade menu options.
+ * @property {number} selectedUpgrade       - Index of highlighted upgrade option.
+ * @property {boolean} running              - False after cleanup; stops game loop.
+ * @property {number} invincible            - Invincibility frames timer (seconds).
+ * @property {boolean} enterReleasedSinceGameOver - Prevents instant game-over skip.
+ * @property {boolean} pauseMenu            - True when ESC pause menu is shown.
+ * @property {number} selectedPauseOption   - Index of highlighted pause menu option.
+ *
+ * --- Auto-Attack + Power Attack ---
+ * @property {number} autoAttackTimer       - Countdown to next auto-attack.
+ * @property {boolean} charging             - True while Enter/B is held for power attack.
+ * @property {number} chargeTime            - Seconds charged (0-2 range).
+ * @property {THREE.Mesh|null} chargeGlow   - Visual glow mesh during charging.
+ *
+ * --- Weapon Slots + Scrolls ---
+ * @property {Array.<{typeId: string, level: number, cooldownTimer: number}>} weapons - Active weapon instances.
+ * @property {number} maxWeaponSlots        - Maximum weapon slots (1, unlocks at levels 5/10/15 up to 4).
+ * @property {Object.<string, number>} scrolls - Scroll stack counts by type ID.
+ * @property {number} rerolls               - Remaining rerolls for upgrade menu (starts at 3).
+ * @property {Array} weaponProjectiles      - Active weapon projectile objects.
+ * @property {Array} weaponEffects          - Active weapon visual effects (slashes, clouds, bolts).
+ *
+ * --- Shrines + Augments ---
+ * @property {Array} shrines                - All shrine objects (pre-placed at start).
+ * @property {Object} shrinesByChunk        - Shrine lookup by chunk key (legacy, now unused).
+ * @property {Object.<string, number>} augments - Augment counts by augment ID.
+ * @property {number} augmentXpMult         - Cumulative XP multiplier from augments.
+ * @property {number} augmentDmgMult        - Cumulative damage multiplier from augments.
+ * @property {number} augmentArmor          - Cumulative flat armor reduction from augments.
+ * @property {number} augmentRegen          - Cumulative HP/s regen from augments.
+ *
+ * --- Difficulty Totems ---
+ * @property {Array} totems                 - All totem objects (pre-placed at start).
+ * @property {number} totemCount            - Number of totems destroyed.
+ * @property {number} totemDiffMult         - Cumulative zombie HP multiplier from totems.
+ * @property {number} totemSpeedMult        - Cumulative zombie speed multiplier from totems.
+ * @property {number} totemSpawnMult        - Cumulative spawn rate multiplier from totems.
+ * @property {number} totemXpMult           - Cumulative XP bonus multiplier from totems.
+ * @property {number} totemScoreMult        - Cumulative score bonus multiplier from totems.
+ *
+ * --- Floating Texts ---
+ * @property {Array.<{text: string, color: string, x: number, y: number, z: number, life: number}>} floatingTexts3d - Active floating text announcements.
+ *
+ * --- Leaderboard ---
+ * @property {string} nameEntry             - Current name input for leaderboard.
+ * @property {boolean} nameEntryActive      - True when name entry UI is active.
+ * @property {Array} leaderboard3d          - Top 10 scores for current difficulty.
+ *
+ * --- Kill Tracking ---
+ * @property {Array.<number>} killsByTier   - Kill count per zombie tier (index 0 = tier 1).
+ * @property {number} totalKills            - Total zombies killed.
+ */
+
+/**
+ * Launch the 3D Roguelike Survivor game mode.
+ *
+ * This is the sole export of the module. It initializes the Three.js scene, HUD overlay,
+ * all game state, input handlers, and the main game loop. On game over or menu return,
+ * it performs full cleanup of Three.js resources and restores the 2D UI.
+ *
+ * @param {Object} options - Launch configuration.
+ * @param {Function} options.onReturn - Callback invoked to return to the 2D main menu.
+ * @param {Object} options.animal - Animal selection data from the character select screen.
+ * @param {string} options.animal.id - Animal identifier ('leopard', 'redPanda', 'lion', 'gator').
+ * @param {string} options.animal.name - Display name for the animal.
+ * @param {string} options.animal.color - CSS color string for HUD display.
+ * @param {number} options.animal.speed - Speed multiplier (base 1.0).
+ * @param {number} options.animal.damage - Damage multiplier (base 1.0).
+ * @param {number} options.animal.hp - Base hit points.
+ * @param {string} options.animal.desc - Animal description text.
+ * @param {Object} options.difficulty - Difficulty multipliers from the difficulty select screen.
+ * @param {number} options.difficulty.hpMult - HP scaling multiplier.
+ * @param {number} options.difficulty.scoreMult - Score scaling multiplier.
+ */
 export function launch3DGame(options) {
   const onReturn = options.onReturn;
   const animalData = options.animal; // { id, name, color, speed, damage, hp, desc }
@@ -265,6 +569,10 @@ export function launch3DGame(options) {
   const diffKey = diffData.scoreMult >= 1.5 ? 'hard' : diffData.scoreMult >= 1 ? 'normal' : 'easy';
   st.leaderboard3d = JSON.parse(localStorage.getItem(`avz3d-leaderboard-${diffKey}`) || '[]');
 
+  /**
+   * Save the current game score to the localStorage leaderboard.
+   * Inserts the new entry, sorts by score descending, and keeps only the top 10.
+   */
   function saveScore3d() {
     st.leaderboard3d.push({
       name: st.nameEntry,
@@ -292,7 +600,21 @@ export function launch3DGame(options) {
   st.weapons.push({ typeId: startWeapon, level: 1, cooldownTimer: 0 });
 
   // === INPUT ===
+  /** @type {Object.<string, boolean>} Tracks which keys are currently pressed by `e.code`. */
   const keys3d = {};
+
+  /**
+   * Handle keydown events for all game states.
+   *
+   * Dispatches to different handlers based on current UI state:
+   * - Game over + name entry: text input, backspace, enter to save
+   * - Game over + no name entry: enter to return to menu
+   * - Upgrade menu: arrow keys to navigate, enter/space to select, R to reroll
+   * - Pause menu: arrow keys to navigate, enter/space to select, escape to unpause
+   * - Normal gameplay: escape opens pause menu; Enter/B handled by power attack in game loop
+   *
+   * @param {KeyboardEvent} e - The keydown event.
+   */
   function onKeyDown(e) {
     keys3d[e.code] = true;
     e.preventDefault();
@@ -359,6 +681,14 @@ export function launch3DGame(options) {
       }
     }
   }
+  /**
+   * Handle keyup events.
+   *
+   * Tracks the Enter key release after game over (to prevent instant menu skip)
+   * and detects power attack release (Enter/NumpadEnter/B) to trigger the charged strike.
+   *
+   * @param {KeyboardEvent} e - The keyup event.
+   */
   function onKeyUp(e) {
     keys3d[e.code] = false;
     e.preventDefault();
@@ -390,7 +720,9 @@ export function launch3DGame(options) {
 
   const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 150);
 
-  // Handle window resize
+  /**
+   * Handle browser window resize by updating renderer, camera aspect ratio, and HUD canvas dimensions.
+   */
   function onResize() {
     const w = window.innerWidth, h = window.innerHeight;
     renderer.setSize(w, h);
@@ -447,11 +779,29 @@ export function launch3DGame(options) {
   scene.add(eastWall);
 
   // === PROCEDURAL TERRAIN ===
-  // Seeded noise for deterministic terrain
+
+  /**
+   * Simple seeded 2D noise function using sine-based hash.
+   * Produces a deterministic pseudo-random value in [0, 1) for any (x, z) coordinate.
+   * Used as the foundation for terrain height, biome selection, and decoration placement.
+   *
+   * @param {number} x - X coordinate input.
+   * @param {number} z - Z coordinate input.
+   * @returns {number} Pseudo-random value in [0, 1).
+   */
   function noise2D(x, z) {
     const n = Math.sin(x * 12.9898 + z * 78.233) * 43758.5453;
     return n - Math.floor(n);
   }
+  /**
+   * Bilinearly interpolated noise at a given scale.
+   * Smooths the raw noise2D output using Hermite interpolation for natural-looking terrain.
+   *
+   * @param {number} x - World X coordinate.
+   * @param {number} z - World Z coordinate.
+   * @param {number} scale - Noise scale (larger = smoother/broader features).
+   * @returns {number} Interpolated noise value in [0, 1).
+   */
   function smoothNoise(x, z, scale) {
     const sx = x / scale, sz = z / scale;
     const ix = Math.floor(sx), iz = Math.floor(sz);
@@ -461,9 +811,26 @@ export function launch3DGame(options) {
     const u = fx * fx * (3 - 2 * fx), v = fz * fz * (3 - 2 * fz);
     return a * (1 - u) * (1 - v) + b * u * (1 - v) + c * (1 - u) * v + d * u * v;
   }
+  /**
+   * Compute the terrain height at a world position using multi-octave noise.
+   * Combines 3 octaves at scales 12, 6, and 3 for varied terrain with large hills and fine detail.
+   *
+   * @param {number} x - World X coordinate.
+   * @param {number} z - World Z coordinate.
+   * @returns {number} Terrain height in world Y units (typically 0-3.3 range).
+   */
   function terrainHeight(x, z) {
     return smoothNoise(x, z, 12) * 2 + smoothNoise(x, z, 6) * 1 + smoothNoise(x, z, 3) * 0.3;
   }
+  /**
+   * Determine the biome type at a world position.
+   * Uses a large-scale noise sample (offset by 500 to decouple from terrain height)
+   * to divide the world into three biome regions.
+   *
+   * @param {number} x - World X coordinate.
+   * @param {number} z - World Z coordinate.
+   * @returns {'forest'|'desert'|'plains'} The biome at the given position.
+   */
   function getBiome(x, z) {
     const v = smoothNoise(x + 500, z + 500, 25);
     if (v < 0.33) return 'forest';
@@ -482,8 +849,24 @@ export function launch3DGame(options) {
   const loadedChunks = new Set();
   const decorations = []; // trees, rocks, etc.
 
+  /**
+   * Generate a string key for a chunk at grid coordinates (cx, cz).
+   *
+   * @param {number} cx - Chunk X index.
+   * @param {number} cz - Chunk Z index.
+   * @returns {string} Chunk key in "cx,cz" format.
+   */
   function getChunkKey(cx, cz) { return `${cx},${cz}`; }
 
+  /**
+   * Generate a terrain chunk at the given chunk grid coordinates.
+   * Creates an 8x8 subdivided plane mesh with per-vertex height displacement,
+   * biome-colored material, and random decorations (trees in forest/plains, rocks in desert).
+   * Skips chunks outside MAP_HALF bounds or already loaded.
+   *
+   * @param {number} cx - Chunk X index.
+   * @param {number} cz - Chunk Z index.
+   */
   function generateChunk(cx, cz) {
     const key = getChunkKey(cx, cz);
     if (loadedChunks.has(key)) return;
@@ -559,6 +942,12 @@ export function launch3DGame(options) {
     }
   }
 
+  /**
+   * Unload a terrain chunk and its decorations, disposing all Three.js resources.
+   *
+   * @param {number} cx - Chunk X index.
+   * @param {number} cz - Chunk Z index.
+   */
   function unloadChunk(cx, cz) {
     const key = getChunkKey(cx, cz);
     if (!loadedChunks.has(key)) return;
@@ -581,6 +970,16 @@ export function launch3DGame(options) {
     loadedChunks.delete(key);
   }
 
+  /**
+   * Load/unload terrain chunks around the player position.
+   * Loads all chunks within VIEW_DIST (4) chunks of the player's chunk,
+   * and unloads any loaded chunks beyond VIEW_DIST + 1.
+   *
+   * @param {number} px - Player world X position.
+   * @param {number} pz - Player world Z position.
+   * @see generateChunk
+   * @see unloadChunk
+   */
   function updateChunks(px, pz) {
     const pcx = Math.floor(px / CHUNK_SIZE);
     const pcz = Math.floor(pz / CHUNK_SIZE);
@@ -607,6 +1006,13 @@ export function launch3DGame(options) {
   const platforms = [];
   const platformsByChunk = {};
 
+  /**
+   * Generate elevated platforms for a chunk. Platforms are box meshes floating 2-4 units
+   * above terrain, with biome-tinted coloring. Number of platforms per chunk is noise-driven (0-2).
+   *
+   * @param {number} cx - Chunk X index.
+   * @param {number} cz - Chunk Z index.
+   */
   function generatePlatforms(cx, cz) {
     const key = getChunkKey(cx, cz);
     if (platformsByChunk[key]) return;
@@ -643,6 +1049,12 @@ export function launch3DGame(options) {
     }
   }
 
+  /**
+   * Unload all platforms in a chunk, disposing Three.js resources and removing from the global array.
+   *
+   * @param {number} cx - Chunk X index.
+   * @param {number} cz - Chunk Z index.
+   */
   function unloadPlatforms(cx, cz) {
     const key = getChunkKey(cx, cz);
     const plats = platformsByChunk[key];
@@ -657,6 +1069,17 @@ export function launch3DGame(options) {
     delete platformsByChunk[key];
   }
 
+  /**
+   * Load/unload platform and shrine chunks around the player position.
+   * Uses the same VIEW_DIST as terrain chunks. Also manages shrine chunk lifecycle.
+   *
+   * @param {number} px - Player world X position.
+   * @param {number} pz - Player world Z position.
+   * @see generatePlatforms
+   * @see unloadPlatforms
+   * @see generateShrines
+   * @see unloadShrines
+   */
   function updatePlatformChunks(px, pz) {
     const pcx = Math.floor(px / CHUNK_SIZE);
     const pcz = Math.floor(pz / CHUNK_SIZE);
@@ -687,6 +1110,16 @@ export function launch3DGame(options) {
   }
 
   // === SHRINES ===
+
+  /**
+   * Create a shrine mesh at the given world position.
+   * A shrine consists of a stone base, pillar, glowing orb, and rotating rune cube.
+   * Shrines have 3 HP and grant a random augment when destroyed by the player.
+   *
+   * @param {number} x - World X coordinate.
+   * @param {number} z - World Z coordinate.
+   * @returns {{group: THREE.Group, orb: THREE.Mesh, rune: THREE.Mesh, x: number, z: number, hp: number, alive: boolean}} Shrine object.
+   */
   function createShrineMesh(x, z) {
     const group = new THREE.Group();
     const h = terrainHeight(x, z);
@@ -726,17 +1159,42 @@ export function launch3DGame(options) {
     return { group, orb, rune, x, z, hp: 3, alive: true };
   }
 
+  /**
+   * Generate shrines for a chunk (no-op).
+   * NOTE: Shrines are now finite and pre-placed at game start rather than chunk-generated.
+   *
+   * @param {number} cx - Chunk X index (unused).
+   * @param {number} cz - Chunk Z index (unused).
+   */
   function generateShrines(cx, cz) {
     // Shrines are now finite and pre-placed at game start — skip chunk generation
     return;
   }
 
+  /**
+   * Unload shrines for a chunk (no-op).
+   * NOTE: Shrines are now finite and pre-placed — they persist for the entire game.
+   *
+   * @param {number} cx - Chunk X index (unused).
+   * @param {number} cz - Chunk Z index (unused).
+   */
   function unloadShrines(cx, cz) {
     // Shrines are now finite and pre-placed — never unload them
     return;
   }
 
   // === DIFFICULTY TOTEMS ===
+
+  /**
+   * Create a difficulty totem mesh at the given world position.
+   * Totems are dark skull pillars with a glowing red orb. They have 5 HP and,
+   * when destroyed, increase zombie difficulty while boosting XP and score rewards.
+   *
+   * @param {number} x - World X coordinate.
+   * @param {number} z - World Z coordinate.
+   * @returns {{group: THREE.Group, x: number, z: number, y: number, orb: THREE.Mesh, hp: number, alive: boolean}} Totem object.
+   * @see TOTEM_EFFECT
+   */
   function createTotemMesh(x, z) {
     const group = new THREE.Group();
     const gh = terrainHeight(x, z);
@@ -784,7 +1242,22 @@ export function launch3DGame(options) {
   }
 
   // === PLAYER MODEL ===
-  // Helper to add a box mesh to a group
+
+  /**
+   * Helper to create a box mesh and add it to a Three.js group.
+   * Used extensively to build all voxel-style animal and zombie models from box primitives.
+   *
+   * @param {THREE.Group} group - Parent group to add the mesh to.
+   * @param {number} w - Box width.
+   * @param {number} h - Box height.
+   * @param {number} d - Box depth.
+   * @param {number} color - Hex color for LambertMaterial.
+   * @param {number} x - Local X position within the group.
+   * @param {number} y - Local Y position within the group.
+   * @param {number} z - Local Z position within the group.
+   * @param {boolean} [shadow] - If truthy, enables castShadow on the mesh.
+   * @returns {THREE.Mesh} The created box mesh.
+   */
   function box(group, w, h, d, color, x, y, z, shadow) {
     const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), new THREE.MeshLambertMaterial({ color }));
     m.position.set(x, y, z);
@@ -1090,6 +1563,27 @@ export function launch3DGame(options) {
   ];
 
   // === ENEMY CREATION (tier-based zombie) ===
+
+  /**
+   * Create a zombie enemy at the given position with a specific tier.
+   * Higher tiers have larger models, more HP/damage, and visual upgrades:
+   * - Tier 2+: shoulder pads
+   * - Tier 3+: third eye
+   * - Tier 4+: teeth
+   * - Tier 5+: hand claws
+   * - Tier 6+: side eyes
+   * - Tier 7+: horns
+   * - Tier 8+: spine ridges
+   * - Tier 9+: glowing aura particles
+   * - Tier 10: crown of fire
+   *
+   * @param {number} x - World X spawn position.
+   * @param {number} z - World Z spawn position.
+   * @param {number} baseHp - Base HP before tier multiplier.
+   * @param {number} tier - Zombie tier (1-10), clamped to valid range.
+   * @returns {Enemy} Enemy object with group, body parts, stats, and animation state.
+   * @see ZOMBIE_TIERS
+   */
   function createEnemy(x, z, baseHp, tier) {
     tier = Math.max(1, Math.min(10, tier || 1));
     const td = ZOMBIE_TIERS[tier - 1];
@@ -1237,6 +1731,11 @@ export function launch3DGame(options) {
     };
   }
 
+  /**
+   * Remove an enemy from the scene and dispose all its Three.js geometry and materials.
+   *
+   * @param {Enemy} e - The enemy to dispose.
+   */
   function disposeEnemy(e) {
     e.alive = false;
     scene.remove(e.group);
@@ -1244,8 +1743,18 @@ export function launch3DGame(options) {
   }
 
   // === XP GEM ===
+  // NOTE: Shared geometry and material for all XP gems to reduce draw calls.
   const gemGeo = new THREE.BoxGeometry(0.25, 0.25, 0.25);
   const gemMat = new THREE.MeshLambertMaterial({ color: 0x44ff44, emissive: 0x22aa22 });
+
+  /**
+   * Create an XP gem pickup at the given world position.
+   * Gems bob up and down, spin, and are attracted toward the player when within collectRadius * 2.
+   *
+   * @param {number} x - World X position.
+   * @param {number} z - World Z position.
+   * @returns {XpGem} Gem object with mesh and bob animation phase.
+   */
   function createXpGem(x, z) {
     const mesh = new THREE.Mesh(gemGeo, gemMat);
     const h = terrainHeight(x, z);
@@ -1254,7 +1763,15 @@ export function launch3DGame(options) {
     return { mesh, bobPhase: Math.random() * Math.PI * 2 };
   }
 
-  // Find a nearby platform to place items on
+  /**
+   * Find the nearest platform to a world position within a maximum distance.
+   * Used to place crates and item pickups on platforms for more interesting exploration.
+   *
+   * @param {number} x - World X position to search from.
+   * @param {number} z - World Z position to search from.
+   * @param {number} maxDist - Maximum search distance.
+   * @returns {Object|null} The nearest platform object, or null if none found within range.
+   */
   function findNearbyPlatform(x, z, maxDist) {
     let best = null, bestD = maxDist * maxDist;
     for (const p of platforms) {
@@ -1266,6 +1783,17 @@ export function launch3DGame(options) {
   }
 
   // === POWERUP CRATE ===
+
+  /**
+   * Create a breakable powerup crate at the given position.
+   * Selects a random powerup type, attempts to place on the nearest platform,
+   * and builds a wooden crate mesh with a colored top indicator matching the powerup.
+   * Crates have 3 HP and are broken by walking into them.
+   *
+   * @param {number} x - World X position (may be adjusted to nearest platform).
+   * @param {number} z - World Z position (may be adjusted to nearest platform).
+   * @returns {{group: THREE.Group, ptype: Object, x: number, z: number, hp: number, alive: boolean, showLabel: boolean}} Crate object.
+   */
   function createPowerupCrate(x, z) {
     const ptype = POWERUPS_3D[Math.floor(Math.random() * POWERUPS_3D.length)];
     // Place on nearest platform if one exists nearby
@@ -1294,6 +1822,18 @@ export function launch3DGame(options) {
   }
 
   // === ITEM PICKUP ===
+
+  /**
+   * Create a floating item pickup at the given position.
+   * Filters available items based on what the player already has (no duplicates,
+   * armor can upgrade from leather to chainmail). Returns null if no items available.
+   * Attempts to place on nearest platform for platforming incentive.
+   *
+   * @param {number} x - World X position (may be adjusted to nearest platform).
+   * @param {number} z - World Z position (may be adjusted to nearest platform).
+   * @returns {{mesh: THREE.Mesh, itype: Object, x: number, z: number, bobPhase: number, alive: boolean}|null} Item pickup object, or null if all items owned.
+   * @see ITEMS_3D
+   */
   function createItemPickup(x, z) {
     // Pick a random item that player doesn't already have (or higher tier)
     const available = ITEMS_3D.filter(it => {
@@ -1327,6 +1867,19 @@ export function launch3DGame(options) {
 
   // === ATTACK LINE ===
   const attackLineMat = new THREE.LineBasicMaterial({ color: 0xffff44 });
+
+  /**
+   * Create a visual attack line from source to target position.
+   * Used for auto-attack and power attack hit visualization. Lines fade after 6 frames.
+   *
+   * @param {number} fx - Source X.
+   * @param {number} fy - Source Y.
+   * @param {number} fz - Source Z.
+   * @param {number} tx - Target X.
+   * @param {number} ty - Target Y.
+   * @param {number} tz - Target Z.
+   * @returns {{line: THREE.Line, life: number}} Attack line object with frame-based lifetime.
+   */
   function createAttackLine(fx, fy, fz, tx, ty, tz) {
     const pts = [new THREE.Vector3(fx, fy, fz), new THREE.Vector3(tx, ty, tz)];
     const geo = new THREE.BufferGeometry().setFromPoints(pts);
@@ -1336,6 +1889,18 @@ export function launch3DGame(options) {
   }
 
   // === PROJECTILE (banana cannon) ===
+
+  /**
+   * Create a banana cannon projectile with the given velocity.
+   * Projectiles pierce through enemies (tracked via hitEnemies Set) and expire after 120 frames.
+   *
+   * @param {number} x - Spawn X position.
+   * @param {number} y - Spawn Y position.
+   * @param {number} z - Spawn Z position.
+   * @param {number} vx - X velocity.
+   * @param {number} vz - Z velocity.
+   * @returns {{mesh: THREE.Mesh, vx: number, vz: number, life: number, hitEnemies: Set}} Projectile object.
+   */
   function createProjectile(x, y, z, vx, vz) {
     const mesh = new THREE.Mesh(
       new THREE.BoxGeometry(0.3, 0.15, 0.15),
@@ -1347,11 +1912,24 @@ export function launch3DGame(options) {
   }
 
   // === PLAYER DAMAGE MULTIPLIER (level scaling) ===
+
+  /**
+   * Compute the player's total damage multiplier.
+   * Combines level scaling (+12% per level), active powerup dmgBoost, and augment damage mult.
+   *
+   * @returns {number} Combined damage multiplier.
+   */
   function getPlayerDmgMult() {
     return (1 + (st.level - 1) * 0.12) * st.dmgBoost * st.augmentDmgMult;
   }
 
   // === AMBIENT SPAWNING (constant trickle) ===
+
+  /**
+   * Spawn a small group of tier-1 zombies around the player.
+   * Called every 3 seconds. Count increases with game time (1-4 zombies),
+   * and base HP scales with elapsed minutes. Zombies spawn 25-35 units away in a random direction.
+   */
   function spawnAmbient() {
     const elapsedMin = st.gameTime / 60;
     const count = Math.min(4, 1 + Math.floor(elapsedMin / 3));
@@ -1366,6 +1944,14 @@ export function launch3DGame(options) {
   }
 
   // === WAVE EVENT SPAWNING (every 4 minutes, big burst) ===
+
+  /**
+   * Spawn a large wave event burst of zombies in a ring around the player.
+   * Wave events occur every 4 minutes with a 10-second warning countdown.
+   * Higher waves spawn more zombies (12 + wave * 6) with scaled HP and
+   * a chance for higher-tier zombies. Also spawns a powerup crate and
+   * an item pickup every 2 waves.
+   */
   function spawnWaveEvent() {
     const elapsedMin = st.gameTime / 60;
     const baseHp = 8 + Math.floor(elapsedMin * 2.5);
@@ -1396,14 +1982,28 @@ export function launch3DGame(options) {
     }
   }
 
-    // === SCROLL MULTIPLIER HELPERS ===
+  // === SCROLL MULTIPLIER HELPERS ===
+
+  /** @returns {number} Damage multiplier from Power Scrolls (+15% per stack). */
   function getScrollDmgMult() { return 1 + st.scrolls.power * 0.15; }
+  /** @returns {number} Cooldown multiplier from Haste Scrolls (-15% per stack, floor 0.3). */
   function getScrollCdMult() { return Math.max(0.3, 1 - st.scrolls.haste * 0.15); }
+  /** @returns {number} Range multiplier from Range Scrolls (+20% per stack). */
   function getScrollRangeMult() { return 1 + st.scrolls.range * 0.2; }
+  /** @returns {number} Bonus projectile count from Arcane Scrolls (+1 per stack). */
   function getScrollBonusProj() { return st.scrolls.arcane; }
+  /** @returns {number} XP multiplier from Fortune Scrolls (+30% per stack). */
   function getScrollXpMult() { return 1 + st.scrolls.fortune * 0.3; }
 
   // === WEAPON FUNCTIONS ===
+
+  /**
+   * Calculate the effective damage for a weapon instance.
+   * Applies per-weapon-type level scaling, Power Scroll bonus, and augment damage multiplier.
+   *
+   * @param {{typeId: string, level: number}} w - Weapon instance.
+   * @returns {number} Final damage value.
+   */
   function getWeaponDamage(w) {
     const def = WEAPON_TYPES[w.typeId];
     let dmg = def.baseDamage;
@@ -1417,6 +2017,13 @@ export function launch3DGame(options) {
     return dmg * getScrollDmgMult() * st.augmentDmgMult;
   }
 
+  /**
+   * Calculate the effective cooldown for a weapon instance.
+   * Applies the level 4 cooldown reduction (-18%) and Haste Scroll multiplier.
+   *
+   * @param {{typeId: string, level: number}} w - Weapon instance.
+   * @returns {number} Cooldown in seconds.
+   */
   function getWeaponCooldown(w) {
     const def = WEAPON_TYPES[w.typeId];
     let cd = def.baseCooldown;
@@ -1424,6 +2031,13 @@ export function launch3DGame(options) {
     return cd * getScrollCdMult();
   }
 
+  /**
+   * Calculate the effective range for a weapon instance.
+   * Claw Swipe gets range bonuses at levels 3 and 5. Range Scroll multiplier applies to all.
+   *
+   * @param {{typeId: string, level: number}} w - Weapon instance.
+   * @returns {number} Effective range in world units.
+   */
   function getWeaponRange(w) {
     const def = WEAPON_TYPES[w.typeId];
     let r = def.baseRange;
@@ -1432,6 +2046,14 @@ export function launch3DGame(options) {
     return r * getScrollRangeMult();
   }
 
+  /**
+   * Calculate the number of projectiles for a weapon instance.
+   * Bone Toss gains extra at levels 2 (+1) and 5 (+2). Boomerang gains +1 at level 2.
+   * Arcane Scroll adds bonus projectiles on top.
+   *
+   * @param {{typeId: string, level: number}} w - Weapon instance.
+   * @returns {number} Total projectile count.
+   */
   function getProjectileCount(w) {
     let count = 1;
     if (w.typeId === 'boneToss') {
@@ -1443,6 +2065,13 @@ export function launch3DGame(options) {
     return count;
   }
 
+  /**
+   * Calculate the chain count for Lightning Bolt weapon.
+   * Starts at 3 chains (base 2 + level 1 bonus), gains +1 at levels 3 and 5 (+2).
+   *
+   * @param {{typeId: string, level: number}} w - Weapon instance.
+   * @returns {number} Number of chain jumps.
+   */
   function getChainCount(w) {
     let chains = 2;
     if (w.level >= 1) chains++;
@@ -1451,6 +2080,12 @@ export function launch3DGame(options) {
     return chains;
   }
 
+  /**
+   * Find the nearest alive enemy within a given range of the player.
+   *
+   * @param {number} range - Maximum search distance in world units.
+   * @returns {Enemy|null} The nearest enemy, or null if none in range.
+   */
   function findNearestEnemy(range) {
     let nearest = null, nearDist = Infinity;
     for (const e of st.enemies) {
@@ -1466,6 +2101,15 @@ export function launch3DGame(options) {
     return nearest;
   }
 
+  /**
+   * Handle enemy death: award score (scaled by tier, wave, difficulty, and totems),
+   * spawn XP gems (extra gems for higher tiers), increment kill tracking,
+   * roll for loot drops (crate 60%, health 25%, XP burst 15%), and dispose the enemy.
+   * Lucky Charm item increases drop chance by 50%.
+   *
+   * @param {Enemy} e - The enemy that was killed.
+   * @see disposeEnemy
+   */
   function killEnemy(e) {
     const pts = Math.floor((10 + st.wave * 2) * (e.tier || 1) * st.scoreMult * (st.totemScoreMult || 1));
     st.score += pts;
@@ -1500,6 +2144,13 @@ export function launch3DGame(options) {
     disposeEnemy(e);
   }
 
+  /**
+   * Apply damage to an enemy. Crit Gloves give 15% chance for 2x damage.
+   * Sets a hurt flash timer and kills the enemy if HP drops to zero.
+   *
+   * @param {Enemy} e - The enemy to damage.
+   * @param {number} dmg - Base damage to apply (may be doubled by crit).
+   */
   function damageEnemy(e, dmg) {
     if (st.items.gloves && Math.random() < 0.15) dmg *= 2;
     e.hp -= dmg;
@@ -1507,13 +2158,30 @@ export function launch3DGame(options) {
     if (e.hp <= 0 && e.alive) killEnemy(e);
   }
 
+  /**
+   * Fire a weapon, creating appropriate visuals and dealing damage.
+   * Each weapon type has a unique attack pattern:
+   *
+   * - **clawSwipe**: 3 arc slash lines fanning from player; hits all enemies in range (melee AoE).
+   * - **boneToss**: Spinning T-shaped bone projectiles aimed at nearest enemy; spread for multi-shot.
+   * - **poisonCloud**: Swirling green particle cloud placed at enemy position; deals DoT over duration.
+   * - **lightningBolt**: Zigzag bolt segments with glow impacts; chains to nearby unhit enemies.
+   * - **fireball**: Glowing core + outer glow with flame trail; explodes on impact or timeout.
+   * - **boomerang**: Cross-shaped disc that arcs outward along a sine path and returns; pierces enemies.
+   *
+   * @param {{typeId: string, level: number, cooldownTimer: number}} w - The weapon instance to fire.
+   * @see getWeaponDamage
+   * @see getWeaponRange
+   * @see findNearestEnemy
+   */
   function fireWeapon(w) {
     const def = WEAPON_TYPES[w.typeId];
     const range = getWeaponRange(w);
     const dmg = getWeaponDamage(w);
 
     if (w.typeId === 'clawSwipe') {
-      // Arc slash visual: 3 slash lines fanning out from player
+      // CLAW SWIPE: Melee AoE — creates 3 arc slash visuals fanning from player facing direction,
+      // then damages ALL enemies within range (no targeting needed).
       const facing = playerGroup.rotation.y;
       const slashGroup = new THREE.Group();
       for (let s = -1; s <= 1; s++) {
@@ -1539,7 +2207,8 @@ export function launch3DGame(options) {
         if (dist < range) damageEnemy(e, dmg);
       }
     } else if (w.typeId === 'boneToss') {
-      // Spinning bone shape (T-shape made of 2 boxes)
+      // BONE TOSS: Ranged projectile — creates T-shaped spinning bone(s) aimed at nearest enemy.
+      // Multiple projectiles spread laterally. Each bone travels in a straight line.
       const count = getProjectileCount(w);
       for (let i = 0; i < count; i++) {
         const target = findNearestEnemy(range);
@@ -1562,7 +2231,8 @@ export function launch3DGame(options) {
         st.weaponProjectiles.push({ mesh: boneGroup, vx, vz, dmg, life: 2, pierce: false, type: 'bone' });
       }
     } else if (w.typeId === 'poisonCloud') {
-      // Swirling green cloud: multiple small particles in a group
+      // POISON CLOUD: AoE DoT — places a swirling green particle cloud at the target enemy's position.
+      // Cloud persists for its duration, dealing damage-per-second to all enemies within its radius.
       const target = findNearestEnemy(range);
       if (target) {
         const cx = target.group.position.x;
@@ -1588,7 +2258,9 @@ export function launch3DGame(options) {
         st.weaponEffects.push({ mesh: cloudGroup, x: cx, z: cz, radius: cloudSize / 2, dmgPerSec: dmg, life: cloudDuration, type: 'cloud' });
       }
     } else if (w.typeId === 'lightningBolt') {
-      // Bright zigzag lightning with glow
+      // LIGHTNING BOLT: Chain lightning — creates zigzag bolt segments from player to nearest enemy,
+      // then chains to additional nearby enemies (within 5 units). Each chain does 70% of primary damage.
+      // Glow impacts appear at each hit point.
       const chains = getChainCount(w);
       const target = findNearestEnemy(range);
       if (target) {
@@ -1639,7 +2311,9 @@ export function launch3DGame(options) {
         }
       }
     } else if (w.typeId === 'fireball') {
-      // Glowing sphere with trail particles
+      // FIREBALL: Projectile + AoE explosion — launches a glowing core with outer glow and flame trail.
+      // On hit or timeout, triggers spawnExplosion() dealing AoE damage within explosionRadius.
+      // Level 2 increases explosion radius by 30%; level 5 increases explosion damage by 50%.
       const count = Math.max(1, getScrollBonusProj());
       for (let i = 0; i < count; i++) {
         const target = findNearestEnemy(range);
@@ -1672,7 +2346,9 @@ export function launch3DGame(options) {
         });
       }
     } else if (w.typeId === 'boomerang') {
-      // Spinning cross/disc shape
+      // BOOMERANG: Piercing returning projectile — creates a spinning cross shape that arcs outward
+      // along a sine-based path and returns. Pierces through all enemies it contacts.
+      // Level 3 increases flight speed by 25%; level 5 doubles damage.
       const count = getProjectileCount(w);
       for (let i = 0; i < count; i++) {
         const angle = (i / count) * Math.PI * 2 + playerGroup.rotation.y;
@@ -1695,6 +2371,12 @@ export function launch3DGame(options) {
     }
   }
 
+  /**
+   * Update all weapon cooldown timers and auto-fire weapons when targets are in range.
+   * If no target is available, retries after 0.1 seconds instead of full cooldown.
+   *
+   * @param {number} dt - Delta time in seconds.
+   */
   function updateWeapons(dt) {
     for (const w of st.weapons) {
       w.cooldownTimer -= dt;
@@ -1710,6 +2392,14 @@ export function launch3DGame(options) {
     }
   }
 
+  /**
+   * Update weapon projectile positions, handle boomerang arc movement,
+   * check enemy collisions, and trigger fireball explosions on hit or timeout.
+   * Non-piercing projectiles are removed on first hit; piercing ones continue.
+   *
+   * @param {number} dt - Delta time in seconds.
+   * @see spawnExplosion
+   */
   function updateWeaponProjectiles(dt) {
     for (let i = st.weaponProjectiles.length - 1; i >= 0; i--) {
       const p = st.weaponProjectiles[i];
@@ -1764,6 +2454,15 @@ export function launch3DGame(options) {
     }
   }
 
+  /**
+   * Create a fireball explosion at the given position.
+   * Renders a flat orange box that fades out over 0.3 seconds and damages all enemies in radius.
+   *
+   * @param {number} x - Explosion center X.
+   * @param {number} z - Explosion center Z.
+   * @param {number} radius - Explosion radius in world units.
+   * @param {number} dmg - Damage dealt to enemies within radius.
+   */
   function spawnExplosion(x, z, radius, dmg) {
     const h = terrainHeight(x, z);
     const mesh = new THREE.Mesh(
@@ -1785,11 +2484,27 @@ export function launch3DGame(options) {
     }
   }
 
+  /**
+   * Remove a weapon effect mesh from the scene and dispose all its child geometries/materials.
+   *
+   * @param {THREE.Object3D} mesh - The effect mesh or group to dispose.
+   */
   function disposeEffectMesh(mesh) {
     scene.remove(mesh);
     mesh.traverse(c => { if (c.geometry) c.geometry.dispose(); if (c.material) c.material.dispose(); });
   }
 
+  /**
+   * Update weapon visual effects (clouds, explosions, slashes, bolts).
+   * Each effect type has custom behavior:
+   * - cloud: DoT damage to enemies in radius, swirl rotation, pulsing opacity
+   * - explosion: Fade out opacity, shrink Y scale
+   * - slash: Fade out opacity
+   * - bolt: Fade out opacity
+   * All effects are disposed when their life timer reaches zero.
+   *
+   * @param {number} dt - Delta time in seconds.
+   */
   function updateWeaponEffects(dt) {
     for (let i = st.weaponEffects.length - 1; i >= 0; i--) {
       const eff = st.weaponEffects[i];
@@ -1838,6 +2553,18 @@ export function launch3DGame(options) {
   }
 
   // === LEVEL UP ===
+
+  /**
+   * Show the level-up upgrade selection menu.
+   * Pauses the game and generates up to 3 random choices from a pool of:
+   * - New weapons (if weapon slots available)
+   * - Weapon level upgrades (if below max level)
+   * - Scroll acquisitions (if below max stacks)
+   * - Fallback heal options (if pool has fewer than 3)
+   *
+   * Also unlocks additional weapon slots at levels 5, 10, and 15 (up to 4 max).
+   * Player can press R to reroll choices (up to 3 rerolls per game).
+   */
   function showUpgradeMenu() {
     st.paused = true;
     st.upgradeMenu = true;
@@ -1938,17 +2665,83 @@ export function launch3DGame(options) {
 
   // === GAME LOOP ===
   const clock = new THREE.Clock();
+  /** @type {number|null} requestAnimationFrame handle for cancellation on cleanup. */
   let animId = null;
+  /** @type {number} Throttle timer for chunk loading (updates every 0.5s). */
   let chunkUpdateTimer = 0;
 
+  /**
+   * Get the terrain height at a world position.
+   * Convenience alias for terrainHeight used within the game loop.
+   *
+   * @param {number} x - World X coordinate.
+   * @param {number} z - World Z coordinate.
+   * @returns {number} Terrain height at (x, z).
+   */
   function getGroundAt(x, z) {
     return terrainHeight(x, z);
   }
 
+  /**
+   * Main game loop — called every animation frame via requestAnimationFrame.
+   *
+   * This function is ~1,191 lines and orchestrates all per-frame game logic.
+   * When not paused or game over, it processes (in order):
+   * 1. Player input + movement
+   * 2. Jumping, gravity, platform collision
+   * 3. Ground collision + min height clamping
+   * 4. Player rotation toward movement direction
+   * 5. Bipedal leg/arm walk animation + tail wag
+   * 6. Muscle growth scaling per level
+   * 7. Angel wings visibility + flapping + superman pose + G-force maneuvers
+   * 8. Invincibility timer countdown
+   * 9. Active powerup timer + removal
+   * 10. Fire aura damage + particle spawning
+   * 11. Frost nova freeze burst
+   * 12. Frozen enemy timer updates
+   * 13. Berserker rage visual particles
+   * 14. Ghost form transparency + particles
+   * 15. Earthquake stomp landing detection
+   * 16. Vampire fangs passive regen
+   * 17. Lightning shield periodic zap
+   * 18. Giant growth player scaling
+   * 19. Time warp visual particles
+   * 20. Mirror image clone AI
+   * 21. Bomb trail dropping + explosion
+   * 22. Regen burst rapid healing
+   * 23. Weapon auto-fire + projectile + effect updates
+   * 24. Ambient zombie spawning
+   * 25. Ambient crate spawning
+   * 26. Wave event timer + warning countdown
+   * 27. Terrain chunk loading (throttled)
+   * 28. Enemy AI: chase, jump, walk animation, contact damage, hurt flash, despawn
+   * 29. Zombie-zombie merge system
+   * 30. Auto-attack (nearest enemy targeting)
+   * 31. Power attack charge/release
+   * 32. Attack line decay
+   * 33. Banana cannon projectile movement + hits
+   * 34. XP gem collection + magnet pull + level-up trigger
+   * 35. Powerup crate interaction + labels
+   * 36. Item pickup equipping
+   * 37. Shrine interaction + augment granting
+   * 38. Totem interaction + difficulty scaling
+   * 39. Floating text animation
+   * 40. Augment regen tick
+   * 41. Shield bracelet cooldown
+   * 42. Dead enemy cleanup
+   * 43. Player death check
+   *
+   * After gameplay logic (always runs):
+   * 44. Camera smooth follow
+   * 45. Directional light follow
+   * 46. Three.js render
+   * 47. HUD draw
+   */
   function tick() {
     if (!st.running) return;
     animId = requestAnimationFrame(tick);
 
+    // NOTE: dt is capped at 0.05s (20fps minimum) to prevent physics tunneling on lag spikes
     const dt = Math.min(clock.getDelta(), 0.05);
 
     if (!st.paused && !st.gameOver) {
@@ -1975,7 +2768,9 @@ export function launch3DGame(options) {
       st.playerX = Math.max(-MAP_HALF + 1, Math.min(MAP_HALF - 1, st.playerX));
       st.playerZ = Math.max(-MAP_HALF + 1, Math.min(MAP_HALF - 1, st.playerZ));
 
-      // === JUMPING ===
+      // === JUMPING + GRAVITY + FLIGHT ===
+      // Flight mode (Wings powerup): Space=ascend, Shift=descend, Alt+W/S=G-force maneuvers.
+      // Normal mode: Space=jump (only when onGround), then gravity pulls down each frame.
       const jumpKey = keys3d['Space'] || keys3d['KeyW'] && keys3d['ShiftLeft'];
       if (st.flying) {
         // Wings flight mode
@@ -2035,6 +2830,7 @@ export function launch3DGame(options) {
         st.playerY += st.playerVY * dt;
       }
 
+      // === GROUND + PLATFORM COLLISION ===
       // Ground collision (offset keeps model above terrain surface)
       const GROUND_OFFSET = 0.55;
       const groundH = getGroundAt(st.playerX, st.playerZ) + GROUND_OFFSET;
@@ -2075,6 +2871,7 @@ export function launch3DGame(options) {
       if (playerGroup.position.y < groundHClamp) st.playerY = groundHClamp;
       playerGroup.position.set(st.playerX, st.playerY, st.playerZ);
 
+      // === PLAYER ROTATION ===
       // Player rotation toward movement
       if (len > 0) {
         const targetAngle = Math.atan2(mx, mz);
@@ -2097,6 +2894,7 @@ export function launch3DGame(options) {
         playerGroup.rotation.z *= 0.9;
       }
 
+      // === BIPEDAL ANIMATION ===
       // Bipedal leg + arm animation
       if (st.flying) {
         // Flying pose: legs trail behind, arms reach forward
@@ -2123,12 +2921,15 @@ export function launch3DGame(options) {
       // Tail wag always plays
       if (tail) tail.rotation.y = Math.sin(clock.elapsedTime * 3) * 0.4;
 
+      // === MUSCLE GROWTH ===
+      // PERF: Only scales the specific muscle meshes, not all children
       // Muscle growth per level (0.08 per level = very visible)
       const muscleScale = 1 + (st.level - 1) * 0.08;
       for (const key in muscles) {
         if (muscles[key]) muscles[key].scale.set(muscleScale, muscleScale, muscleScale);
       }
 
+      // === ANGEL WINGS + FLIGHT POSE ===
       // Angel wings visibility + flapping + superman pose
       wingGroup.visible = st.flying;
       if (st.flying) {
@@ -2599,6 +3400,9 @@ export function launch3DGame(options) {
       }
 
       // === ENEMY AI ===
+      // Each zombie: chases player, jumps to reach platforms, deals contact damage,
+      // shows hurt flash, and is despawned if too far away (>60 units).
+      // Frozen enemies (from Frost Nova) skip movement until their timer expires.
       for (const e of st.enemies) {
         if (!e.alive) continue;
         if (e.frozen) continue; // Frost Nova: frozen enemies don't move
@@ -2709,6 +3513,9 @@ export function launch3DGame(options) {
       }
 
       // === ZOMBIE-ZOMBIE COLLISION: MERGE INTO HIGHER TIERS ===
+      // When two same-tier zombies collide (below tier 10), they merge into one zombie
+      // of the next tier at their midpoint. Different-tier or max-tier collisions
+      // just push the zombies apart. This creates an emergent difficulty escalation.
       const ZOMBIE_RADIUS = 0.5;
       const mergedSet = new Set();
       const newEnemies = [];
@@ -2758,6 +3565,9 @@ export function launch3DGame(options) {
       }
 
       // === AUTO-ATTACK ===
+      // Timer-based auto-attack targeting the nearest enemy within range.
+      // Cowboy Boots and Banana Cannon extend range. Crit Gloves give 15% chance for 2x.
+      // Creates attack line visual and optional banana projectile in ranged mode.
       st.autoAttackTimer -= dt;
       if (st.autoAttackTimer <= 0 && !st.ghostForm) {
         let range = st.attackRange;
@@ -2798,6 +3608,9 @@ export function launch3DGame(options) {
       }
 
       // === POWER ATTACK (Hold Enter/B to charge, release to strike) ===
+      // Charge for 0-2 seconds by holding Enter/NumpadEnter/B. Releasing triggers an AoE
+      // power attack that hits all enemies in range. Charge multiplier increases damage and range.
+      // A growing glow mesh provides visual feedback during charging.
       const chargeKey = keys3d['Enter'] || keys3d['NumpadEnter'] || keys3d['KeyB'];
       if (chargeKey && !st.upgradeMenu && !st.pauseMenu) {
         if (!st.charging) {
@@ -2904,6 +3717,9 @@ export function launch3DGame(options) {
       }
 
       // === XP GEMS ===
+      // XP gems bob, spin, and are magnetically pulled toward the player when within 2x collectRadius.
+      // Collection grants XP scaled by augmentXpMult, Fortune Scroll, and totem bonuses.
+      // Reaching xpToNext triggers level-up with upgrade menu.
       for (let i = st.xpGems.length - 1; i >= 0; i--) {
         const gem = st.xpGems[i];
         gem.bobPhase += dt * 3;
@@ -2933,6 +3749,9 @@ export function launch3DGame(options) {
       }
 
       // === POWERUP CRATES ===
+      // Walk into crates to break them (3 HP). Breaking applies the contained powerup.
+      // Aviator Glasses reveal crate contents via HUD labels when within 8 units.
+      // Crates beyond 60 units are auto-cleaned to limit memory usage.
       for (let i = st.powerupCrates.length - 1; i >= 0; i--) {
         const c = st.powerupCrates[i];
         if (!c.alive) continue;
@@ -2972,6 +3791,9 @@ export function launch3DGame(options) {
       }
 
       // === ITEM PICKUPS ===
+      // Walk into floating items to equip them. Each item occupies a unique slot.
+      // Some items have immediate effects (magnetRing boosts collectRadius, pendant adds regen).
+      // Shows floating text with item name and description on pickup.
       for (let i = st.itemPickups.length - 1; i >= 0; i--) {
         const item = st.itemPickups[i];
         if (!item.alive) continue;
@@ -3014,6 +3836,8 @@ export function launch3DGame(options) {
       }
 
       // === SHRINES ===
+      // Animate shrine orb bobbing and rune rotation. Player's auto-attack hits shrines
+      // within 1.5x attack range. After 3 hits, shrine grants a random augment and is destroyed.
       for (let i = st.shrines.length - 1; i >= 0; i--) {
         const shrine = st.shrines[i];
         if (!shrine.alive) continue;
@@ -3052,6 +3876,8 @@ export function launch3DGame(options) {
       }
 
       // === DIFFICULTY TOTEMS ===
+      // Animate totem orb bobbing. Player's auto-attack hits totems within 1.5x attack range.
+      // After 5 hits, totem is destroyed: increases zombie difficulty but boosts XP and score rewards.
       for (let i = st.totems.length - 1; i >= 0; i--) {
         const totem = st.totems[i];
         if (!totem.alive) continue;
@@ -3104,6 +3930,7 @@ export function launch3DGame(options) {
         }
       }
 
+      // === CLEANUP + DEATH CHECK ===
       // Clean dead enemies
       st.enemies = st.enemies.filter(e => e.alive);
 
@@ -3117,7 +3944,7 @@ export function launch3DGame(options) {
       }
     }
 
-    // === CAMERA ===
+    // === CAMERA + RENDER (runs even when paused/game over) ===
     const camTargetX = st.playerX;
     const camTargetZ = st.playerZ + 14;
     const camTargetY = st.playerY + 18;
@@ -3138,12 +3965,43 @@ export function launch3DGame(options) {
   tick();
 
   // === HUD ===
+
+  /**
+   * Draw the full HUD overlay on the 2D canvas.
+   * Renders different elements based on game state:
+   *
+   * **Normal Gameplay:**
+   * - HP bar (top-left, color-coded by health percentage)
+   * - XP bar (below HP bar)
+   * - Level + animal name display
+   * - Weapon slot bars with cooldown fill (left side)
+   * - Scroll counts (right side below timer)
+   * - Wave + score display (top-right)
+   * - Game timer (top-right)
+   * - Wave warning countdown (center, with red overlay)
+   * - Active powerup indicator + timer bar (top-center)
+   * - Equipped items list (bottom-left)
+   * - Shield bracelet cooldown indicator
+   * - Floating 3D texts (projected to screen space)
+   * - Augment + totem display (right side)
+   * - Crate/item labels when Aviator Glasses equipped
+   * - Controls hint (bottom-center)
+   * - Power attack charge meter (bottom-center when charging)
+   *
+   * **Pause Menu:** Dark overlay with 3 card options (Resume/Restart/Main Menu)
+   * **Upgrade Menu:** Dark overlay with up to 3 upgrade cards + reroll indicator
+   * **Game Over:** Score summary, name entry, and leaderboard display
+   *
+   * @param {CanvasRenderingContext2D} ctx - The HUD canvas 2D context.
+   * @param {State3D} s - The game state object.
+   */
   function drawHUD(ctx, s) {
     const W = hudCanvas.width, H = hudCanvas.height;
     ctx.clearRect(0, 0, W, H);
 
+    // --- Normal Gameplay HUD ---
     if (!s.gameOver && !s.upgradeMenu) {
-      // HP bar
+      // --- HP Bar (top-left) ---
       ctx.fillStyle = '#222'; ctx.fillRect(20, 20, 200, 20);
       const hpRatio = Math.max(0, s.hp / s.maxHp);
       ctx.fillStyle = hpRatio > 0.5 ? '#44ff44' : hpRatio > 0.25 ? '#ffaa00' : '#ff4444';
@@ -3152,7 +4010,7 @@ export function launch3DGame(options) {
       ctx.fillStyle = '#fff'; ctx.font = 'bold 12px "Courier New"'; ctx.textAlign = 'left';
       ctx.fillText(`HP: ${Math.ceil(s.hp)}/${s.maxHp}`, 25, 35);
 
-      // XP bar
+      // --- XP Bar (below HP) ---
       ctx.fillStyle = '#222'; ctx.fillRect(20, 46, 200, 14);
       const xpRatio = s.xp / s.xpToNext;
       ctx.fillStyle = '#44aaff';
@@ -3161,13 +4019,13 @@ export function launch3DGame(options) {
       ctx.fillStyle = '#fff'; ctx.font = '10px "Courier New"';
       ctx.fillText(`XP: ${s.xp}/${s.xpToNext}`, 25, 57);
 
-      // Level + Animal
+      // --- Level + Animal Name ---
       ctx.fillStyle = '#ffcc00'; ctx.font = 'bold 16px "Courier New"';
       ctx.fillText(`LVL ${s.level}`, 20, 80);
       ctx.fillStyle = animalData.color; ctx.font = 'bold 12px "Courier New"';
       ctx.fillText(animalData.name, 20, 96);
 
-      // Weapon slots (left side)
+      // --- Weapon Slot Bars (left side, below level) ---
       let wy = 115;
       for (let wi = 0; wi < s.weapons.length; wi++) {
         const w = s.weapons[wi];
@@ -3192,7 +4050,7 @@ export function launch3DGame(options) {
         wy += 22;
       }
 
-      // Scrolls display (right side below timer)
+      // --- Scroll Display (right side below timer) ---
       ctx.textAlign = 'right';
       let ty = 92;
       const scrollEntries = Object.entries(s.scrolls).filter(([, v]) => v > 0);
@@ -3206,7 +4064,7 @@ export function launch3DGame(options) {
       }
       ctx.textAlign = 'left';
 
-      // Wave + Score (top right)
+      // --- Wave + Score + Timer (top-right) ---
       ctx.textAlign = 'right';
       ctx.fillStyle = '#ff6644'; ctx.font = 'bold 18px "Courier New"';
       ctx.fillText(`WAVE ${s.wave}`, W - 20, 35);
@@ -3219,7 +4077,7 @@ export function launch3DGame(options) {
       ctx.fillStyle = '#ffffff'; ctx.font = 'bold 14px "Courier New"';
       ctx.fillText(timeStr, W - 20, 75);
 
-      // Wave warning countdown
+      // --- Wave Warning Countdown (center overlay) ---
       if (s.waveWarning > 0) {
         ctx.fillStyle = 'rgba(255, 0, 0, 0.15)';
         ctx.fillRect(0, 0, W, H);
@@ -3233,7 +4091,7 @@ export function launch3DGame(options) {
         ctx.textAlign = 'left';
       }
 
-      // Active powerup indicator
+      // --- Active Powerup Indicator (top-center) ---
       if (s.activePowerup) {
         const pw = s.activePowerup;
         ctx.fillStyle = pw.def.color; ctx.font = 'bold 14px "Courier New"';
@@ -3246,7 +4104,7 @@ export function launch3DGame(options) {
         ctx.fillRect(W / 2 - barW / 2, 30, barW * (pw.timer / pw.def.duration), barH);
       }
 
-      // Items (bottom-left)
+      // --- Equipped Items (bottom-left) ---
       ctx.textAlign = 'left';
       let iy = H - 40;
       if (s.items.armor) {
@@ -3289,7 +4147,7 @@ export function launch3DGame(options) {
         iy -= 16;
       }
 
-      // Floating texts (shrine augments)
+      // --- Floating 3D Texts (projected to screen space) ---
       for (const ft of s.floatingTexts3d) {
         const v = new THREE.Vector3(ft.x, ft.y, ft.z);
         v.project(camera);
@@ -3303,7 +4161,7 @@ export function launch3DGame(options) {
         }
       }
 
-      // Augment display (right side)
+      // --- Augment + Totem Display (right side) ---
       const augKeys = Object.keys(s.augments);
       if (augKeys.length > 0 || s.totemCount > 0) {
         ctx.textAlign = 'right';
@@ -3330,7 +4188,7 @@ export function launch3DGame(options) {
         ctx.textAlign = 'left';
       }
 
-      // Crate labels (glasses reveal)
+      // --- Crate + Item Labels (Aviator Glasses reveal) ---
       if (s.items.glasses) {
         for (const c of s.powerupCrates) {
           if (!c.alive || !c.showLabel) continue;
@@ -3357,7 +4215,7 @@ export function launch3DGame(options) {
         }
       }
 
-      // Controls hint
+      // --- Controls Hint + Charge Meter (bottom-center) ---
       ctx.textAlign = 'center';
       ctx.fillStyle = 'rgba(255,255,255,0.3)'; ctx.font = '12px "Courier New"';
       ctx.fillText('WASD: Move | SPACE: Jump | HOLD B: Power Attack | ESC: Pause', W / 2, H - 10);
@@ -3376,7 +4234,7 @@ export function launch3DGame(options) {
       }
     }
 
-    // Pause menu
+    // --- Pause Menu Overlay ---
     if (s.pauseMenu && !s.gameOver && !s.upgradeMenu) {
       ctx.fillStyle = 'rgba(0,0,0,0.65)'; ctx.fillRect(0, 0, W, H);
       ctx.textAlign = 'center';
@@ -3420,7 +4278,7 @@ export function launch3DGame(options) {
       ctx.fillText('<  ARROW KEYS  >', W / 2, cardY + cardH + 25);
     }
 
-    // Upgrade menu (weapons / upgrades / tomes)
+    // --- Upgrade Menu Overlay (weapons / upgrades / scrolls) ---
     if (s.upgradeMenu && !s.gameOver) {
       ctx.fillStyle = 'rgba(0,0,0,0.7)'; ctx.fillRect(0, 0, W, H);
       ctx.textAlign = 'center';
@@ -3506,7 +4364,7 @@ export function launch3DGame(options) {
       }
     }
 
-    // Game Over
+    // --- Game Over Screen (score summary + name entry + leaderboard) ---
     if (s.gameOver) {
       ctx.fillStyle = 'rgba(0,0,0,0.85)'; ctx.fillRect(0, 0, W, H);
       ctx.textAlign = 'center';
@@ -3573,6 +4431,23 @@ export function launch3DGame(options) {
   }
 
   // === CLEANUP ===
+
+  /**
+   * Full cleanup and resource disposal when leaving 3D mode.
+   *
+   * Disposal sequence:
+   * 1. Stop game loop (set running=false, cancel animationFrame)
+   * 2. Remove keydown/keyup event listeners
+   * 3. Dispose fire particles, mirror clones, bomb trail bombs
+   * 4. Dispose weapon projectiles and effects
+   * 5. Dispose charge glow mesh
+   * 6. Traverse entire scene and dispose all geometries + materials
+   * 7. Dispose WebGL renderer
+   * 8. Clear HUD canvas
+   * 9. Hide 3D/HUD canvases
+   * 10. Remove resize listener
+   * 11. Restore container and 2D canvas dimensions for menu screens
+   */
   function cleanup() {
     st.running = false;
     if (animId) cancelAnimationFrame(animId);

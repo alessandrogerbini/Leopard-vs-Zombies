@@ -1,5 +1,46 @@
+/**
+ * @module levels
+ * @description Level layout definitions for the 2D Classic mode's three stages.
+ * Each level specifies world dimensions, visual theme, zombie stats, platform
+ * placements, and procedurally generated background decorations. Internal helper
+ * functions scatter trees, highway props, and ice features across the level
+ * width with randomized spacing.
+ *
+ * Dependencies: none
+ * Exports: 1 function — getLevelData
+ *
+ * Key concepts:
+ * - Levels are keyed 1-3: Dark Forest, Highway, Ice Age.
+ * - Platforms are hand-placed; decorations are procedurally generated.
+ * - Each call to getLevelData produces fresh random decorations (no caching).
+ * - Zombie stats scale with level: more enemies, higher HP, varied speed.
+ */
+
+/**
+ * @typedef {Object} LevelData
+ * @property {number} width - Total world width in pixels.
+ * @property {string} name - Display name shown on the HUD (e.g. "THE DARK FOREST").
+ * @property {string} bgColor - CSS color for the sky/background fill.
+ * @property {string} groundColor - CSS color for the ground plane.
+ * @property {number} zombieCount - Base number of zombies spawned in this level.
+ * @property {number} zombieHp - Base HP for each zombie in this level.
+ * @property {number} zombieSpeed - Base movement speed for zombies in this level.
+ * @property {Array<{x: number, y: number, w: number, h: number}>} platforms - Static platform rectangles the player can stand on.
+ * @property {Array<{x: number, h: number}>} [trees] - (Level 1) Generated background trees with randomized height.
+ * @property {Array<{x: number, type: string, color?: string}>} [highway] - (Level 2) Generated highway decoration objects (cars, signs, lamps).
+ * @property {Array<{x: number, type: string, h?: number}>} [iceFeatures] - (Level 3) Generated ice terrain features (icicles, mounds, frozen trees).
+ */
+
 // Level definitions and background generators
 
+/**
+ * Generate randomized background tree decorations across the level width.
+ * Trees are spaced 150-350px apart with heights between 80-140px, inset
+ * 200px from each edge to avoid spawning at level boundaries.
+ *
+ * @param {number} width - Total level width in pixels.
+ * @returns {Array<{x: number, h: number}>} Array of tree positions and heights.
+ */
 function generateTrees(width) {
   const trees = [];
   for (let x = 200; x < width - 200; x += 150 + Math.random() * 200) {
@@ -8,6 +49,14 @@ function generateTrees(width) {
   return trees;
 }
 
+/**
+ * Generate randomized highway decoration objects (cars, road signs, street
+ * lamps) across the level width. Distribution: 50% cars, 25% signs, 25% lamps.
+ * Objects are spaced 120-300px apart, inset 200px from each edge.
+ *
+ * @param {number} width - Total level width in pixels.
+ * @returns {Array<{x: number, type: 'car'|'sign'|'lamp', color?: string}>} Array of highway prop descriptors.
+ */
 function generateHighway(width) {
   const items = [];
   const carColors = ['#8b0000', '#2f4f4f', '#1a1a6e', '#4a4a4a', '#6b3a00', '#2e8b57'];
@@ -24,6 +73,15 @@ function generateHighway(width) {
   return items;
 }
 
+/**
+ * Generate randomized ice terrain features (icicles, snow mounds, frozen
+ * trees) across the level width. Distribution: 40% icicles, 30% mounds,
+ * 30% frozen trees. Objects are spaced 100-280px apart, inset 200px from
+ * each edge.
+ *
+ * @param {number} width - Total level width in pixels.
+ * @returns {Array<{x: number, type: 'icicle'|'mound'|'frozenTree', h?: number}>} Array of ice feature descriptors.
+ */
 function generateIceFeatures(width) {
   const features = [];
   for (let x = 200; x < width - 200; x += 100 + Math.random() * 180) {
@@ -39,6 +97,14 @@ function generateIceFeatures(width) {
   return features;
 }
 
+/**
+ * Retrieve the complete layout data for a given level number. Returns a fresh
+ * object each call because decoration arrays are procedurally regenerated.
+ *
+ * @param {number} level - Level number (1, 2, or 3).
+ * @returns {LevelData|undefined} Level configuration object, or undefined for invalid level numbers.
+ * @see LevelData
+ */
 export function getLevelData(level) {
   const levels = {
     1: {

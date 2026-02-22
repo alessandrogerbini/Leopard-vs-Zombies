@@ -1,7 +1,126 @@
+/**
+ * @module enemies
+ * @description Handles all enemy entity creation and per-frame AI updates for
+ * the 2D Classic mode. This includes regular zombies, the end-of-level boss,
+ * and player allies. Each entity type has a spawn function that populates the
+ * global state arrays and an update function that runs every frame to handle
+ * movement, attacks, physics, and death.
+ *
+ * Dependencies: state.js (GRAVITY, GROUND_Y, state, player, POWERUP_TYPES,
+ *   POWERUP_DURATION, DIFFICULTY_SETTINGS), utils.js (rectCollide,
+ *   spawnParticles, spawnFloatingText, addScore)
+ * Exports: 6 functions — spawnZombies, spawnBoss, updateZombieAI,
+ *   updateBossAI, spawnAlly, updateAllyAI
+ *
+ * Key concepts:
+ * - Zombies have two types: 'normal' and 'big' (30% chance). Big zombies are
+ *   wider, taller, have 1.8x HP, and move at 0.7x speed.
+ * - The boss uses a two-phase system: Phase 1 is normal, Phase 2 activates at
+ *   50% HP with faster speed and reduced cooldowns.
+ * - Boss attacks use a telegraph pattern: a countdown timer warns the player
+ *   before each attack fires, giving time to dodge.
+ * - Allies follow the player, chase nearby enemies, and have a lives/respawn
+ *   system (3 lives, 120-frame respawn timer).
+ */
+
+/**
+ * @typedef {Object} Zombie
+ * @property {number} x - Horizontal position (left edge).
+ * @property {number} y - Vertical position (top edge).
+ * @property {number} w - Width in pixels (36 for normal, 44 for big).
+ * @property {number} h - Height in pixels (48 for normal, 56 for big).
+ * @property {number} vx - Horizontal velocity.
+ * @property {number} vy - Vertical velocity.
+ * @property {number} hp - Current hit points.
+ * @property {number} maxHp - Maximum hit points (1.8x for big zombies).
+ * @property {number} speed - Base movement speed (randomized per zombie, 0.7x for big).
+ * @property {boolean} onGround - Whether the zombie is currently on the ground.
+ * @property {number} facing - Direction facing: 1 for right, -1 for left.
+ * @property {number} frame - Current animation frame index (0-3).
+ * @property {number} frameTimer - Ticks until next animation frame.
+ * @property {number} attackTimer - Accumulates while overlapping the player; attack fires at 20.
+ * @property {number} hurt - Remaining hurt-flash frames (decrements each tick).
+ * @property {string} type - Zombie variant: 'normal' or 'big'.
+ * @property {boolean} alive - Whether the zombie is still alive.
+ * @property {number} [_carHitCooldown] - Frames of immunity after being hit by the race car powerup.
+ */
+
+/**
+ * @typedef {Object} Boss
+ * @property {number} x - Horizontal position (left edge).
+ * @property {number} y - Vertical position (top edge).
+ * @property {number} w - Width in pixels (70).
+ * @property {number} h - Height in pixels (90).
+ * @property {number} vx - Horizontal velocity.
+ * @property {number} vy - Vertical velocity.
+ * @property {number} hp - Current hit points (600 for level 3, 300 otherwise).
+ * @property {number} maxHp - Maximum hit points.
+ * @property {number} speed - Movement speed (1.0 in phase 1, 1.8 in phase 2).
+ * @property {boolean} onGround - Whether the boss is currently on the ground.
+ * @property {number} facing - Direction facing: 1 for right, -1 for left.
+ * @property {number} frame - Current animation frame index (0-3).
+ * @property {number} frameTimer - Ticks until next animation frame.
+ * @property {number} attackTimer - Melee attack accumulator.
+ * @property {number} hurt - Remaining hurt-flash frames.
+ * @property {boolean} alive - Whether the boss is still alive.
+ * @property {number} phase - Boss phase: 1 (normal) or 2 (enraged, below 50% HP).
+ * @property {number} slamCooldown - Frames remaining before charge attack is available.
+ * @property {number} chargeTimer - Frames remaining in current charge animation.
+ * @property {boolean} isCharging - Whether the boss is currently performing a charge.
+ * @property {number} skullCooldown - Frames remaining before skull projectile is available.
+ * @property {number} aoeCooldown - Frames remaining before AOE slam is available.
+ * @property {number} mortarCooldown - Frames remaining before mortar volley is available.
+ * @property {number} skullTelegraph - Frames remaining in skull telegraph countdown (0 = fire).
+ * @property {number} skullTargetX - Stored X target for skull projectile.
+ * @property {number} skullTargetY - Stored Y target for skull projectile.
+ * @property {number} aoeTelegraph - Frames remaining in AOE telegraph countdown (0 = slam).
+ * @property {number} aoeTargetX - Stored X target for AOE slam center.
+ * @property {number} mortarTelegraph - Frames remaining in mortar telegraph countdown (0 = fire).
+ * @property {Array<{x: number, y: number}>} mortarTargets - Stored target positions for mortar rounds.
+ * @property {number} [_carHitCooldown] - Frames of immunity after being hit by the race car powerup.
+ */
+
+/**
+ * @typedef {Object} Ally
+ * @property {number} x - Horizontal position (left edge).
+ * @property {number} y - Vertical position (top edge).
+ * @property {number} w - Width in pixels (83 for horse, 69 otherwise).
+ * @property {number} h - Height in pixels (90 for horse, 86 otherwise).
+ * @property {number} vx - Horizontal velocity.
+ * @property {number} vy - Vertical velocity.
+ * @property {number} hp - Current hit points (inherits player.maxHp at spawn).
+ * @property {number} maxHp - Maximum hit points.
+ * @property {number} lives - Remaining respawn lives (starts at 3).
+ * @property {number} speed - Movement speed (2.5 for horse, 1.8 otherwise).
+ * @property {number} damage - Melee attack damage (20 for horse, 15 otherwise).
+ * @property {boolean} onGround - Whether the ally is currently on the ground.
+ * @property {number} facing - Direction facing: 1 for right, -1 for left.
+ * @property {number} frame - Current animation frame index.
+ * @property {number} frameTimer - Ticks until next animation frame.
+ * @property {number} attackTimer - Visual attack animation countdown.
+ * @property {number} attackCooldown - Frames remaining before next melee attack.
+ * @property {number} hurt - Remaining hurt-flash frames.
+ * @property {string} type - Ally variant (e.g. 'horse').
+ * @property {boolean} alive - Whether the ally is currently alive.
+ * @property {boolean} invulnerable - Permanent invulnerability flag (not currently used).
+ * @property {number} invincibleTimer - Temporary invincibility frames after taking damage or respawning.
+ * @property {number} respawnTimer - Frames remaining until respawn (120 frames = 2 seconds at 60fps).
+ */
+
 // Zombie spawning, zombie AI, boss spawning, boss AI
 import { GRAVITY, GROUND_Y, state, player, POWERUP_TYPES, POWERUP_DURATION, DIFFICULTY_SETTINGS } from './state.js';
 import { rectCollide, spawnParticles, spawnFloatingText, addScore } from './utils.js';
 
+/**
+ * Populate the zombie array for the current level.
+ *
+ * Creates `levelData.zombieCount` zombies distributed evenly across the level
+ * width (from x=300 to levelWidth-300). Each zombie gets a randomized speed
+ * multiplier (0.8x to 1.2x). Approximately 30% become 'big' variants with
+ * increased size/HP and reduced speed.
+ *
+ * @see updateZombieAI
+ */
 export function spawnZombies() {
   state.zombies = [];
   const ld = state.levelData;
@@ -30,6 +149,16 @@ export function spawnZombies() {
   });
 }
 
+/**
+ * Create the boss entity and attach it to `state.boss`.
+ *
+ * The boss spawns near the right edge of the level (levelWidth - 400) with
+ * HP that depends on the current level (600 HP on level 3, 300 HP otherwise).
+ * Initializes all four attack cooldowns, telegraph counters, and the
+ * two-phase state machine at phase 1.
+ *
+ * @see updateBossAI
+ */
 export function spawnBoss() {
   const ld = state.levelData;
   const bossHp = state.currentLevel === 3 ? 600 : 300;
@@ -64,6 +193,21 @@ export function spawnBoss() {
   };
 }
 
+/**
+ * Run one frame of AI for every living zombie.
+ *
+ * Each zombie performs three steps per frame:
+ * 1. **Chase** — If within 400px of the player, accelerate toward them.
+ *    Otherwise, decelerate via friction (0.9x).
+ * 2. **Attack** — If the zombie's extended hitbox overlaps the player,
+ *    increment the attack timer. At 20, deal damage (11 normal / 19 big),
+ *    apply knockback, screen shake, and grant invincibility frames. Race car
+ *    powerup reduces damage by 80%.
+ * 3. **Physics** — Apply gravity, update position, apply ground clamping,
+ *    and enforce level bounds. Friction of 0.88x is applied each frame.
+ *
+ * @see spawnZombies
+ */
 export function updateZombieAI() {
   const ld = state.levelData;
 
@@ -126,6 +270,31 @@ export function updateZombieAI() {
   });
 }
 
+/**
+ * Run one frame of boss AI including phase transitions, attack selection,
+ * telegraph countdowns, movement, melee combat, and physics.
+ *
+ * The boss uses a **telegraph system** for three of its four attacks: before
+ * firing, a telegraph counter is set (40-50 frames). Each frame the counter
+ * decrements; at zero the attack executes. This gives the player a visual
+ * warning window to dodge. Only one telegraph can be active at a time.
+ *
+ * **Attack priority** (checked in order, all require no active telegraph):
+ * 1. **Charge** (150-500px range) — Wind-up then dash toward the player.
+ *    Cooldown: 110 frames (70 in phase 2).
+ * 2. **Skull projectile** (>300px range) — Telegraph 40 frames, then fire a
+ *    homing skull. Cooldown: 100 frames (60 in phase 2).
+ * 3. **AOE slam** (<120px range) — Telegraph 50 frames, then expanding
+ *    shockwave. Cooldown: 130 frames (80 in phase 2).
+ * 4. **Mortar volley** (120-400px range) — Telegraph 45 frames, then fire
+ *    3 (or 5 in phase 2) arcing projectiles. Cooldown: 150 frames (90 in
+ *    phase 2).
+ *
+ * Phase 2 activates at 50% HP: speed increases from 1.0 to 1.8, all
+ * cooldowns are shorter, and mortar fires 5 rounds instead of 3.
+ *
+ * @see spawnBoss
+ */
 export function updateBossAI() {
   const boss = state.boss;
   const ld = state.levelData;
@@ -155,12 +324,17 @@ export function updateBossAI() {
   const p2 = boss.phase === 2;
 
   // === TELEGRAPH COUNTDOWN LOGIC ===
+  // Telegraph pattern: when an attack is chosen, its telegraph counter is set
+  // to a positive value (40-50 frames). Each frame the counter decrements.
+  // When it reaches 0, the attack fires using pre-stored target coordinates.
+  // During the telegraph window, the renderer draws a warning indicator so
+  // the player can see where the attack will land and dodge accordingly.
 
-  // Skull telegraph countdown
+  // Skull telegraph countdown — 40 frames of warning before a aimed projectile
   if (boss.skullTelegraph > 0) {
     boss.skullTelegraph--;
     if (boss.skullTelegraph <= 0) {
-      // Fire the skull at the stored target
+      // Telegraph complete: fire the skull at the stored target position
       const spd = p2 ? 4 : 3;
       const dx = boss.skullTargetX - boss.x;
       const dy = boss.skullTargetY - (boss.y + boss.h * 0.3);
@@ -179,11 +353,11 @@ export function updateBossAI() {
     }
   }
 
-  // AOE telegraph countdown
+  // AOE telegraph countdown — 50 frames of warning before a ground-centered shockwave
   if (boss.aoeTelegraph > 0) {
     boss.aoeTelegraph--;
     if (boss.aoeTelegraph <= 0) {
-      // Spawn the AOE slam
+      // Telegraph complete: spawn the expanding AOE slam at the boss's stored position
       state.projectiles.push({
         type: 'bossAOE',
         x: boss.aoeTargetX,
@@ -200,11 +374,11 @@ export function updateBossAI() {
     }
   }
 
-  // Mortar telegraph countdown
+  // Mortar telegraph countdown — 45 frames of warning before an arcing volley
   if (boss.mortarTelegraph > 0) {
     boss.mortarTelegraph--;
     if (boss.mortarTelegraph <= 0) {
-      // Fire the mortars at stored targets
+      // Telegraph complete: fire mortars at each stored target (spread around player)
       boss.mortarTargets.forEach(target => {
         const dx = target.x - (boss.x + boss.w / 2);
         const travelTime = 55 + Math.random() * 10;
@@ -227,17 +401,20 @@ export function updateBossAI() {
   }
 
   // === ATTACK SELECTION (distance-based priority) ===
+  // Attacks are checked in a fixed priority order. The first attack whose
+  // distance condition and cooldown are both satisfied wins. Only one attack
+  // can begin per frame, and no new attack starts while a telegraph is active.
   // Only start new attacks if no telegraph is active
   const telegraphActive = boss.skullTelegraph > 0 || boss.aoeTelegraph > 0 || boss.mortarTelegraph > 0;
 
-  // 1) CHARGE attack (medium range 150-500px) - kept & made more dangerous
+  // Priority 1: CHARGE attack (medium range 150-500px) — immediate, no telegraph
   if (!boss.isCharging && !telegraphActive && absDist < 500 && absDist > 150 && boss.slamCooldown <= 0) {
     boss.isCharging = true;
     boss.chargeTimer = p2 ? 24 : 30;
     boss.slamCooldown = p2 ? 70 : 110;
   }
 
-  // 2) SKULL PROJECTILE (long range > 300px) - telegraph then fire
+  // Priority 2: SKULL PROJECTILE (long range > 300px) — 40-frame telegraph then fire
   if (!boss.isCharging && !telegraphActive && absDist > 300 && boss.skullCooldown <= 0) {
     boss.skullTelegraph = 40;
     boss.skullTargetX = player.x + player.w / 2;
@@ -245,14 +422,14 @@ export function updateBossAI() {
     boss.skullCooldown = p2 ? 60 : 100;
   }
 
-  // 3) AOE SLAM (close range < 120px) - telegraph then slam
+  // Priority 3: AOE SLAM (close range < 120px) — 50-frame telegraph then expanding shockwave
   if (!boss.isCharging && !telegraphActive && absDist < 120 && boss.aoeCooldown <= 0) {
     boss.aoeTelegraph = 50;
     boss.aoeTargetX = boss.x + boss.w / 2;
     boss.aoeCooldown = p2 ? 80 : 130;
   }
 
-  // 4) MORTAR VOLLEY (medium range 120-400px) - telegraph then fire
+  // Priority 4: MORTAR VOLLEY (medium range 120-400px) — 45-frame telegraph then arcing volley
   if (!boss.isCharging && !telegraphActive && absDist > 120 && absDist < 400 && boss.mortarCooldown <= 0) {
     const count = p2 ? 5 : 3;
     boss.mortarTargets = [];
@@ -331,6 +508,21 @@ export function updateBossAI() {
   if (boss.frameTimer > 8) { boss.frame = (boss.frame + 1) % 4; boss.frameTimer = 0; }
 }
 
+/**
+ * Create a new ally entity and add it to `state.allies`.
+ *
+ * Allies fight alongside the player, automatically chasing and attacking
+ * nearby enemies. They inherit the player's current maxHp, start with 3 lives,
+ * and respawn 120 frames after death (while lives remain). Horse allies are
+ * larger, faster, and deal more damage than the default ally type.
+ *
+ * @param {string} type - The ally variant (e.g. 'horse'). Determines size, speed, and damage.
+ * @param {number} x - Initial horizontal position.
+ * @param {number} y - Initial vertical position.
+ * @param {boolean} [invulnerable] - If true, the ally cannot take damage (currently unused by callers).
+ * @returns {Ally} The newly created ally object.
+ * @see updateAllyAI
+ */
 export function spawnAlly(type, x, y, invulnerable) {
   const ally = {
     x: x, y: y, w: type === 'horse' ? 83 : 69, h: type === 'horse' ? 90 : 86,
@@ -355,6 +547,30 @@ export function spawnAlly(type, x, y, invulnerable) {
   return ally;
 }
 
+/**
+ * Run one frame of AI for every ally in `state.allies`.
+ *
+ * Each ally performs these steps per frame:
+ * 1. **Respawn** — If dead and lives remain, decrement the respawn timer.
+ *    At zero, revive near the player with full HP and 60 frames of
+ *    invincibility.
+ * 2. **Target selection** — Find the nearest enemy (zombie or boss) within
+ *    300px. If none found, the ally follows the player instead.
+ * 3. **Combat** — When chasing an enemy and within melee reach (40px for
+ *    horse, 24px otherwise), deal damage, apply knockback, and check for
+ *    kills (awards score, spawns diamond on boss kill).
+ * 4. **Follow** — When no enemy target exists, the ally loosely follows the
+ *    player: fast pursuit beyond 200px, gentle drift between 80-200px,
+ *    and friction stop under 80px.
+ * 5. **Physics** — Gravity, ground/platform collision, level bounds, and
+ *    jumping to reach the player when they are above.
+ * 6. **Damage** — Non-invulnerable allies can be hit by zombies (2% chance
+ *    per overlap frame) and the boss (3% chance). On death, lives decrement
+ *    and respawn timer starts (120 frames). At 0 lives, the ally is
+ *    permanently eliminated.
+ *
+ * @see spawnAlly
+ */
 export function updateAllyAI() {
   const ld = state.levelData;
   if (!ld) return;

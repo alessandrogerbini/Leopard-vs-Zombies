@@ -39,12 +39,18 @@ canvas#hud3d {
 </style>
 </head>
 <body>
+<!-- Three-canvas setup:
+     #game   — 2D Classic mode (Canvas 2D). Visible on title screen and during 2D gameplay.
+     #game3d — 3D Survivor mode (Three.js WebGLRenderer). Hidden by default, shown when 3D mode launches.
+     #hud3d  — Transparent HUD overlay for 3D mode (Canvas 2D, pointer-events:none). Stacked on top of #game3d. -->
 <div id="game-container">
   <canvas id="game" width="960" height="540"></canvas>
   <canvas id="game3d" width="960" height="540"></canvas>
   <canvas id="hud3d" width="960" height="540"></canvas>
 </div>
+<!-- Three.js r128 — loaded globally as the THREE namespace. Required by game3d.js for 3D rendering. -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<!-- Entry point: game.js bootstraps the 2D game loop and launches 3D mode via launch3DGame(). -->
 <script type="module" src="js/game.js?v=5"></script>
 </body>
 </html>

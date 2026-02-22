@@ -1,8 +1,87 @@
+/**
+ * @module items
+ * @description Manages all collectible item spawning and per-frame update logic
+ * for the 2D Classic mode. Items fall into several categories: health pickups
+ * (automatic on contact), powerup crates (break to activate), equipment crates
+ * (break to drop, then press E to equip), the wild diamond (level-complete
+ * trigger after boss defeat), and the portal (level-complete trigger on
+ * non-boss levels).
+ *
+ * Dependencies: state.js (GROUND_Y, state, player, POWERUP_TYPES,
+ *   POWERUP_DURATION, ARMOR_TYPES, GLASSES_TYPE, SNEAKERS_TYPE, CLEATS_TYPE,
+ *   HORSE_TYPE, keys), utils.js (rectCollide, spawnParticles,
+ *   spawnFloatingText, addScore), enemies.js (spawnAlly)
+ * Exports: 15 functions — 7 spawn functions and 8 update functions
+ *
+ * Key concepts:
+ * - Crates are placed at fixed percentages of the level width to avoid overlap:
+ *   glasses at 25%, horse at 30%, armor at 40%, sneakers/cowboy boots at 55%,
+ *   cleats at 65%. Powerup crates sit on the highest platforms instead.
+ * - Equipment uses an interact-with-E-key pattern: after a crate is broken, a
+ *   pickup entity spawns that bobs in place. The player must stand near it and
+ *   press E to equip. The key press is consumed to prevent double-activation.
+ * - Footwear occupies a shared slot: equipping cowboy boots or soccer cleats
+ *   automatically discards any previously equipped footwear (mutual exclusion).
+ * - Crates only spawn if the player does not already own that tier or a higher
+ *   tier of the same equipment category.
+ */
+
+/**
+ * @typedef {Object} HealthPickup
+ * @property {number} x - Horizontal center position.
+ * @property {number} y - Vertical base position (bobs up/down via sine wave).
+ * @property {boolean} collected - Whether the pickup has been collected.
+ * @property {number} bobTimer - Phase offset for the sine bob animation.
+ */
+
+/**
+ * @typedef {Object} PowerupCrate
+ * @property {number} x - Left edge position.
+ * @property {number} y - Top edge position.
+ * @property {number} w - Width in pixels (24).
+ * @property {number} h - Height in pixels (24).
+ * @property {number} hp - Remaining hits before breaking (starts at 3).
+ * @property {boolean} broken - Whether the crate has been destroyed.
+ * @property {Object} powerupType - The powerup type definition from POWERUP_TYPES.
+ * @property {number} shakeTimer - Frames of shake animation remaining after being hit.
+ */
+
+/**
+ * @typedef {Object} ArmorCrate
+ * @property {number} x - Left edge position.
+ * @property {number} y - Top edge position.
+ * @property {number} w - Width in pixels (28).
+ * @property {number} h - Height in pixels (28).
+ * @property {number} hp - Remaining hits before breaking (starts at 3).
+ * @property {boolean} broken - Whether the crate has been destroyed.
+ * @property {Object} armorType - The armor type definition from ARMOR_TYPES.
+ * @property {number} shakeTimer - Frames of shake animation remaining after being hit.
+ */
+
+/**
+ * @typedef {Object} ArmorPickup
+ * @property {number} x - Horizontal center position.
+ * @property {number} y - Vertical base position.
+ * @property {boolean} equipped - Whether the pickup has been equipped by the player.
+ * @property {number} bobTimer - Phase for the bob animation.
+ * @property {number} glowTimer - Phase for the glow pulse animation.
+ * @property {Object} armorType - The armor type definition (includes id, name, color, tier).
+ */
+
 // Health pickups, powerup crates, armor crates, diamond, portal spawning
 import { GROUND_Y, state, player, POWERUP_TYPES, POWERUP_DURATION, ARMOR_TYPES, GLASSES_TYPE, SNEAKERS_TYPE, CLEATS_TYPE, HORSE_TYPE, keys } from './state.js';
 import { rectCollide, spawnParticles, spawnFloatingText, addScore } from './utils.js';
 import { spawnAlly } from './enemies.js';
 
+/**
+ * Spawn health pickups on randomly selected platforms.
+ *
+ * Shuffles the platform list and places pickups on top of the first N
+ * platforms, where N = min(4 + currentLevel, platformCount). Each pickup
+ * starts with a random bob phase for visual variety.
+ *
+ * @see updateHealthPickups
+ */
 export function spawnHealthPickups() {
   state.healthPickups = [];
   const ld = state.levelData;
@@ -23,6 +102,15 @@ export function spawnHealthPickups() {
   }
 }
 
+/**
+ * Spawn powerup crates on the highest platforms in the level.
+ *
+ * Sorts platforms by Y position (lowest Y = highest on screen), selects up
+ * to 4 of the highest, and places one shuffled powerup type on each. Crates
+ * have 3 HP and must be broken by the player's attacks to release the powerup.
+ *
+ * @see updateHealthPickups
+ */
 export function spawnPowerupCrates() {
   state.powerupCrates = [];
   const ld = state.levelData;
@@ -49,6 +137,15 @@ export function spawnPowerupCrates() {
   });
 }
 
+/**
+ * Update all health pickups each frame.
+ *
+ * Each uncollected pickup bobs via a sine wave and checks for collision with
+ * the player. On contact (if the player is not at full HP), restores 25 HP
+ * (capped at maxHp) and spawns green particles and floating text.
+ *
+ * @see spawnHealthPickups
+ */
 export function updateHealthPickups() {
   state.healthPickups.forEach(h => {
     if (h.collected) return;
@@ -65,6 +162,13 @@ export function updateHealthPickups() {
   });
 }
 
+/**
+ * Update the wild diamond each frame.
+ *
+ * The diamond spawns after the boss is defeated and pulses with a glow
+ * animation. When the player collides with it, awards 1000 score, triggers
+ * a screen flash, and transitions the game state to 'levelComplete'.
+ */
 export function updateDiamond() {
   if (!state.diamond || state.diamond.collected) return;
   state.diamond.glow += 0.05;
@@ -83,6 +187,14 @@ export function updateDiamond() {
   }
 }
 
+/**
+ * Update the level-exit portal each frame.
+ *
+ * The portal appears on non-boss levels after all zombies are defeated.
+ * It animates via a timer and checks for player collision. On contact,
+ * transitions the game state to 'levelComplete' with a shorter transition
+ * timer (90 frames vs the diamond's 120).
+ */
 export function updatePortal() {
   if (!state.portal || state.portal.entered) return;
   state.portal.timer += 0.04;
@@ -99,6 +211,16 @@ export function updatePortal() {
   }
 }
 
+/**
+ * Spawn an armor crate if the current level has a matching armor tier.
+ *
+ * Checks ARMOR_TYPES for an entry matching the current level number. If the
+ * player already owns this tier or higher, the crate is not spawned. The
+ * crate is placed on the ground at 40% of the level width. Breaking the
+ * crate (3 HP) drops an armor pickup that the player can equip with E.
+ *
+ * @see updateArmorPickups
+ */
 export function spawnArmorCrates() {
   state.armorCrates = [];
   state.armorPickups = [];
@@ -127,6 +249,16 @@ export function spawnArmorCrates() {
   });
 }
 
+/**
+ * Update all armor pickups each frame (interact-with-E-key pattern).
+ *
+ * Each unequipped armor pickup bobs and glows. When the player is within
+ * range and presses E, the armor is equipped to `player.items.armor`,
+ * particles and floating text are spawned, 250 score is awarded, and the
+ * E key press is consumed to prevent double-activation.
+ *
+ * @see spawnArmorCrates
+ */
 export function updateArmorPickups() {
   state.armorPickups.forEach(ap => {
     if (ap.equipped) return;
@@ -150,6 +282,15 @@ export function updateArmorPickups() {
   });
 }
 
+/**
+ * Spawn a glasses crate if the current level matches GLASSES_TYPE.level.
+ *
+ * Only spawns if the player does not already own glasses. The crate is
+ * placed on the ground at 25% of the level width. Breaking the crate
+ * drops a glasses pickup that the player can equip with E.
+ *
+ * @see updateGlassesPickups
+ */
 export function spawnGlassesCrates() {
   state.glassesCrates = [];
   state.glassesPickups = [];
@@ -172,6 +313,16 @@ export function spawnGlassesCrates() {
   });
 }
 
+/**
+ * Update all glasses pickups each frame (interact-with-E-key pattern).
+ *
+ * Each unequipped glasses pickup bobs and glows. When the player is within
+ * range and presses E, glasses are equipped to `player.items.glasses`,
+ * particles and floating text are spawned, 250 score is awarded, and the
+ * E key press is consumed.
+ *
+ * @see spawnGlassesCrates
+ */
 export function updateGlassesPickups() {
   state.glassesPickups.forEach(gp => {
     if (gp.equipped) return;
@@ -195,6 +346,15 @@ export function updateGlassesPickups() {
   });
 }
 
+/**
+ * Spawn a cowboy boots crate if the current level matches SNEAKERS_TYPE.level.
+ *
+ * Only spawns if the player does not already own cowboy boots. The crate is
+ * placed on the ground at 55% of the level width. Breaking the crate drops
+ * a pickup that the player can equip with E.
+ *
+ * @see updateSneakersPickups
+ */
 export function spawnSneakersCrates() {
   state.sneakersCrates = [];
   state.sneakersPickups = [];
@@ -217,18 +377,32 @@ export function spawnSneakersCrates() {
   });
 }
 
+/**
+ * Update all cowboy boots pickups each frame (interact-with-E-key pattern).
+ *
+ * Uses the footwear mutual exclusion system: equipping cowboy boots
+ * automatically discards any existing soccer cleats or sneakers. When the
+ * player is within range and presses E, cowboy boots are equipped to
+ * `player.items.cowboyBoots`, particles and floating text are spawned,
+ * 250 score is awarded, and the E key press is consumed.
+ *
+ * @see spawnSneakersCrates
+ */
 export function updateSneakersPickups() {
   state.sneakersPickups.forEach(sp => {
     if (sp.equipped) return;
     sp.bobTimer += 0.04;
     sp.glowTimer += 0.03;
 
-    // Check if player is near and pressing E
+    // Interact-with-E-key pattern: player overlaps pickup hitbox AND presses E.
+    // The key is consumed (set to false) after equip to prevent double-activation.
     const pbox = { x: player.x, y: player.y, w: player.w, h: player.h };
     const spBox = { x: sp.x - 20, y: sp.y - 40, w: 40, h: 50 };
     if (rectCollide(pbox, spBox) && keys['KeyE']) {
       sp.equipped = true;
-      // Footwear slot: discard other footwear
+      // Footwear mutual exclusion: only one footwear item (sneakers, cowboy
+      // boots, or soccer cleats) can be equipped at a time. Discard any
+      // existing footwear before equipping the new item.
       if (player.items.soccerCleats) {
         player.items.soccerCleats = false;
         spawnFloatingText(sp.x, sp.y - 65, 'SOCCER CLEATS DISCARDED', '#ff6666');
@@ -248,6 +422,15 @@ export function updateSneakersPickups() {
   });
 }
 
+/**
+ * Spawn a soccer cleats crate if the current level matches CLEATS_TYPE.level.
+ *
+ * Only spawns if the player does not already own soccer cleats. The crate is
+ * placed on the ground at 65% of the level width. Breaking the crate drops
+ * a pickup that the player can equip with E.
+ *
+ * @see updateCleatsPickups
+ */
 export function spawnCleatsCrates() {
   state.cleatsCrates = [];
   state.cleatsPickups = [];
@@ -270,18 +453,31 @@ export function spawnCleatsCrates() {
   });
 }
 
+/**
+ * Update all soccer cleats pickups each frame (interact-with-E-key pattern).
+ *
+ * Uses the footwear mutual exclusion system: equipping soccer cleats
+ * automatically discards any existing cowboy boots or sneakers. When the
+ * player is within range and presses E, soccer cleats are equipped to
+ * `player.items.soccerCleats`, particles and floating text are spawned,
+ * 250 score is awarded, and the E key press is consumed.
+ *
+ * @see spawnCleatsCrates
+ */
 export function updateCleatsPickups() {
   state.cleatsPickups.forEach(cp => {
     if (cp.equipped) return;
     cp.bobTimer += 0.04;
     cp.glowTimer += 0.03;
 
-    // Check if player is near and pressing E
+    // Interact-with-E-key pattern: player overlaps pickup hitbox AND presses E.
+    // The key is consumed (set to false) after equip to prevent double-activation.
     const pbox = { x: player.x, y: player.y, w: player.w, h: player.h };
     const cpBox = { x: cp.x - 20, y: cp.y - 40, w: 40, h: 50 };
     if (rectCollide(pbox, cpBox) && keys['KeyE']) {
       cp.equipped = true;
-      // Footwear slot: discard other footwear
+      // Footwear mutual exclusion: only one footwear item can be equipped.
+      // Discard any existing footwear before equipping soccer cleats.
       if (player.items.cowboyBoots) {
         player.items.cowboyBoots = false;
         spawnFloatingText(cp.x, cp.y - 65, 'COWBOY BOOTS DISCARDED', '#ff6666');
@@ -301,6 +497,16 @@ export function updateCleatsPickups() {
   });
 }
 
+/**
+ * Spawn a horse crate if the current level matches HORSE_TYPE.level.
+ *
+ * Has additional prerequisites: the player must already own cowboy boots and
+ * must not already own a horse. The crate is placed on the ground at 30% of
+ * the level width. It is slightly larger (32x32) than other equipment crates.
+ * Breaking the crate drops a horse pickup that the player can equip with E.
+ *
+ * @see updateHorsePickups
+ */
 export function spawnHorseCrates() {
   state.horseCrates = [];
   state.horsePickups = [];
@@ -324,6 +530,17 @@ export function spawnHorseCrates() {
   });
 }
 
+/**
+ * Update all horse pickups each frame (interact-with-E-key pattern).
+ *
+ * When the player is within range and presses E, the horse item is equipped
+ * to `player.items.horse` and a horse ally is spawned via `spawnAlly()` at
+ * the player's position. Awards 500 score (higher than other equipment) and
+ * triggers both screen flash and screen shake. The E key press is consumed.
+ *
+ * @see spawnHorseCrates
+ * @see spawnAlly
+ */
 export function updateHorsePickups() {
   state.horsePickups.forEach(hp => {
     if (hp.equipped) return;
