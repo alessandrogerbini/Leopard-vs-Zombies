@@ -3,7 +3,7 @@
 **Category:** Documentation / Executive Summary
 **Priority:** P1-High
 **Trigger:** After BD-33, BD-34, BD-35, BD-36, BD-37 all complete (documentation agents A-E)
-**File(s):** `wildfang-current-status.md` (new)
+**File(s):** `./wildfang-current-status.md` (new)
 **Agent:** Single agent, comprehensive read of freshly-documented codebase + all audit/review artifacts
 
 ## Description
@@ -11,11 +11,11 @@ Produce a single executive-level status document covering the full state of the 
 
 The agent should read:
 1. All freshly-documented JS source files (post-documentation-plan agents)
-2. `documentation-audit-1.md`
-3. `code-review-1.md`
-4. `code-review-beads.md`
-5. `agentic-housekeeping-recommendations.md`
-6. `README.md`, `ARCHITECTURE.md`, `CONTRIBUTING.md` (created by Agent E)
+2. `../reviews/documentation-audit-1.md`
+3. `../reviews/code-review-1.md`
+4. `../reviews/code-review-beads.md`
+5. `../process/agentic-housekeeping-recommendations.md`
+6. `../../README.md`, `../../ARCHITECTURE.md`, `../../CONTRIBUTING.md` (created by Agent E)
 7. Git log for feature history
 
 ## Deliverable Structure

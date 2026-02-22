@@ -1,6 +1,6 @@
 # Code Review Beads — Leopard vs Zombies
 
-Generated from: `code-review-1.md` (Linus Torvalds-style code review, 2026-02-22)
+Generated from: `./code-review-1.md` (Linus Torvalds-style code review, 2026-02-22)
 
 ---
 
@@ -457,7 +457,7 @@ The entire 3D game is a single exported function `launch3DGame()` containing ~36
 The 2D side (`game.js` + `enemies.js` + `items.js` + `renderer.js` + `levels.js` + `state.js`) demonstrates the correct modular pattern already present in this codebase.
 
 **Acceptance Criteria:**
-- Split `game3d.js` into at least 7 modules following the Code Region Map from `sprint1.md`:
+- Split `game3d.js` into at least 7 modules following the Code Region Map from `../planning/sprint1.md`:
   - `js/3d/player.js` -- Player model, movement, animation, muscle growth (~300 lines)
   - `js/3d/enemies.js` -- Zombie tiers, spawning, AI, merging (~300 lines)
   - `js/3d/weapons.js` -- Weapon types, projectiles, effects, cooldowns (~400 lines)

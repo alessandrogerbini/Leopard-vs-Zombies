@@ -38,7 +38,7 @@ The codebase is self-explanatory in places (clear naming, modular exports) but r
 
 3. **Modular exports in smaller files** (state.js, utils.js, levels.js, items.js, enemies.js) make module interfaces clear at a glance.
 
-4. **Project-level sprint documentation** (sprint1.md) is well-structured with clear line-number mappings for parallel agent work. Shows good intent for coordination.
+4. **Project-level sprint documentation** (`../planning/sprint1.md`) is well-structured with clear line-number mappings for parallel agent work. Shows good intent for coordination.
 
 5. **Declarative constants** (POWERUP_TYPES, WEAPON_TYPES, ANIMAL_PALETTES, etc.) are well-organized and self-documenting in game3d.js and state.js.
 

@@ -1,6 +1,6 @@
 # Documentation Beads — Phase 2
 
-**Source:** documentation-plan-1.md
+**Source:** ../process/documentation-plan-1.md
 **Date:** 2026-02-22
 
 ---
@@ -159,7 +159,7 @@ Comprehensive documentation of the 3D roguelike mode (3,619 lines). JSDoc for al
 **Category:** Documentation
 **Priority:** P1-High
 **Agent:** E
-**File(s):** `README.md` (new), `ARCHITECTURE.md` (new), `CONTRIBUTING.md` (new), `index.html` (minor)
+**File(s):** `../../README.md` (new), `../../ARCHITECTURE.md` (new), `../../CONTRIBUTING.md` (new), `../../index.html` (minor)
 **Description:**
 Create all project-level documentation. README with game description and controls. ARCHITECTURE with module graph, state machines, and system design. CONTRIBUTING with extension guides (how to add weapons, powerups, items, enemies, levels).
 

@@ -1,8 +1,8 @@
 # Agentic Engineering Housekeeping — Recommended Tasks
 
 ## Already In Progress
-- **Documentation Audit** (first pass, broad scope) — `documentation-audit-1.md`
-- **Code Review** (Linus Torvalds style, first pass) — `code-review-1.md`
+- **Documentation Audit** (first pass, broad scope) — `../reviews/documentation-audit-1.md`
+- **Code Review** (Linus Torvalds style, first pass) — `../reviews/code-review-1.md`
 
 ## Recommended Tasks
 
