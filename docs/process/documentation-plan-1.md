@@ -2,7 +2,7 @@
 
 **Date:** 2026-02-22
 **Scope:** Complete documentation coverage for the Leopard vs Zombies codebase (~10,136 LOC across 8 JS files + index.html)
-**Input:** documentation-audit-1.md (Phase 1 audit findings)
+**Input:** ../reviews/documentation-audit-1.md (Phase 1 audit findings)
 
 ---
 
@@ -107,16 +107,16 @@ const st = { ... };
 ### File Naming for New Documentation Files
 
 All new documentation files go in the project root:
-- `README.md` -- project overview, how to play, how to run
-- `ARCHITECTURE.md` -- system design, data flow, module graph
-- `CONTRIBUTING.md` -- development workflow, extension guides
+- `../../README.md` -- project overview, how to play, how to run
+- `../../ARCHITECTURE.md` -- system design, data flow, module graph
+- `../../CONTRIBUTING.md` -- development workflow, extension guides
 
 No new files inside `js/` -- all code documentation is inline (JSDoc + comments).
 
 ### Conflict Avoidance
 
 - Each agent is assigned **exclusive files**. No two agents edit the same file.
-- The one exception is `ARCHITECTURE.md`, which Agent E writes but Agents A-D provide input fragments for (see Integration Plan).
+- The one exception is `../../ARCHITECTURE.md`, which Agent E writes but Agents A-D provide input fragments for (see Integration Plan).
 - Agents must not reformat or restructure existing code -- documentation only.
 - Agents must not change variable names, function signatures, or control flow.
 
