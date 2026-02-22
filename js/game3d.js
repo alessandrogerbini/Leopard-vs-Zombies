@@ -2290,8 +2290,9 @@ export function launch3DGame(options) {
         if (dist < st.attackRange * 1.5 && st.autoAttackTimer <= 0) {
           // Handled by proximity - player walks into crate to break
         }
-        // Walk into crate to break
-        if (dist < 1.2) {
+        // Walk into crate to break (must be at similar height)
+        const cdy = Math.abs(st.playerY - c.group.position.y);
+        if (dist < 1.2 && cdy < 2.0) {
           c.hp--;
           if (c.hp <= 0) {
             c.alive = false;
@@ -2324,7 +2325,8 @@ export function launch3DGame(options) {
         const dx = st.playerX - item.x;
         const dz = st.playerZ - item.z;
         const dist = Math.sqrt(dx * dx + dz * dz);
-        if (dist < 1.5) {
+        const idy = Math.abs(st.playerY - item.mesh.position.y);
+        if (dist < 1.5 && idy < 2.0) {
           // Equip item
           const it = item.itype;
           if (it.slot === 'armor') st.items.armor = it.id;
@@ -2360,7 +2362,8 @@ export function launch3DGame(options) {
         const dx = st.playerX - shrine.x;
         const dz = st.playerZ - shrine.z;
         const dist = Math.sqrt(dx * dx + dz * dz);
-        if (dist < st.attackRange * 1.5 && st.autoAttackTimer <= 0.05) {
+        const sdy = Math.abs(st.playerY - shrine.group.position.y);
+        if (dist < st.attackRange * 1.5 && sdy < 2.5 && st.autoAttackTimer <= 0.05) {
           shrine.hp--;
           if (shrine.hp <= 0) {
             shrine.alive = false;
