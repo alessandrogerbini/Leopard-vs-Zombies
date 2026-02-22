@@ -6,6 +6,7 @@ const CHUNK_SIZE = 16;
 const GRAVITY_3D = 22;
 const JUMP_FORCE = 10;
 const GROUND_Y = 0;
+const MAP_HALF = 128; // 256x256 total map (extends -128 to +128 on both axes)
 
 // Animal color palettes for 3D models
 const ANIMAL_PALETTES = {
@@ -393,6 +394,32 @@ export function launch3DGame(options) {
   scene.add(dirLight);
   scene.add(dirLight.target);
 
+  // === MAP BOUNDARY WALLS ===
+  const wallHeight = 8;
+  const wallThickness = 2;
+  const wallColor = 0x665544;
+  const wallMat = new THREE.MeshLambertMaterial({ color: wallColor });
+  // North wall
+  const northWall = new THREE.Mesh(new THREE.BoxGeometry(MAP_HALF * 2 + wallThickness * 2, wallHeight, wallThickness), wallMat);
+  northWall.position.set(0, wallHeight / 2, -MAP_HALF - wallThickness / 2);
+  northWall.castShadow = true; northWall.receiveShadow = true;
+  scene.add(northWall);
+  // South wall
+  const southWall = new THREE.Mesh(new THREE.BoxGeometry(MAP_HALF * 2 + wallThickness * 2, wallHeight, wallThickness), wallMat);
+  southWall.position.set(0, wallHeight / 2, MAP_HALF + wallThickness / 2);
+  southWall.castShadow = true; southWall.receiveShadow = true;
+  scene.add(southWall);
+  // West wall
+  const westWall = new THREE.Mesh(new THREE.BoxGeometry(wallThickness, wallHeight, MAP_HALF * 2), wallMat);
+  westWall.position.set(-MAP_HALF - wallThickness / 2, wallHeight / 2, 0);
+  westWall.castShadow = true; westWall.receiveShadow = true;
+  scene.add(westWall);
+  // East wall
+  const eastWall = new THREE.Mesh(new THREE.BoxGeometry(wallThickness, wallHeight, MAP_HALF * 2), wallMat);
+  eastWall.position.set(MAP_HALF + wallThickness / 2, wallHeight / 2, 0);
+  eastWall.castShadow = true; eastWall.receiveShadow = true;
+  scene.add(eastWall);
+
   // === PROCEDURAL TERRAIN ===
   // Seeded noise for deterministic terrain
   function noise2D(x, z) {
@@ -434,6 +461,12 @@ export function launch3DGame(options) {
   function generateChunk(cx, cz) {
     const key = getChunkKey(cx, cz);
     if (loadedChunks.has(key)) return;
+    // Skip chunks entirely outside map bounds
+    const chunkMinX = cx * CHUNK_SIZE;
+    const chunkMaxX = chunkMinX + CHUNK_SIZE;
+    const chunkMinZ = cz * CHUNK_SIZE;
+    const chunkMaxZ = chunkMinZ + CHUNK_SIZE;
+    if (chunkMaxX < -MAP_HALF || chunkMinX > MAP_HALF || chunkMaxZ < -MAP_HALF || chunkMinZ > MAP_HALF) return;
     loadedChunks.add(key);
 
     const ox = cx * CHUNK_SIZE, oz = cz * CHUNK_SIZE;
@@ -551,6 +584,10 @@ export function launch3DGame(options) {
   function generatePlatforms(cx, cz) {
     const key = getChunkKey(cx, cz);
     if (platformsByChunk[key]) return;
+    // Skip chunks outside map bounds
+    const cpMinX = cx * CHUNK_SIZE, cpMaxX = cpMinX + CHUNK_SIZE;
+    const cpMinZ = cz * CHUNK_SIZE, cpMaxZ = cpMinZ + CHUNK_SIZE;
+    if (cpMaxX < -MAP_HALF || cpMinX > MAP_HALF || cpMaxZ < -MAP_HALF || cpMinZ > MAP_HALF) return;
     platformsByChunk[key] = [];
 
     const ox = cx * CHUNK_SIZE, oz = cz * CHUNK_SIZE;
@@ -666,6 +703,10 @@ export function launch3DGame(options) {
   function generateShrines(cx, cz) {
     const key = getChunkKey(cx, cz);
     if (st.shrinesByChunk[key]) return;
+    // Skip chunks outside map bounds
+    const csMinX = cx * CHUNK_SIZE, csMaxX = csMinX + CHUNK_SIZE;
+    const csMinZ = cz * CHUNK_SIZE, csMaxZ = csMinZ + CHUNK_SIZE;
+    if (csMaxX < -MAP_HALF || csMinX > MAP_HALF || csMaxZ < -MAP_HALF || csMinZ > MAP_HALF) return;
     st.shrinesByChunk[key] = [];
 
     const ox = cx * CHUNK_SIZE, oz = cz * CHUNK_SIZE;
@@ -1271,8 +1312,8 @@ export function launch3DGame(options) {
     for (let i = 0; i < count; i++) {
       const angle = Math.random() * Math.PI * 2;
       const dist = 25 + Math.random() * 10;
-      const sx = st.playerX + Math.cos(angle) * dist;
-      const sz = st.playerZ + Math.sin(angle) * dist;
+      const sx = Math.max(-MAP_HALF + 2, Math.min(MAP_HALF - 2, st.playerX + Math.cos(angle) * dist));
+      const sz = Math.max(-MAP_HALF + 2, Math.min(MAP_HALF - 2, st.playerZ + Math.sin(angle) * dist));
       st.enemies.push(createEnemy(sx, sz, baseHp, 1));
     }
   }
@@ -1286,8 +1327,8 @@ export function launch3DGame(options) {
     for (let i = 0; i < count; i++) {
       const angle = (i / count) * Math.PI * 2 + Math.random() * 0.3;
       const dist = 20 + Math.random() * 15;
-      const sx = st.playerX + Math.cos(angle) * dist;
-      const sz = st.playerZ + Math.sin(angle) * dist;
+      const sx = Math.max(-MAP_HALF + 2, Math.min(MAP_HALF - 2, st.playerX + Math.cos(angle) * dist));
+      const sz = Math.max(-MAP_HALF + 2, Math.min(MAP_HALF - 2, st.playerZ + Math.sin(angle) * dist));
       const tier = Math.random() < 0.1 * st.wave ? Math.min(st.wave, 3) : 1;
       st.enemies.push(createEnemy(sx, sz, waveHp, tier));
     }
@@ -1295,15 +1336,14 @@ export function launch3DGame(options) {
 
     // Spawn crate with wave
     const crateAngle = Math.random() * Math.PI * 2;
-    const cx = st.playerX + Math.cos(crateAngle) * 15;
-    const cz = st.playerZ + Math.sin(crateAngle) * 15;
+    const cx = Math.max(-MAP_HALF + 2, Math.min(MAP_HALF - 2, st.playerX + Math.cos(crateAngle) * 15));
+    const cz = Math.max(-MAP_HALF + 2, Math.min(MAP_HALF - 2, st.playerZ + Math.sin(crateAngle) * 15));
     st.powerupCrates.push(createPowerupCrate(cx, cz));
 
     // Spawn item every 2 waves
     if (st.wave % 2 === 0) {
-      const itemAngle = Math.random() * Math.PI * 2;
-      const ix = st.playerX + Math.cos(itemAngle) * 12;
-      const iz = st.playerZ + Math.sin(itemAngle) * 12;
+      const ix = Math.max(-MAP_HALF + 2, Math.min(MAP_HALF - 2, st.playerX + Math.cos(Math.random() * Math.PI * 2) * 12));
+      const iz = Math.max(-MAP_HALF + 2, Math.min(MAP_HALF - 2, st.playerZ + Math.sin(Math.random() * Math.PI * 2) * 12));
       const pickup = createItemPickup(ix, iz);
       if (pickup) st.itemPickups.push(pickup);
     }
@@ -1852,6 +1892,9 @@ export function launch3DGame(options) {
 
       st.playerX += mx * speed * dt;
       st.playerZ += mz * speed * dt;
+      // Clamp player to map boundaries
+      st.playerX = Math.max(-MAP_HALF + 1, Math.min(MAP_HALF - 1, st.playerX));
+      st.playerZ = Math.max(-MAP_HALF + 1, Math.min(MAP_HALF - 1, st.playerZ));
 
       // === JUMPING ===
       const jumpKey = keys3d['Space'] || keys3d['KeyW'] && keys3d['ShiftLeft'];
@@ -2490,6 +2533,9 @@ export function launch3DGame(options) {
           const nz = dz / dist;
           e.group.position.x += nx * e.speed * dt;
           e.group.position.z += nz * e.speed * dt;
+          // Clamp enemies to map boundaries
+          e.group.position.x = Math.max(-MAP_HALF + 0.5, Math.min(MAP_HALF - 0.5, e.group.position.x));
+          e.group.position.z = Math.max(-MAP_HALF + 0.5, Math.min(MAP_HALF - 0.5, e.group.position.z));
           e.group.rotation.y = Math.atan2(nx, nz);
         }
 
@@ -2501,7 +2547,6 @@ export function launch3DGame(options) {
           const targetY = st.onPlatformY;
           const zombieY = e.group.position.y;
           if (targetY > zombieY + 0.5 && e.jumpCooldown <= 0 && e.jumpVY === 0) {
-            // Jump! Higher tiers jump more reliably
             const tierJumpChance = 0.02 + ((e.tier || 1) - 1) * 0.015;
             if (Math.random() < tierJumpChance) {
               e.jumpVY = 8 + ((e.tier || 1) - 1) * 0.5;
@@ -2515,7 +2560,6 @@ export function launch3DGame(options) {
           e.jumpVY -= GRAVITY_3D * dt;
           e.group.position.y += e.jumpVY * dt;
 
-          // Check platform landing
           for (const p of platforms) {
             const halfW = p.w / 2, halfD = p.d / 2;
             if (e.group.position.x > p.x - halfW && e.group.position.x < p.x + halfW &&
@@ -2529,7 +2573,6 @@ export function launch3DGame(options) {
             }
           }
 
-          // Ground collision
           const groundH = getGroundAt(e.group.position.x, e.group.position.z) + 0.45;
           if (e.group.position.y <= groundH) {
             e.group.position.y = groundH;
@@ -2537,7 +2580,6 @@ export function launch3DGame(options) {
             e.onPlatform = false;
           }
         } else {
-          // Normal ground following
           const eh = getGroundAt(e.group.position.x, e.group.position.z) + 0.45;
           e.group.position.y = eh;
         }
