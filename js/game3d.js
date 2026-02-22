@@ -89,6 +89,12 @@ const ITEMS_3D = [
   { id: 'glasses', name: 'AVIATOR GLASSES', color: '#ffaa00', colorHex: 0xffaa00, desc: 'See Crate Contents', slot: 'glasses' },
   { id: 'cowboyBoots', name: 'COWBOY BOOTS', color: '#8B4513', colorHex: 0x8B4513, desc: '+20% Attack Range', slot: 'boots' },
   { id: 'soccerCleats', name: 'SOCCER CLEATS', color: '#00cc44', colorHex: 0x00cc44, desc: '+15% Move Speed', slot: 'boots' },
+  { id: 'magnetRing', name: 'MAGNET RING', color: '#cccccc', colorHex: 0xcccccc, desc: '+50% Pickup Radius', slot: 'ring' },
+  { id: 'luckyCharm', name: 'LUCKY CHARM', color: '#ffdd44', colorHex: 0xffdd44, desc: '+50% Drop Rate', slot: 'charm' },
+  { id: 'thornedVest', name: 'THORNED VEST', color: '#cc4422', colorHex: 0xcc4422, desc: 'Reflect 20% Damage', slot: 'vest' },
+  { id: 'healthPendant', name: 'HEALTH PENDANT', color: '#44ff88', colorHex: 0x44ff88, desc: '+1 HP/s Regen', slot: 'pendant' },
+  { id: 'shieldBracelet', name: 'SHIELD BRACELET', color: '#4488ff', colorHex: 0x4488ff, desc: 'Block 1 Hit / 30s', slot: 'bracelet' },
+  { id: 'critGloves', name: 'CRIT GLOVES', color: '#ff4488', colorHex: 0xff4488, desc: '15% Chance 2x Damage', slot: 'gloves' },
 ];
 
 // Shrine augment types
@@ -102,6 +108,15 @@ const SHRINE_AUGMENTS = [
   { id: 'armor', name: '+3% Armor', color: '#aaaacc', apply: s => { s.augmentArmor = (s.augmentArmor || 0) + 0.03; } },
   { id: 'regen', name: '+0.5 HP/s Regen', color: '#88ffaa', apply: s => { s.augmentRegen = (s.augmentRegen || 0) + 0.5; } },
 ];
+
+// "NOT HARD ENOUGH" difficulty totem effects
+const TOTEM_EFFECT = {
+  zombieHpMult: 1.15,     // +15% zombie HP per totem
+  zombieSpeedMult: 1.10,  // +10% zombie speed per totem
+  spawnRateMult: 1.15,    // +15% spawn rate per totem
+  xpBonusMult: 1.25,      // +25% XP per totem
+  scoreBonusMult: 1.25,   // +25% score per totem
+};
 
 export function launch3DGame(options) {
   const onReturn = options.onReturn;
@@ -191,7 +206,9 @@ export function launch3DGame(options) {
     gManeuver: false,
     gManeuverPitch: 0,
     // Items (permanent)
-    items: { armor: null, glasses: false, boots: null },
+    items: { armor: null, glasses: false, boots: null, ring: false, charm: false, vest: false, pendant: false, bracelet: false, gloves: false },
+    shieldBraceletTimer: 0,
+    shieldBraceletReady: true,
     // UI
     gameOver: false,
     paused: false,
@@ -223,6 +240,14 @@ export function launch3DGame(options) {
     augmentDmgMult: 1,
     augmentArmor: 0,
     augmentRegen: 0,
+    // Difficulty totems
+    totems: [],
+    totemCount: 0,
+    totemDiffMult: 1,
+    totemSpeedMult: 1,
+    totemSpawnMult: 1,
+    totemXpMult: 1,
+    totemScoreMult: 1,
     // Floating texts for shrine/augment announcements
     floatingTexts3d: [],
     // Leaderboard
@@ -711,6 +736,32 @@ export function launch3DGame(options) {
     return;
   }
 
+  // === DIFFICULTY TOTEMS ===
+  function createTotemMesh(x, z) {
+    const group = new THREE.Group();
+    const gh = terrainHeight(x, z);
+    // Dark stone base
+    const baseMat = new THREE.MeshLambertMaterial({ color: 0x332222 });
+    const base = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.4, 0.8), baseMat);
+    base.position.y = 0.2;
+    base.castShadow = true;
+    group.add(base);
+    // Skull pillar
+    const pillarMat = new THREE.MeshLambertMaterial({ color: 0x442222 });
+    const pillar = new THREE.Mesh(new THREE.BoxGeometry(0.5, 1.4, 0.5), pillarMat);
+    pillar.position.y = 1.1;
+    pillar.castShadow = true;
+    group.add(pillar);
+    // Red skull orb (glowing)
+    const orbMat = new THREE.MeshBasicMaterial({ color: 0xff2222, transparent: true, opacity: 0.9 });
+    const orb = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.4, 0.4), orbMat);
+    orb.position.y = 2.0;
+    group.add(orb);
+    group.position.set(x, gh, z);
+    scene.add(group);
+    return { group, x, z, y: gh, orb, hp: 5, alive: true };
+  }
+
   // Initial terrain + platforms
   updateChunks(0, 0);
   updatePlatformChunks(0, 0);
@@ -721,6 +772,15 @@ export function launch3DGame(options) {
     const sz = (Math.random() - 0.5) * (ARENA_SIZE * 2 - 20);
     const shrine = createShrineMesh(sx, sz);
     st.shrines.push(shrine);
+  }
+
+  // Pre-generate difficulty totems
+  const TOTEM_COUNT = 8;
+  for (let ti = 0; ti < TOTEM_COUNT; ti++) {
+    const tx = (Math.random() - 0.5) * (ARENA_SIZE * 2 - 30);
+    const tz = (Math.random() - 0.5) * (ARENA_SIZE * 2 - 30);
+    const totem = createTotemMesh(tx, tz);
+    st.totems.push(totem);
   }
 
   // === PLAYER MODEL ===
@@ -1244,6 +1304,8 @@ export function launch3DGame(options) {
       }
       if (it.slot === 'glasses') return !st.items.glasses;
       if (it.slot === 'boots') return st.items.boots !== it.id;
+      // Boolean-slot items: ring, charm, vest, pendant, bracelet, gloves
+      if (st.items[it.slot] !== undefined && typeof st.items[it.slot] === 'boolean') return !st.items[it.slot];
       return true;
     });
     if (available.length === 0) return null;
@@ -1405,7 +1467,7 @@ export function launch3DGame(options) {
   }
 
   function killEnemy(e) {
-    const pts = Math.floor((10 + st.wave * 2) * (e.tier || 1) * st.scoreMult);
+    const pts = Math.floor((10 + st.wave * 2) * (e.tier || 1) * st.scoreMult * (st.totemScoreMult || 1));
     st.score += pts;
     st.xpGems.push(createXpGem(e.group.position.x, e.group.position.z));
     for (let g = 1; g < (e.tier || 1); g++) {
@@ -1414,7 +1476,9 @@ export function launch3DGame(options) {
     st.totalKills++;
     st.killsByTier[(e.tier || 1) - 1]++;
     // Loot drop roll — higher tier zombies drop more often
-    const dropChance = [0.03, 0.06, 0.10, 0.15, 0.15, 0.20, 0.20, 0.30, 0.30, 0.50][(e.tier || 1) - 1];
+    // Lucky Charm: +50% chance to drop
+    let dropChance = [0.03, 0.06, 0.10, 0.15, 0.15, 0.20, 0.20, 0.30, 0.30, 0.50][(e.tier || 1) - 1];
+    if (st.items.charm) dropChance *= 1.5;
     if (Math.random() < dropChance) {
       const dropX = e.group.position.x;
       const dropZ = e.group.position.z;
@@ -1437,6 +1501,7 @@ export function launch3DGame(options) {
   }
 
   function damageEnemy(e, dmg) {
+    if (st.items.gloves && Math.random() < 0.15) dmg *= 2;
     e.hp -= dmg;
     e.hurtTimer = 0.15;
     if (e.hp <= 0 && e.alive) killEnemy(e);
@@ -1860,6 +1925,15 @@ export function launch3DGame(options) {
     // Shuffle and pick 3
     const shuffled = pool.sort(() => Math.random() - 0.5);
     st.upgradeChoices = shuffled.slice(0, 3);
+  }
+
+  // === PRE-GENERATE LOOT CRATES ===
+  const LOOT_CRATE_COUNT = 30;
+  for (let lci = 0; lci < LOOT_CRATE_COUNT; lci++) {
+    const lx = (Math.random() - 0.5) * (ARENA_SIZE * 2 - 20);
+    const lz = (Math.random() - 0.5) * (ARENA_SIZE * 2 - 20);
+    const pickup = createItemPickup(lx, lz);
+    if (pickup) st.itemPickups.push(pickup);
   }
 
   // === GAME LOOP ===
@@ -2536,8 +2610,9 @@ export function launch3DGame(options) {
         if (dist > 0.01) {
           const nx = dx / dist;
           const nz = dz / dist;
-          e.group.position.x += nx * e.speed * dt;
-          e.group.position.z += nz * e.speed * dt;
+          const eSpd = e.speed * st.totemSpeedMult;
+          e.group.position.x += nx * eSpd * dt;
+          e.group.position.z += nz * eSpd * dt;
           // Clamp enemies to map boundaries
           e.group.position.x = Math.max(-MAP_HALF + 0.5, Math.min(MAP_HALF - 0.5, e.group.position.x));
           e.group.position.z = Math.max(-MAP_HALF + 0.5, Math.min(MAP_HALF - 0.5, e.group.position.z));
@@ -2605,7 +2680,16 @@ export function launch3DGame(options) {
           else if (st.items.armor === 'chainmail') dmg *= 0.6;
           dmg *= (1 - st.augmentArmor);
           if (st.berserkVulnerable) dmg *= 1.25; // Berserker Rage: +25% damage taken
+          // Shield Bracelet: absorb one hit every 30s
+          if (st.items.bracelet && st.shieldBraceletReady) {
+            dmg = 0;
+            st.shieldBraceletReady = false;
+            st.shieldBraceletTimer = 30;
+            st.floatingTexts3d.push({ text: 'BLOCKED!', color: '#4488ff', x: st.playerX, y: st.playerY + 2, z: st.playerZ, life: 1.5 });
+          }
           st.hp -= dmg;
+          // Thorned Vest: reflect 20% damage back
+          if (st.items.vest && dmg > 0) { e.hp -= dmg * 0.2; e.hurtTimer = 0.1; }
           st.invincible = 0.2;
         }
         // Hurt flash (white flash like 2D)
@@ -2693,6 +2777,7 @@ export function launch3DGame(options) {
         }
         if (nearest) {
           let dmg = st.attackDamage * getPlayerDmgMult();
+          if (st.items.gloves && Math.random() < 0.15) dmg *= 2;
           nearest.hp -= dmg;
           nearest.hurtTimer = 0.15;
 
@@ -2741,7 +2826,8 @@ export function launch3DGame(options) {
         let range = st.attackRange * (1 + st.chargeTime * 0.5);
         if (st.items.boots === 'cowboyBoots') range *= 1.2;
         const py = st.playerY + 0.8;
-        const dmg = st.attackDamage * getPlayerDmgMult() * chargeMult;
+        let dmg = st.attackDamage * getPlayerDmgMult() * chargeMult;
+        if (st.items.gloves && Math.random() < 0.15) dmg *= 2;
 
         // Hit all enemies in range (AoE power attack)
         for (const e of st.enemies) {
@@ -2834,7 +2920,7 @@ export function launch3DGame(options) {
           gem.mesh.position.z += (dz / dist) * pull;
         }
         if (dist < st.collectRadius) {
-          st.xp += Math.max(1, Math.round(st.augmentXpMult * getScrollXpMult()));
+          st.xp += Math.max(1, Math.round(st.augmentXpMult * getScrollXpMult() * (st.totemXpMult || 1)));
           scene.remove(gem.mesh);
           st.xpGems.splice(i, 1);
           if (st.xp >= st.xpToNext) {
@@ -2903,6 +2989,15 @@ export function launch3DGame(options) {
           if (it.slot === 'armor') st.items.armor = it.id;
           else if (it.slot === 'glasses') st.items.glasses = true;
           else if (it.slot === 'boots') st.items.boots = it.id;
+          else if (it.slot === 'ring') { st.items.ring = true; st.collectRadius *= 1.5; }
+          else if (it.slot === 'charm') st.items.charm = true;
+          else if (it.slot === 'vest') st.items.vest = true;
+          else if (it.slot === 'pendant') { st.items.pendant = true; st.augmentRegen += 1; }
+          else if (it.slot === 'bracelet') st.items.bracelet = true;
+          else if (it.slot === 'gloves') st.items.gloves = true;
+          // Floating text for item pickup
+          st.floatingTexts3d.push({ text: it.name, color: it.color, x: item.x, y: st.playerY + 2.5, z: item.z, life: 2 });
+          st.floatingTexts3d.push({ text: it.desc, color: '#ffffff', x: item.x, y: st.playerY + 2, z: item.z, life: 2 });
           item.alive = false;
           scene.remove(item.mesh);
           item.mesh.geometry.dispose();
@@ -2956,6 +3051,36 @@ export function launch3DGame(options) {
         }
       }
 
+      // === DIFFICULTY TOTEMS ===
+      for (let i = st.totems.length - 1; i >= 0; i--) {
+        const totem = st.totems[i];
+        if (!totem.alive) continue;
+        // Animate orb
+        if (totem.orb) totem.orb.position.y = 2.0 + Math.sin(clock.elapsedTime * 3 + totem.x) * 0.1;
+        // Check if player attacks totem
+        const tdx = st.playerX - totem.x;
+        const tdz = st.playerZ - totem.z;
+        const tdist = Math.sqrt(tdx * tdx + tdz * tdz);
+        const tdy = Math.abs(st.playerY - totem.y);
+        if (tdist < st.attackRange * 1.5 && tdy < 2.5 && st.autoAttackTimer <= 0.05) {
+          totem.hp--;
+          if (totem.hp <= 0) {
+            totem.alive = false;
+            st.totemCount++;
+            st.totemDiffMult *= TOTEM_EFFECT.zombieHpMult;
+            st.totemSpeedMult *= TOTEM_EFFECT.zombieSpeedMult;
+            st.totemSpawnMult *= TOTEM_EFFECT.spawnRateMult;
+            st.totemXpMult *= TOTEM_EFFECT.xpBonusMult;
+            st.totemScoreMult *= TOTEM_EFFECT.scoreBonusMult;
+            st.floatingTexts3d.push({ text: 'NOT HARD ENOUGH!', color: '#ff2222', x: totem.x, y: totem.y + 3, z: totem.z, life: 3 });
+            st.floatingTexts3d.push({ text: '+25% XP & SCORE', color: '#ffcc00', x: totem.x, y: totem.y + 2.5, z: totem.z, life: 3 });
+            scene.remove(totem.group);
+            totem.group.traverse(c => { if (c.geometry) c.geometry.dispose(); if (c.material) c.material.dispose(); });
+            st.totems.splice(i, 1);
+          }
+        }
+      }
+
       // === FLOATING TEXTS 3D ===
       for (let i = st.floatingTexts3d.length - 1; i >= 0; i--) {
         st.floatingTexts3d[i].y += dt * 1.5;
@@ -2968,6 +3093,15 @@ export function launch3DGame(options) {
       // === AUGMENT REGEN ===
       if (st.augmentRegen > 0) {
         st.hp = Math.min(st.hp + st.augmentRegen * dt, st.maxHp);
+      }
+
+      // === SHIELD BRACELET COOLDOWN ===
+      if (st.items.bracelet && !st.shieldBraceletReady) {
+        st.shieldBraceletTimer -= dt;
+        if (st.shieldBraceletTimer <= 0) {
+          st.shieldBraceletReady = true;
+          st.floatingTexts3d.push({ text: 'SHIELD READY!', color: '#4488ff', x: st.playerX, y: st.playerY + 2, z: st.playerZ, life: 1.5 });
+        }
       }
 
       // Clean dead enemies
@@ -3133,7 +3267,26 @@ export function launch3DGame(options) {
         if (bootDef) {
           ctx.fillStyle = bootDef.color; ctx.font = '11px "Courier New"';
           ctx.fillText(`[${bootDef.name}]`, 20, iy);
+          iy -= 16;
         }
+      }
+      // New items display
+      const boolSlots = ['ring', 'charm', 'vest', 'pendant', 'bracelet', 'gloves'];
+      for (const slot of boolSlots) {
+        if (s.items[slot]) {
+          const itemDef = ITEMS_3D.find(i => i.slot === slot);
+          if (itemDef) {
+            ctx.fillStyle = itemDef.color; ctx.font = '11px "Courier New"';
+            ctx.fillText(`[${itemDef.name}]`, 20, iy);
+            iy -= 16;
+          }
+        }
+      }
+      // Shield bracelet cooldown indicator
+      if (s.items.bracelet && !s.shieldBraceletReady) {
+        ctx.fillStyle = '#4488ff'; ctx.font = '10px "Courier New"';
+        ctx.fillText(`Shield: ${Math.ceil(s.shieldBraceletTimer)}s`, 20, iy);
+        iy -= 16;
       }
 
       // Floating texts (shrine augments)
@@ -3152,19 +3305,27 @@ export function launch3DGame(options) {
 
       // Augment display (right side)
       const augKeys = Object.keys(s.augments);
-      if (augKeys.length > 0) {
+      if (augKeys.length > 0 || s.totemCount > 0) {
         ctx.textAlign = 'right';
         let ay = 80;
-        ctx.fillStyle = '#88ffaa'; ctx.font = 'bold 11px "Courier New"';
-        ctx.fillText('AUGMENTS', W - 20, ay);
-        ay += 14;
-        for (const aKey of augKeys) {
-          const aug = SHRINE_AUGMENTS.find(a => a.id === aKey);
-          if (aug) {
-            ctx.fillStyle = aug.color; ctx.font = '10px "Courier New"';
-            ctx.fillText(`${aug.name} x${s.augments[aKey]}`, W - 20, ay);
-            ay += 13;
+        if (augKeys.length > 0) {
+          ctx.fillStyle = '#88ffaa'; ctx.font = 'bold 11px "Courier New"';
+          ctx.fillText('AUGMENTS', W - 20, ay);
+          ay += 14;
+          for (const aKey of augKeys) {
+            const aug = SHRINE_AUGMENTS.find(a => a.id === aKey);
+            if (aug) {
+              ctx.fillStyle = aug.color; ctx.font = '10px "Courier New"';
+              ctx.fillText(`${aug.name} x${s.augments[aKey]}`, W - 20, ay);
+              ay += 13;
+            }
           }
+        }
+        if (s.totemCount > 0) {
+          ay += 4;
+          ctx.fillStyle = '#ff2222'; ctx.font = 'bold 11px "Courier New"';
+          ctx.fillText(`SKULLS: ${s.totemCount}`, W - 20, ay);
+          ay += 14;
         }
         ctx.textAlign = 'left';
       }
@@ -3173,7 +3334,6 @@ export function launch3DGame(options) {
       if (s.items.glasses) {
         for (const c of s.powerupCrates) {
           if (!c.alive || !c.showLabel) continue;
-          // Project 3D position to screen
           const v = new THREE.Vector3(c.x, getGroundAt(c.x, c.z) + 1.5, c.z);
           v.project(camera);
           const sx = (v.x * 0.5 + 0.5) * W;
@@ -3181,6 +3341,18 @@ export function launch3DGame(options) {
           if (v.z > 0 && v.z < 1) {
             ctx.fillStyle = c.ptype.color; ctx.font = 'bold 10px "Courier New"'; ctx.textAlign = 'center';
             ctx.fillText(c.ptype.name, sx, sy);
+          }
+        }
+        // Item pickup labels (glasses reveal)
+        for (const ip of s.itemPickups) {
+          if (!ip.alive) continue;
+          const v = new THREE.Vector3(ip.x, getGroundAt(ip.x, ip.z) + 1.8, ip.z);
+          v.project(camera);
+          const sx = (v.x * 0.5 + 0.5) * W;
+          const sy = (-v.y * 0.5 + 0.5) * H;
+          if (v.z > 0 && v.z < 1) {
+            ctx.fillStyle = ip.itype.color; ctx.font = 'bold 10px "Courier New"'; ctx.textAlign = 'center';
+            ctx.fillText(ip.itype.name, sx, sy);
           }
         }
       }
