@@ -147,7 +147,12 @@ export function launch3DGame(options) {
     zombieDmgMult: diffData.hpMult >= 1.0 ? 2 : diffData.hpMult >= 0.5 ? 3 : 4,
     score: 0,
     wave: 1,
-    waveTimer: 5,
+    ambientSpawnTimer: 3,
+    waveEventTimer: 240,  // 4 minutes until first wave event
+    waveWarning: 0,       // countdown seconds (0 = no warning)
+    waveActive: false,
+    ambientCrateTimer: 30,
+    gameTime: 0,          // total elapsed game time in seconds
     xp: 0, xpToNext: 10, level: 1,
     enemies: [],
     xpGems: [],
@@ -1250,35 +1255,55 @@ export function launch3DGame(options) {
     return { mesh, vx, vz, life: 120, hitEnemies: new Set() };
   }
 
-  // === WAVE SPAWNING ===
-  function spawnWave() {
-    const count = Math.floor(1 + st.wave * 0.8);
-    const hp = 8 + st.wave * 3;
+  // === PLAYER DAMAGE MULTIPLIER (level scaling) ===
+  function getPlayerDmgMult() {
+    return (1 + (st.level - 1) * 0.12) * st.dmgBoost * st.augmentDmgMult;
+  }
+
+  // === AMBIENT SPAWNING (constant trickle) ===
+  function spawnAmbient() {
+    const elapsedMin = st.gameTime / 60;
+    const count = Math.min(4, 1 + Math.floor(elapsedMin / 3));
+    const baseHp = 8 + Math.floor(elapsedMin * 2.5);
     for (let i = 0; i < count; i++) {
-      const angle = (i / count) * Math.PI * 2 + Math.random() * 0.5;
+      const angle = Math.random() * Math.PI * 2;
       const dist = 25 + Math.random() * 10;
-      const x = st.playerX + Math.cos(angle) * dist;
-      const z = st.playerZ + Math.sin(angle) * dist;
-      st.enemies.push(createEnemy(x, z, hp, 1));
+      const sx = st.playerX + Math.cos(angle) * dist;
+      const sz = st.playerZ + Math.sin(angle) * dist;
+      st.enemies.push(createEnemy(sx, sz, baseHp, 1));
     }
-    // Spawn powerup crate every wave
-    const crateAngle = Math.random() * Math.PI * 2;
-    const crateDist = 8 + Math.random() * 12;
-    st.powerupCrates.push(createPowerupCrate(
-      st.playerX + Math.cos(crateAngle) * crateDist,
-      st.playerZ + Math.sin(crateAngle) * crateDist
-    ));
-    // Spawn item pickup every 3 waves
-    if (st.wave % 3 === 0) {
-      const itemAngle = Math.random() * Math.PI * 2;
-      const itemDist = 5 + Math.random() * 10;
-      const pickup = createItemPickup(
-        st.playerX + Math.cos(itemAngle) * itemDist,
-        st.playerZ + Math.sin(itemAngle) * itemDist
-      );
-      if (pickup) st.itemPickups.push(pickup);
+  }
+
+  // === WAVE EVENT SPAWNING (every 4 minutes, big burst) ===
+  function spawnWaveEvent() {
+    const elapsedMin = st.gameTime / 60;
+    const baseHp = 8 + Math.floor(elapsedMin * 2.5);
+    const waveHp = Math.floor(baseHp * (1 + st.wave * 0.15));
+    const count = 12 + st.wave * 6;
+    for (let i = 0; i < count; i++) {
+      const angle = (i / count) * Math.PI * 2 + Math.random() * 0.3;
+      const dist = 20 + Math.random() * 15;
+      const sx = st.playerX + Math.cos(angle) * dist;
+      const sz = st.playerZ + Math.sin(angle) * dist;
+      const tier = Math.random() < 0.1 * st.wave ? Math.min(st.wave, 3) : 1;
+      st.enemies.push(createEnemy(sx, sz, waveHp, tier));
     }
     st.wave++;
+
+    // Spawn crate with wave
+    const crateAngle = Math.random() * Math.PI * 2;
+    const cx = st.playerX + Math.cos(crateAngle) * 15;
+    const cz = st.playerZ + Math.sin(crateAngle) * 15;
+    st.powerupCrates.push(createPowerupCrate(cx, cz));
+
+    // Spawn item every 2 waves
+    if (st.wave % 2 === 0) {
+      const itemAngle = Math.random() * Math.PI * 2;
+      const ix = st.playerX + Math.cos(itemAngle) * 12;
+      const iz = st.playerZ + Math.sin(itemAngle) * 12;
+      const pickup = createItemPickup(ix, iz);
+      if (pickup) st.itemPickups.push(pickup);
+    }
   }
 
     // === SCROLL MULTIPLIER HELPERS ===
@@ -1806,6 +1831,8 @@ export function launch3DGame(options) {
 
     if (!st.paused && !st.gameOver) {
       st.gameTime += dt;
+
+
       // === PLAYER INPUT ===
       let mx = 0, mz = 0;
       if (keys3d['KeyW'] || keys3d['ArrowUp']) mz = -1;
@@ -2338,11 +2365,35 @@ export function launch3DGame(options) {
       updateWeaponProjectiles(dt);
       updateWeaponEffects(dt);
 
-      // === WAVE TIMER ===
-      st.waveTimer -= dt;
-      if (st.waveTimer <= 0) {
-        spawnWave();
-        st.waveTimer = 5;
+      // === AMBIENT SPAWNS ===
+      st.ambientSpawnTimer -= dt;
+      if (st.ambientSpawnTimer <= 0) {
+        spawnAmbient();
+        st.ambientSpawnTimer = 3;
+      }
+
+      // === AMBIENT CRATE SPAWN (every 30s) ===
+      st.ambientCrateTimer -= dt;
+      if (st.ambientCrateTimer <= 0) {
+        st.ambientCrateTimer = 30;
+        const ca = Math.random() * Math.PI * 2;
+        const cx = st.playerX + Math.cos(ca) * 15;
+        const cz = st.playerZ + Math.sin(ca) * 15;
+        st.powerupCrates.push(createPowerupCrate(cx, cz));
+      }
+
+      // === WAVE EVENTS (every 4 minutes) ===
+      st.waveEventTimer -= dt;
+      if (st.waveEventTimer <= 10 && st.waveWarning === 0) {
+        st.waveWarning = 10; // Start 10-second countdown
+      }
+      if (st.waveWarning > 0) {
+        st.waveWarning -= dt;
+        if (st.waveWarning <= 0) {
+          st.waveWarning = 0;
+          spawnWaveEvent();
+          st.waveEventTimer = 240; // Reset for next wave in 4 min
+        }
       }
 
       // === TERRAIN CHUNKS (throttled) ===
@@ -2479,7 +2530,7 @@ export function launch3DGame(options) {
               const mx = (a.group.position.x + b.group.position.x) / 2;
               const mz = (a.group.position.z + b.group.position.z) / 2;
               const newTier = aTier + 1;
-              const baseHp = 8 + st.wave * 3;
+              const baseHp = 8 + Math.floor((st.gameTime / 60) * 2.5);
               disposeEnemy(a); disposeEnemy(b);
               mergedSet.add(i); mergedSet.add(j);
               newEnemies.push(createEnemy(mx, mz, baseHp, newTier));
@@ -2522,7 +2573,7 @@ export function launch3DGame(options) {
           }
         }
         if (nearest) {
-          let dmg = st.attackDamage * st.dmgBoost * st.augmentDmgMult;
+          let dmg = st.attackDamage * getPlayerDmgMult();
           nearest.hp -= dmg;
           nearest.hurtTimer = 0.15;
 
@@ -2581,7 +2632,7 @@ export function launch3DGame(options) {
         let range = st.attackRange * (1 + st.chargeTime * 0.5);
         if (st.items.boots === 'cowboyBoots') range *= 1.2;
         const py = st.playerY + 0.8;
-        const dmg = st.attackDamage * st.dmgBoost * chargeMult * st.augmentDmgMult;
+        const dmg = st.attackDamage * getPlayerDmgMult() * chargeMult;
 
         // Hit all enemies in range (AoE power attack)
         for (const e of st.enemies) {
@@ -2935,7 +2986,7 @@ export function launch3DGame(options) {
       // Wave + Score (top right)
       ctx.textAlign = 'right';
       ctx.fillStyle = '#ff6644'; ctx.font = 'bold 18px "Courier New"';
-      ctx.fillText(`WAVE ${s.wave - 1}`, W - 20, 35);
+      ctx.fillText(`WAVE ${s.wave}`, W - 20, 35);
       ctx.fillStyle = '#ffcc00'; ctx.font = 'bold 16px "Courier New"';
       ctx.fillText(`SCORE: ${s.score}`, W - 20, 55);
       // Timer
@@ -2944,6 +2995,20 @@ export function launch3DGame(options) {
       const timeStr = `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
       ctx.fillStyle = '#ffffff'; ctx.font = 'bold 14px "Courier New"';
       ctx.fillText(timeStr, W - 20, 75);
+
+      // Wave warning countdown
+      if (s.waveWarning > 0) {
+        ctx.fillStyle = 'rgba(255, 0, 0, 0.15)';
+        ctx.fillRect(0, 0, W, H);
+        ctx.textAlign = 'center';
+        ctx.fillStyle = '#ff2222';
+        ctx.font = 'bold 36px "Courier New"';
+        ctx.fillText(`WAVE ${s.wave + 1} INCOMING`, W / 2, H / 2 - 40);
+        ctx.fillStyle = '#ffcc00';
+        ctx.font = 'bold 48px "Courier New"';
+        ctx.fillText(Math.ceil(s.waveWarning).toString(), W / 2, H / 2 + 20);
+        ctx.textAlign = 'left';
+      }
 
       // Active powerup indicator
       if (s.activePowerup) {
