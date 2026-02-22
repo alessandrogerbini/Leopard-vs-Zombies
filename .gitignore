@@ -1,0 +1,22 @@
+# Claude agent worktrees and local settings
+.claude/
+
+# OS files
+.DS_Store
+Thumbs.db
+*.swp
+*~
+
+# Editor configs
+.vscode/
+.idea/
+*.sublime-*
+
+# Dependencies
+node_modules/
+
+# Logs
+*.log
+
+# Environment
+.env
