@@ -191,6 +191,11 @@ export function launch3DGame(options) {
     nameEntry: '',
     nameEntryActive: false,
     leaderboard3d: [],
+    // Kill tracking
+    killsByTier: new Array(10).fill(0),
+    totalKills: 0,
+    // Game timer
+    gameTime: 0,
   };
 
   // Load 3D leaderboard
@@ -204,6 +209,8 @@ export function launch3DGame(options) {
       animal: animalData.name,
       level: st.level,
       wave: st.wave - 1,
+      time: st.gameTime,
+      kills: st.totalKills,
       date: Date.now()
     });
     st.leaderboard3d.sort((a, b) => b.score - a.score);
@@ -1323,6 +1330,8 @@ export function launch3DGame(options) {
     for (let g = 1; g < (e.tier || 1); g++) {
       st.xpGems.push(createXpGem(e.group.position.x + (Math.random() - 0.5), e.group.position.z + (Math.random() - 0.5)));
     }
+    st.totalKills++;
+    st.killsByTier[(e.tier || 1) - 1]++;
     disposeEnemy(e);
   }
 
@@ -1768,6 +1777,7 @@ export function launch3DGame(options) {
     const dt = Math.min(clock.getDelta(), 0.05);
 
     if (!st.paused && !st.gameOver) {
+      st.gameTime += dt;
       // === PLAYER INPUT ===
       let mx = 0, mz = 0;
       if (keys3d['KeyW'] || keys3d['ArrowUp']) mz = -1;
@@ -2110,6 +2120,8 @@ export function launch3DGame(options) {
             for (let g = 1; g < (nearest.tier || 1); g++) {
               st.xpGems.push(createXpGem(nearest.group.position.x + (Math.random() - 0.5), nearest.group.position.z + (Math.random() - 0.5)));
             }
+            st.totalKills++;
+            st.killsByTier[(nearest.tier || 1) - 1]++;
             disposeEnemy(nearest);
           }
           st.autoAttackTimer = 1 / (st.attackSpeed * st.atkSpeedBoost);
@@ -2164,6 +2176,8 @@ export function launch3DGame(options) {
               for (let g = 1; g < (e.tier || 1); g++) {
                 st.xpGems.push(createXpGem(e.group.position.x + (Math.random() - 0.5), e.group.position.z + (Math.random() - 0.5)));
               }
+              st.totalKills++;
+              st.killsByTier[(e.tier || 1) - 1]++;
               disposeEnemy(e);
             }
           }
@@ -2231,6 +2245,8 @@ export function launch3DGame(options) {
               for (let g = 1; g < (e.tier || 1); g++) {
                 st.xpGems.push(createXpGem(e.group.position.x + (Math.random() - 0.5), e.group.position.z + (Math.random() - 0.5)));
               }
+              st.totalKills++;
+              st.killsByTier[(e.tier || 1) - 1]++;
               disposeEnemy(e);
             }
           }
@@ -2475,9 +2491,9 @@ export function launch3DGame(options) {
         wy += 22;
       }
 
-      // Scrolls display (right side below score)
+      // Scrolls display (right side below timer)
       ctx.textAlign = 'right';
-      let ty = 70;
+      let ty = 92;
       const scrollEntries = Object.entries(s.scrolls).filter(([, v]) => v > 0);
       if (scrollEntries.length > 0) {
         for (const [tid, count] of scrollEntries) {
@@ -2495,6 +2511,12 @@ export function launch3DGame(options) {
       ctx.fillText(`WAVE ${s.wave - 1}`, W - 20, 35);
       ctx.fillStyle = '#ffcc00'; ctx.font = 'bold 16px "Courier New"';
       ctx.fillText(`SCORE: ${s.score}`, W - 20, 55);
+      // Timer
+      const mins = Math.floor(s.gameTime / 60);
+      const secs = Math.floor(s.gameTime % 60);
+      const timeStr = `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+      ctx.fillStyle = '#ffffff'; ctx.font = 'bold 14px "Courier New"';
+      ctx.fillText(timeStr, W - 20, 75);
 
       // Active powerup indicator
       if (s.activePowerup) {
@@ -2741,27 +2763,35 @@ export function launch3DGame(options) {
       ctx.fillText(`SCORE: ${s.score}`, W / 2, 125);
       ctx.fillStyle = '#ffffff'; ctx.font = '16px "Courier New"';
       ctx.fillText(`${animalData.name} | Level ${s.level} | Wave ${s.wave - 1}`, W / 2, 155);
+      // Time survived
+      const goMins = Math.floor(s.gameTime / 60);
+      const goSecs = Math.floor(s.gameTime % 60);
+      ctx.fillStyle = '#88ccff'; ctx.font = '16px "Courier New"';
+      ctx.fillText(`Time: ${String(goMins).padStart(2, '0')}:${String(goSecs).padStart(2, '0')}`, W / 2, 175);
+      // Kill stats
+      ctx.fillStyle = '#ff8844'; ctx.font = 'bold 14px "Courier New"';
+      ctx.fillText(`Total Kills: ${s.totalKills}`, W / 2, 195);
 
       if (s.nameEntryActive) {
         // Name entry
         ctx.fillStyle = '#88ccff'; ctx.font = 'bold 18px "Courier New"';
-        ctx.fillText('ENTER YOUR NAME:', W / 2, 200);
-        ctx.fillStyle = '#222'; ctx.fillRect(W / 2 - 110, 210, 220, 36);
-        ctx.strokeStyle = '#88ccff'; ctx.lineWidth = 2; ctx.strokeRect(W / 2 - 110, 210, 220, 36);
+        ctx.fillText('ENTER YOUR NAME:', W / 2, 240);
+        ctx.fillStyle = '#222'; ctx.fillRect(W / 2 - 110, 250, 220, 36);
+        ctx.strokeStyle = '#88ccff'; ctx.lineWidth = 2; ctx.strokeRect(W / 2 - 110, 250, 220, 36);
         ctx.fillStyle = '#ffffff'; ctx.font = 'bold 22px "Courier New"';
         const cursor = Math.sin(Date.now() * 0.005) > 0 ? '_' : '';
-        ctx.fillText(s.nameEntry + cursor, W / 2, 235);
+        ctx.fillText(s.nameEntry + cursor, W / 2, 275);
         ctx.fillStyle = '#666'; ctx.font = '12px "Courier New"';
-        ctx.fillText('Type name, then ENTER to save', W / 2, 265);
+        ctx.fillText('Type name, then ENTER to save', W / 2, 305);
       } else {
         // Leaderboard
         ctx.fillStyle = '#ffcc00'; ctx.font = 'bold 18px "Courier New"';
-        ctx.fillText('LEADERBOARD', W / 2, 200);
+        ctx.fillText('LEADERBOARD', W / 2, 240);
         const lb = s.leaderboard3d;
         if (lb.length > 0) {
           ctx.font = '12px "Courier New"';
           ctx.fillStyle = '#888';
-          ctx.fillText('RANK   NAME        SCORE   ANIMAL    LVL  WAVE', W / 2, 222);
+          ctx.fillText('RANK   NAME        SCORE   ANIMAL    LVL  WAVE  TIME', W / 2, 262);
           for (let i = 0; i < Math.min(lb.length, 10); i++) {
             const e = lb[i];
             const rank = String(i + 1).padStart(2);
@@ -2770,12 +2800,13 @@ export function launch3DGame(options) {
             const animal = (e.animal || '').padEnd(8).slice(0, 8);
             const lvl = String(e.level || 1).padStart(3);
             const wave = String(e.wave || 0).padStart(4);
+            const lbTime = e.time ? `${String(Math.floor(e.time/60)).padStart(2,'0')}:${String(Math.floor(e.time%60)).padStart(2,'0')}` : '--:--';
             ctx.fillStyle = i === 0 ? '#ffcc00' : i < 3 ? '#ccaa44' : '#888888';
-            ctx.fillText(`${rank}.  ${name}  ${score}   ${animal} ${lvl}  ${wave}`, W / 2, 240 + i * 18);
+            ctx.fillText(`${rank}.  ${name}  ${score}   ${animal} ${lvl}  ${wave}  ${lbTime}`, W / 2, 280 + i * 18);
           }
         } else {
           ctx.fillStyle = '#666'; ctx.font = '14px "Courier New"';
-          ctx.fillText('No scores yet', W / 2, 240);
+          ctx.fillText('No scores yet', W / 2, 280);
         }
 
         if (Math.sin(Date.now() * 0.005) > 0) {
