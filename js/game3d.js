@@ -33,6 +33,7 @@ import {
   ARENA_SIZE, SHRINE_COUNT, CHUNK_SIZE, GRAVITY_3D, JUMP_FORCE, GROUND_Y, MAP_HALF,
   ANIMAL_PALETTES, WEAPON_TYPES, HOWL_TYPES, POWERUPS_3D, ITEMS_3D, ITEM_RARITIES,
   SHRINE_AUGMENTS, TOTEM_EFFECT, ZOMBIE_TIERS, ANIMAL_WEAPONS,
+  MAP_GEMS_PER_CHUNK, GEM_XP_MIN, GEM_XP_MAX, GEM_COLLECT_RADIUS,
 } from './3d/constants.js';
 
 import {
@@ -92,6 +93,8 @@ import { initAudio, playSound, toggleMute, isMuted, getVolume, disposeAudio } fr
  * --- Entity Arrays ---
  * @property {Array.<Enemy>} enemies        - All live zombie enemies.
  * @property {Array.<XpGem>} xpGems         - All active XP gem pickups.
+ * @property {Array} mapGems               - Non-respawning map gem collectibles [{mesh, x, z, xpValue, chunkKey, gemIndex, alive}].
+ * @property {Object.<string, Set>} collectedGemKeys - Collected gem indices by chunk key (persists across chunk load/unload).
  * @property {Array} attackLines            - Visual attack line effects.
  * @property {Array} powerupCrates          - Breakable powerup crate objects.
  * @property {Array} itemPickups            - Floating item pickup objects.
@@ -279,6 +282,8 @@ export function launch3DGame(options) {
     xp: 0, xpToNext: 10, level: 1,
     enemies: [],
     xpGems: [],
+    mapGems: [],              // Active map gem objects [{mesh, x, z, xpValue, chunkKey, gemIndex, alive}]
+    collectedGemKeys: {},     // Track collected gems: {"cx,cz": Set of indices}
     attackLines: [],
     powerupCrates: [],
     itemPickups: [],
@@ -881,9 +886,10 @@ export function launch3DGame(options) {
       for (let dz = -VIEW_DIST; dz <= VIEW_DIST; dz++) {
         generatePlatforms(pcx + dx, pcz + dz);
         generateShrines(pcx + dx, pcz + dz);
+        generateMapGems(pcx + dx, pcz + dz);
       }
     }
-    // Unload far platforms + shrines
+    // Unload far platforms + shrines + map gems
     // Collect keys first to avoid mutation-during-iteration
     const platformKeysToUnload = [];
     for (const key in platformsByChunk) {
@@ -897,6 +903,19 @@ export function launch3DGame(options) {
       const [cx, cz] = key.split(',').map(Number);
       unloadPlatforms(cx, cz);
       unloadShrines(cx, cz);
+    }
+    // Unload far map gems
+    const gemKeysToUnload = [];
+    for (const key in mapGemsByChunk) {
+      const [cx, cz] = key.split(',').map(Number);
+      if (Math.abs(cx - Math.floor(px / CHUNK_SIZE)) > VIEW_DIST + 1 ||
+          Math.abs(cz - Math.floor(pz / CHUNK_SIZE)) > VIEW_DIST + 1) {
+        gemKeysToUnload.push(key);
+      }
+    }
+    for (const key of gemKeysToUnload) {
+      const [cx, cz] = key.split(',').map(Number);
+      unloadMapGems(cx, cz);
     }
     // Also unload shrines in chunks not covered by platforms
     // Collect keys first to avoid mutation-during-iteration
@@ -986,6 +1005,66 @@ export function launch3DGame(options) {
   function unloadShrines(cx, cz) {
     // Shrines are now finite and pre-placed — never unload them
     return;
+  }
+
+  // === MAP GEMS (non-respawning per-chunk XP collectibles) ===
+  // Track which chunks have had gems generated (to avoid re-generating on re-entry).
+  const mapGemsByChunk = {};
+
+  /**
+   * Generate non-respawning XP gems for a chunk.
+   * Uses random positioning per chunk coordinates.
+   * Already-collected gems (tracked in st.collectedGemKeys) are skipped.
+   * Chunks outside map bounds are skipped.
+   *
+   * @param {number} cx - Chunk X index.
+   * @param {number} cz - Chunk Z index.
+   */
+  function generateMapGems(cx, cz) {
+    const key = getChunkKey(cx, cz);
+    if (mapGemsByChunk[key]) return;
+    // Skip chunks outside map bounds
+    const cpMinX = cx * CHUNK_SIZE, cpMaxX = cpMinX + CHUNK_SIZE;
+    const cpMinZ = cz * CHUNK_SIZE, cpMaxZ = cpMinZ + CHUNK_SIZE;
+    if (cpMaxX < -MAP_HALF || cpMinX > MAP_HALF || cpMaxZ < -MAP_HALF || cpMinZ > MAP_HALF) return;
+    mapGemsByChunk[key] = [];
+
+    const collected = st.collectedGemKeys[key] || new Set();
+    // 3-5 gems per chunk (base MAP_GEMS_PER_CHUNK ±1)
+    const gemCount = MAP_GEMS_PER_CHUNK - 1 + Math.floor(Math.random() * 3); // 3,4,5
+    for (let gi = 0; gi < gemCount; gi++) {
+      if (collected.has(gi)) continue; // Already collected — don't respawn
+      const gx = cx * CHUNK_SIZE + Math.random() * CHUNK_SIZE;
+      const gz = cz * CHUNK_SIZE + Math.random() * CHUNK_SIZE;
+      const xpVal = GEM_XP_MIN + Math.floor(Math.random() * (GEM_XP_MAX - GEM_XP_MIN + 1));
+      const gem = createMapGem(gx, gz, xpVal);
+      gem.chunkKey = key;
+      gem.gemIndex = gi;
+      st.mapGems.push(gem);
+      mapGemsByChunk[key].push(gem);
+    }
+  }
+
+  /**
+   * Unload map gems for a chunk, disposing Three.js resources.
+   * Only removes meshes from the scene — collection state is preserved in st.collectedGemKeys.
+   *
+   * @param {number} cx - Chunk X index.
+   * @param {number} cz - Chunk Z index.
+   */
+  function unloadMapGems(cx, cz) {
+    const key = getChunkKey(cx, cz);
+    const gems = mapGemsByChunk[key];
+    if (!gems) return;
+    for (const g of gems) {
+      if (g.alive && g.mesh) {
+        scene.remove(g.mesh);
+      }
+      // Remove from st.mapGems
+      const idx = st.mapGems.indexOf(g);
+      if (idx >= 0) st.mapGems.splice(idx, 1);
+    }
+    delete mapGemsByChunk[key];
   }
 
   // === DIFFICULTY TOTEMS ===
@@ -1282,6 +1361,30 @@ export function launch3DGame(options) {
     mesh.position.set(x, h + 0.5, z);
     scene.add(mesh);
     return { mesh, bobPhase: Math.random() * Math.PI * 2 };
+  }
+
+  // === MAP GEM (non-respawning world collectibles) ===
+  // Shared geometry and material for all map gems (purple, slightly transparent).
+  const mapGemGeo = new THREE.BoxGeometry(0.25, 0.25, 0.25);
+  const mapGemMat = new THREE.MeshBasicMaterial({ color: 0xaa44ff, transparent: true, opacity: 0.85 });
+
+  /**
+   * Create a non-respawning XP gem pickup at the given world position.
+   * Map gems are purple, bob and spin, and grant variable XP when collected.
+   * Once collected, they are tracked by chunk key + index so they don't reappear.
+   *
+   * @param {number} x - World X position.
+   * @param {number} z - World Z position.
+   * @param {number} xpValue - XP amount granted on pickup.
+   * @returns {{mesh: THREE.Mesh, x: number, z: number, xpValue: number, alive: boolean}} Map gem object.
+   */
+  function createMapGem(x, z, xpValue) {
+    const h = terrainHeight(x, z);
+    const mesh = new THREE.Mesh(mapGemGeo, mapGemMat);
+    mesh.position.set(x, h + 0.6, z);
+    mesh.rotation.y = Math.random() * Math.PI * 2;
+    scene.add(mesh);
+    return { mesh, x, z, xpValue, alive: true };
   }
 
   /**
@@ -3795,6 +3898,48 @@ export function launch3DGame(options) {
         }
       }
 
+      // === MAP GEMS (non-respawning world collectibles) ===
+      // Map gems bob and spin like XP gems but use GEM_COLLECT_RADIUS and grant variable XP.
+      // Collected gems are tracked per chunk+index so they never reappear.
+      for (let i = st.mapGems.length - 1; i >= 0; i--) {
+        const g = st.mapGems[i];
+        if (!g.alive) { st.mapGems.splice(i, 1); continue; }
+        // Rotate and bob
+        g.mesh.rotation.y += dt * 2;
+        g.mesh.position.y = terrainHeight(g.x, g.z) + 0.6 + Math.sin(Date.now() * 0.003 + g.x) * 0.15;
+        // Pickup check (squared distance)
+        const dx = st.playerX - g.x;
+        const dz = st.playerZ - g.z;
+        const distSq = dx * dx + dz * dz;
+        if (distSq < GEM_COLLECT_RADIUS * GEM_COLLECT_RADIUS) {
+          g.alive = false;
+          scene.remove(g.mesh);
+          // XP scaled by augments, Fortune Howl, and totem bonuses (same as drop gems)
+          const xpGain = Math.max(1, Math.round(g.xpValue * st.augmentXpMult * getHowlXpMult() * (st.totemXpMult || 1)));
+          st.xp += xpGain;
+          // Track as collected so it won't respawn when chunk reloads
+          if (!st.collectedGemKeys[g.chunkKey]) st.collectedGemKeys[g.chunkKey] = new Set();
+          st.collectedGemKeys[g.chunkKey].add(g.gemIndex);
+          playSound('sfx_xp_pickup');
+          // Floating text
+          st.floatingTexts3d.push({
+            text: `+${xpGain} XP`,
+            color: '#aa44ff',
+            x: g.x, y: terrainHeight(g.x, g.z) + 1.5, z: g.z,
+            life: 1.0,
+          });
+          // Level-up check
+          if (st.xp >= st.xpToNext) {
+            st.xp -= st.xpToNext;
+            st.xpToNext = Math.floor(st.xpToNext * 1.5);
+            st.level++;
+            playSound('sfx_level_up');
+            showUpgradeMenu();
+          }
+          st.mapGems.splice(i, 1);
+        }
+      }
+
       // === POWERUP CRATES ===
       // Walk into crates to break them (3 HP). Breaking applies the contained powerup.
       // Aviator Glasses reveal crate contents via HUD labels when within 8 units.
@@ -4078,6 +4223,8 @@ export function launch3DGame(options) {
     st.mirrorCloneGroups.forEach(cd => disposeSceneObject(cd.group));
     // Dispose bomb trail bombs
     st.bombTrailBombs.forEach(b => disposeSceneObject(b.mesh));
+    // Dispose map gems (shared geo/mat disposed via scene.traverse below)
+    st.mapGems.forEach(g => { if (g.mesh) scene.remove(g.mesh); });
 
     // Dispose weapon projectiles and effects
     st.weaponProjectiles.forEach(p => disposeSceneObject(p.mesh));

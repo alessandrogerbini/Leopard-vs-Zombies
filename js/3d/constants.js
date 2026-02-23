@@ -25,6 +25,15 @@ export const GROUND_Y = 0;
 /** @constant {number} MAP_HALF - Half the map dimension; world extends from -MAP_HALF to +MAP_HALF on X and Z. */
 export const MAP_HALF = 128; // 256x256 total map (extends -128 to +128 on both axes)
 
+/** @constant {number} MAP_GEMS_PER_CHUNK - Base number of XP gems per chunk (randomized ±1 at generation). */
+export const MAP_GEMS_PER_CHUNK = 4;
+/** @constant {number} GEM_XP_MIN - Minimum XP value of a single map gem pickup. */
+export const GEM_XP_MIN = 2;
+/** @constant {number} GEM_XP_MAX - Maximum XP value of a single map gem pickup. */
+export const GEM_XP_MAX = 4;
+/** @constant {number} GEM_COLLECT_RADIUS - Pickup radius for map gems (slightly larger than drop gems). */
+export const GEM_COLLECT_RADIUS = 2.5;
+
 /**
  * Color palettes for each playable animal's 3D box model.
  * Each palette provides hex colors for body, head, accent details, spot markings, and tail.
