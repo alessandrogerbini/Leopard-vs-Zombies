@@ -113,6 +113,7 @@ export function getChunkKey(cx, cz) { return `${cx},${cz}`; }
  * @property {Set.<string>} loadedChunks - Set of chunk keys currently loaded.
  * @property {Object.<string, THREE.Mesh>} chunkMeshes - Map of chunk key to ground mesh.
  * @property {Array.<{meshes: THREE.Mesh[], x: number, z: number}>} decorations - Decoration objects (trees, rocks, logs, mushrooms, stumps).
+ * @property {Array.<{x: number, z: number, radius: number}>} colliders - Collision circles for solid objects (trees, rocks).
  */
 
 /**
@@ -126,6 +127,7 @@ export function createTerrainState() {
     loadedChunks: new Set(),
     chunkMeshes: {},
     decorations: [],
+    colliders: [],    // Array of { x, z, radius } for solid objects (trees, rocks)
   };
 }
 
@@ -501,6 +503,7 @@ export function generateChunk(cx, cz, scene, ts) {
     const h = terrainHeight(dx, dz);
     const meshes = createTree(dx, dz, h, scene);
     ts.decorations.push({ meshes, x: dx, z: dz });
+    ts.colliders.push({ x: dx, z: dz, radius: 1.2 });
   }
 
   // Rocks: 0-2 per chunk
@@ -511,6 +514,7 @@ export function generateChunk(cx, cz, scene, ts) {
     const h = terrainHeight(dx, dz);
     const meshes = createRock(dx, dz, h, scene);
     ts.decorations.push({ meshes, x: dx, z: dz });
+    ts.colliders.push({ x: dx, z: dz, radius: 1.0 });
   }
 
   // Fallen logs: 0-1 per chunk
@@ -571,6 +575,12 @@ export function unloadChunk(cx, cz, scene, ts) {
       ts.decorations.splice(i, 1);
     }
   }
+  // Remove colliders in this chunk
+  ts.colliders = ts.colliders.filter(c => {
+    const ccx = Math.floor(c.x / CHUNK_SIZE);
+    const ccz = Math.floor(c.z / CHUNK_SIZE);
+    return !(ccx === cx && ccz === cz);
+  });
   ts.loadedChunks.delete(key);
 }
 
