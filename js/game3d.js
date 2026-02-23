@@ -479,16 +479,30 @@ export function launch3DGame(options) {
    *
    * Dispatches to different handlers based on current UI state:
    * - Game over + name entry: text input, backspace, enter to save
-   * - Game over + no name entry: enter to return to menu
-   * - Upgrade menu: arrow keys to navigate, enter/space to select, R to reroll
-   * - Pause menu: arrow keys to navigate, enter/space to select, escape to unpause
+   * - Game over + no name entry: enter to return to menu (fresh press only)
+   * - Upgrade menu: arrow keys to navigate, enter/space to select (fresh press only), R to reroll
+   * - Charge shrine menu: arrow keys to navigate, enter/space to select (fresh press only)
+   * - Pause menu: arrow keys to navigate, enter/space to select (fresh press only), escape to unpause
    * - Normal gameplay: escape opens pause menu; Enter/B handled by power attack in game loop
+   *
+   * BD-86: All menu confirmations require a fresh key press (e.repeat === false).
+   * This prevents held-Enter from auto-confirming menus that open mid-gameplay
+   * (e.g. upgrade menu opening while player charges power attack).
    *
    * @param {KeyboardEvent} e - The keydown event.
    */
   function onKeyDown(e) {
     keys3d[e.code] = true;
     e.preventDefault();
+
+    // BD-86: Track whether Enter/Space is a fresh press (not a key-repeat).
+    // Menus require a fresh press to confirm — this prevents held-Enter from
+    // auto-selecting upgrades when a menu opens mid-gameplay (e.g. player
+    // holds Enter for power attack, levels up, upgrade menu opens and would
+    // instantly confirm without this guard).
+    const isEnterOrSpace = (e.code === 'Enter' || e.code === 'NumpadEnter' || e.code === 'Space');
+    const isFreshConfirm = isEnterOrSpace && !e.repeat;
+
     if (st.gameOver && !st.upgradeMenu && st.enterReleasedSinceGameOver) {
       if (st.nameEntryActive) {
         // Name entry text input
@@ -514,7 +528,8 @@ export function launch3DGame(options) {
           localStorage.setItem('avz-feedback', answers[st.feedbackSelection]);
           st.feedbackSaved = true;
         }
-        if (e.code === 'Enter' && (performance.now() - st._menuDismissedAt > 500)) {
+        // BD-86: Require fresh press (not repeat) AND release+repress guard
+        if (isFreshConfirm && e.code === 'Enter') {
           cleanup();
           onReturn();
         }
@@ -522,15 +537,19 @@ export function launch3DGame(options) {
     } else if (st.upgradeMenu && !st.gameOver) {
       if (e.code === 'ArrowLeft' || e.code === 'KeyA') st.selectedUpgrade = (st.selectedUpgrade - 1 + st.upgradeChoices.length) % st.upgradeChoices.length;
       if (e.code === 'ArrowRight' || e.code === 'KeyD') st.selectedUpgrade = (st.selectedUpgrade + 1) % st.upgradeChoices.length;
-      if (e.code === 'Enter' || e.code === 'Space') {
+      // BD-86: Only confirm on fresh press — blocks held-Enter from auto-selecting
+      if (isFreshConfirm) {
         const choice = st.upgradeChoices[st.selectedUpgrade];
         choice.apply(st);
         st.upgradeMenu = false;
         st.paused = false;
-        st._enterCooldown = 0.2; // 200ms grace period
         st._menuDismissedAt = performance.now();
         st.enterReleasedSinceGameOver = false; // prevent accidental restart
         keys3d['Enter'] = false; // clear held key state
+        keys3d['NumpadEnter'] = false;
+        keys3d['Space'] = false;
+        st.charging = false; // BD-86: clear stale charge state
+        st.chargeTime = 0;
         e.preventDefault();
         e.stopPropagation();
         return;
@@ -547,7 +566,8 @@ export function launch3DGame(options) {
       if (e.code === 'ArrowRight' || e.code === 'KeyD') {
         st.selectedChargeShrineUpgrade = Math.min(st.chargeShrineChoices.length - 1, st.selectedChargeShrineUpgrade + 1);
       }
-      if (e.code === 'Enter' || e.code === 'Space') {
+      // BD-86: Only confirm on fresh press — blocks held-Enter from auto-selecting
+      if (isFreshConfirm) {
         const chosen = st.chargeShrineChoices[st.selectedChargeShrineUpgrade];
         if (chosen) {
           chosen.apply(st);
@@ -584,6 +604,10 @@ export function launch3DGame(options) {
         st.chargeShrineChoices = [];
         st._menuDismissedAt = performance.now();
         keys3d['Enter'] = false;
+        keys3d['NumpadEnter'] = false;
+        keys3d['Space'] = false;
+        st.charging = false; // BD-86: clear stale charge state
+        st.chargeTime = 0;
         e.preventDefault();
         e.stopPropagation();
         return;
@@ -599,7 +623,8 @@ export function launch3DGame(options) {
         st.selectedPauseOption = (st.selectedPauseOption - 1 + 3) % 3;
       } else if (e.code === 'ArrowRight' || e.code === 'KeyD') {
         st.selectedPauseOption = (st.selectedPauseOption + 1) % 3;
-      } else if (e.code === 'Enter' || e.code === 'Space') {
+      } else if (isFreshConfirm) {
+        // BD-86: Only confirm on fresh press — blocks held-Enter from firing
         if (st.selectedPauseOption === 0) {
           // Resume
           st.paused = false;
@@ -615,6 +640,10 @@ export function launch3DGame(options) {
         }
         st._menuDismissedAt = performance.now();
         keys3d['Enter'] = false;
+        keys3d['NumpadEnter'] = false;
+        keys3d['Space'] = false;
+        st.charging = false; // BD-86: clear stale charge state
+        st.chargeTime = 0;
         e.preventDefault();
         e.stopPropagation();
         return;
@@ -3107,6 +3136,13 @@ export function launch3DGame(options) {
     st.paused = true;
     st.upgradeMenu = true;
     st.selectedUpgrade = 0;
+    // BD-86: Clear Enter key state and charging when menu opens.
+    // Prevents held-Enter (from power attack) from auto-confirming the menu.
+    keys3d['Enter'] = false;
+    keys3d['NumpadEnter'] = false;
+    keys3d['Space'] = false;
+    st.charging = false;
+    st.chargeTime = 0;
 
     // Unlock weapon slots at levels 5, 10, 15
     if (st.level === 5 || st.level === 10 || st.level === 15) {
@@ -4358,7 +4394,7 @@ export function launch3DGame(options) {
         st._enterCooldown -= dt;
       }
       const chargeKey = keys3d['Enter'] || keys3d['NumpadEnter'] || keys3d['KeyB'];
-      if (chargeKey && !st.upgradeMenu && !st.pauseMenu && !st.chargeShrineMenu && st._enterCooldown <= 0 && (performance.now() - st._menuDismissedAt > 500)) {
+      if (chargeKey && !st.gameOver && !st.upgradeMenu && !st.pauseMenu && !st.chargeShrineMenu && st._enterCooldown <= 0 && (performance.now() - st._menuDismissedAt > 500)) {
         if (!st.charging) {
           st.charging = true;
           st.chargeTime = 0;
@@ -4761,6 +4797,12 @@ export function launch3DGame(options) {
             st.chargeShrineMenu = true;
             st.paused = true;
             st.chargeShrineProgress = CHARGE_SHRINE_TIME; // Clamp
+            // BD-86: Clear Enter key state and charging when shrine menu opens.
+            keys3d['Enter'] = false;
+            keys3d['NumpadEnter'] = false;
+            keys3d['Space'] = false;
+            st.charging = false;
+            st.chargeTime = 0;
             playSound('sfx_shrine_break'); // Reuse shrine sound for activation
           }
         } else {
@@ -4857,6 +4899,15 @@ export function launch3DGame(options) {
         st.enterReleasedSinceGameOver = false;
         st.nameEntryActive = true;
         st.nameEntry = '';
+        // BD-86: Clear Enter key state and charging on death.
+        // Prevents held-Enter (from power attack) from immediately interacting
+        // with the game-over screen.
+        keys3d['Enter'] = false;
+        keys3d['NumpadEnter'] = false;
+        keys3d['Space'] = false;
+        st.charging = false;
+        st.chargeTime = 0;
+        st.powerAttackReady = false;
         playSound('sfx_player_death');
       }
     }
