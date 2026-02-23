@@ -3057,6 +3057,23 @@ export function launch3DGame(options) {
       st.playerX = Math.max(-MAP_HALF + 1, Math.min(MAP_HALF - 1, st.playerX));
       st.playerZ = Math.max(-MAP_HALF + 1, Math.min(MAP_HALF - 1, st.playerZ));
 
+      // === OBJECT COLLISION (BD-69) ===
+      if (terrainState && terrainState.colliders) {
+        const PR = 0.5; // player radius
+        for (const c of terrainState.colliders) {
+          const dx = st.playerX - c.x;
+          const dz = st.playerZ - c.z;
+          const dist = Math.sqrt(dx * dx + dz * dz);
+          const minDist = PR + c.radius;
+          if (dist < minDist && dist > 0.001) {
+            // Push player out
+            const pushDist = minDist - dist;
+            st.playerX += (dx / dist) * pushDist;
+            st.playerZ += (dz / dist) * pushDist;
+          }
+        }
+      }
+
       // === JUMPING + GRAVITY + FLIGHT ===
       // Flight mode (Wings powerup): Space=ascend, Shift=descend, Alt+W/S=G-force maneuvers.
       // Normal mode: Space=jump (only when onGround), then gravity pulls down each frame.
