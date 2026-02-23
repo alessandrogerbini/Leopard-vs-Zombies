@@ -355,6 +355,7 @@ function update() {
         //    settings, and an onReturn callback.
         // 4. The onReturn callback re-shows the 2D canvas, clears ghost
         //    key inputs, resets to the title state, and restarts the 2D loop.
+        state.gameState = '3dMode'; // prevent 2D update from processing any keys
         stopGameLoop();
         canvas.style.display = 'none';
         launch3DGame({
@@ -1219,7 +1220,11 @@ let animFrameId = null;
 function gameLoop() {
   update();
   draw();
-  animFrameId = requestAnimationFrame(gameLoop);
+  // Only reschedule if the loop hasn't been stopped during this frame
+  // (e.g. stopGameLoop() called from update() when entering 3D mode)
+  if (animFrameId !== null) {
+    animFrameId = requestAnimationFrame(gameLoop);
+  }
 }
 
 /**
