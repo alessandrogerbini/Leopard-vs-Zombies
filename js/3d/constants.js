@@ -383,6 +383,24 @@ export const CHARGE_SHRINE_TIME = 4;
 /** Radius in world units — player must stay within this to charge */
 export const CHARGE_SHRINE_RADIUS = 3;
 
+/** Number of challenge shrines per world (BD-77). */
+export const CHALLENGE_SHRINE_COUNT = 6;
+
+/** Challenge shrine visual radius (BD-77). */
+export const CHALLENGE_SHRINE_RADIUS = 2.5;
+
+/** Boss HP multiplier (times the base wave HP) (BD-77). */
+export const BOSS_HP_MULT = 25;
+
+/** Boss damage multiplier (BD-77). */
+export const BOSS_DMG_MULT = 3;
+
+/** Boss speed multiplier (BD-77). */
+export const BOSS_SPEED_MULT = 0.6;
+
+/** Boss scale (visual size) (BD-77). */
+export const BOSS_SCALE = 3.0;
+
 /**
  * Difficulty totem effect multipliers — applied per totem destroyed.
  * Totems are a risk/reward mechanic: destroying one increases zombie difficulty
