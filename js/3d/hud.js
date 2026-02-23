@@ -55,6 +55,8 @@ import {
  * @param {THREE.Camera} deps.camera - The 3D camera used for world-to-screen projection.
  * @param {function} deps.getWeaponCooldown - Returns effective cooldown for a weapon instance.
  * @param {function} deps.getGroundAt - Returns terrain height at world (x, z).
+ * @param {boolean} [deps.audioMuted] - Whether audio is currently muted.
+ * @param {number} [deps.audioVolume] - Current audio volume (0.0 - 1.0).
  */
 export function drawHUD(ctx, s, deps) {
   const { W, H, animalData, camera, getWeaponCooldown, getGroundAt } = deps;
@@ -290,6 +292,20 @@ export function drawHUD(ctx, s, deps) {
           ctx.fillText(ip.itype.name, sx, sy);
         }
       }
+    }
+
+    // --- Volume / Mute Indicator (bottom-right) ---
+    {
+      const audioMuted = deps.audioMuted || false;
+      const audioVolume = deps.audioVolume != null ? deps.audioVolume : 0.3;
+      const vx = W - 90, vy = H - 28;
+      ctx.fillStyle = audioMuted ? 'rgba(255,68,68,0.5)' : 'rgba(255,255,255,0.35)';
+      ctx.font = 'bold 12px "Courier New"'; ctx.textAlign = 'left';
+      const volPct = Math.round(audioVolume * 100);
+      const icon = audioMuted ? 'MUTED' : `VOL ${volPct}%`;
+      ctx.fillText(icon, vx, vy);
+      ctx.fillStyle = 'rgba(255,255,255,0.2)'; ctx.font = '9px "Courier New"';
+      ctx.fillText('[M] mute', vx, vy + 12);
     }
 
     // --- Controls Hint + Charge Meter (bottom-center) ---

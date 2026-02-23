@@ -16,7 +16,7 @@
  * Dependencies: Three.js (global, loaded via CDN in index.html), 3d/constants.js (game constants),
  *               3d/terrain.js (procedural terrain generation and chunk management),
  *               3d/utils.js (shared box helper), 3d/player-model.js (player model construction and animation),
- *               3d/hud.js (HUD overlay rendering)
+ *               3d/hud.js (HUD overlay rendering), 3d/audio.js (sound pool and playback)
  * Exports: 1 — launch3DGame(options)
  *
  * Key concepts:
@@ -44,6 +44,7 @@ import {
 import { box } from './3d/utils.js';
 import { buildPlayerModel, animatePlayer, updateMuscleGrowth } from './3d/player-model.js';
 import { drawHUD } from './3d/hud.js';
+import { initAudio, playSound, toggleMute, isMuted, getVolume, disposeAudio } from './3d/audio.js';
 
 
 /**
@@ -383,6 +384,10 @@ export function launch3DGame(options) {
   const diffKey = diffData.scoreMult >= 1.5 ? 'hard' : diffData.scoreMult >= 1 ? 'normal' : diffData.scoreMult >= 0.75 ? 'easy' : 'chill';
   st.leaderboard3d = JSON.parse(localStorage.getItem(`avz3d-leaderboard-${diffKey}`) || '[]');
 
+  // === AUDIO INIT ===
+  initAudio('sound-pack-alpha/');
+  playSound('sfx_player_growl');
+
   /**
    * Save the current game score to the localStorage leaderboard.
    * Inserts the new entry, sorts by score descending, and keeps only the top 10.
@@ -487,6 +492,10 @@ export function launch3DGame(options) {
         st.pauseMenu = true;
         st.selectedPauseOption = 0;
       }
+    }
+    // M key toggles mute (available in all states)
+    if (e.code === 'KeyM') {
+      toggleMute();
     }
   }
   /**
@@ -1609,6 +1618,7 @@ export function launch3DGame(options) {
    * @see disposeEnemy
    */
   function killEnemy(e) {
+    playSound((e.tier || 1) >= 5 ? 'sfx_zombie_death_high' : 'sfx_zombie_death_low');
     const pts = Math.floor((10 + st.wave * 2) * (e.tier || 1) * st.scoreMult * (st.totemScoreMult || 1));
     st.score += pts;
     // Zombie Magnet: 2x XP gem drops
@@ -1700,6 +1710,15 @@ export function launch3DGame(options) {
     const def = WEAPON_TYPES[w.typeId];
     const range = getWeaponRange(w);
     const dmg = getWeaponDamage(w);
+
+    // Play weapon-specific sound
+    if (w.typeId === 'poisonCloud' || w.typeId === 'stinkLine') playSound('sfx_weapon_poison');
+    else if (w.typeId === 'fireball') playSound('sfx_weapon_heavy');
+    else if (w.typeId === 'lightningBolt') playSound('sfx_weapon_heavy');
+    else if (w.typeId === 'boomerang') playSound('sfx_weapon_boomerang');
+    else if (w.typeId === 'boneToss') playSound(w.level >= 3 ? 'sfx_weapon_multishot' : 'sfx_weapon_projectile');
+    else if (w.typeId === 'clawSwipe') playSound('sfx_melee_hit');
+    else playSound('sfx_weapon_projectile');
 
     if (w.typeId === 'clawSwipe') {
       // CLAW SWIPE: Melee AoE — creates 3 arc slash visuals fanning from player facing direction,
@@ -2760,6 +2779,7 @@ export function launch3DGame(options) {
           st.playerVY = st.jumpForce * st.jumpBoost;
           st.onGround = false;
           st.onPlatformY = null;
+          playSound('sfx_jump');
         }
         // Gravity
         st.playerVY -= GRAVITY_3D * dt;
@@ -3424,6 +3444,7 @@ export function launch3DGame(options) {
               disposeEnemy(a); disposeEnemy(b);
               mergedSet.add(i); mergedSet.add(j);
               newEnemies.push(createEnemy(mx, mz, baseHp, newTier));
+              playSound('sfx_zombie_merge');
               merged = true;
               break;
             } else {
@@ -3471,6 +3492,7 @@ export function launch3DGame(options) {
           if (st.items.gloves && Math.random() < 0.15) dmg *= 2;
           nearest.hp -= dmg;
           nearest.hurtTimer = 0.15;
+          playSound('sfx_melee_hit');
 
           const py = st.playerY + 0.8;
           const ey = nearest.group.position.y + 0.8;
@@ -3541,6 +3563,7 @@ export function launch3DGame(options) {
       }
       if (st.powerAttackReady) {
         st.powerAttackReady = false;
+        playSound('sfx_power_attack_release');
         const chargeMult = 1 + st.chargeTime;
         let range = st.attackRange * (1 + st.chargeTime * 0.5);
         if (st.items.boots === 'cowboyBoots') range *= 1.2;
@@ -3645,10 +3668,12 @@ export function launch3DGame(options) {
           st.xp += Math.max(1, Math.round(st.augmentXpMult * getHowlXpMult() * (st.totemXpMult || 1)));
           scene.remove(gem.mesh);
           st.xpGems.splice(i, 1);
+          playSound('sfx_xp_pickup');
           if (st.xp >= st.xpToNext) {
             st.xp -= st.xpToNext;
             st.xpToNext = Math.floor(st.xpToNext * 1.5);
             st.level++;
+            playSound('sfx_level_up');
             showUpgradeMenu();
           }
         } else if (dist > 50) {
@@ -3687,6 +3712,11 @@ export function launch3DGame(options) {
             if (st.activePowerup) st.activePowerup.def.remove(st);
             c.ptype.apply(st);
             st.activePowerup = { def: c.ptype, timer: c.ptype.duration };
+            playSound('sfx_crate_open');
+            // Play powerup-specific sound based on type
+            if (c.ptype.name && c.ptype.name.includes('Wings')) playSound('sfx_powerup_wings');
+            else if (c.ptype.name && c.ptype.name.includes('Race Car')) playSound('sfx_powerup_racecar');
+            else playSound('sfx_powerup_generic');
             scene.remove(c.group);
             c.group.traverse(ch => { if (ch.geometry) ch.geometry.dispose(); if (ch.material) ch.material.dispose(); });
             st.powerupCrates.splice(i, 1);
@@ -3744,6 +3774,7 @@ export function launch3DGame(options) {
           const rarityColor = (ITEM_RARITIES[it.rarity] || ITEM_RARITIES.common).color;
           st.floatingTexts3d.push({ text: it.name, color: rarityColor, x: item.x, y: st.playerY + 2.5, z: item.z, life: 2 });
           st.floatingTexts3d.push({ text: it.desc, color: '#ffffff', x: item.x, y: st.playerY + 2, z: item.z, life: 2 });
+          playSound('sfx_item_pickup');
           item.alive = false;
           scene.remove(item.mesh);
           item.mesh.geometry.dispose();
@@ -3782,6 +3813,7 @@ export function launch3DGame(options) {
           shrine.hp--;
           if (shrine.hp <= 0) {
             shrine.alive = false;
+            playSound('sfx_shrine_break');
             // Random augment
             const aug = SHRINE_AUGMENTS[Math.floor(Math.random() * SHRINE_AUGMENTS.length)];
             aug.apply(st);
@@ -3870,6 +3902,7 @@ export function launch3DGame(options) {
         st.enterReleasedSinceGameOver = false;
         st.nameEntryActive = true;
         st.nameEntry = '';
+        playSound('sfx_player_death');
       }
     }
 
@@ -3894,6 +3927,8 @@ export function launch3DGame(options) {
       camera,
       getWeaponCooldown,
       getGroundAt,
+      audioMuted: isMuted(),
+      audioVolume: getVolume(),
     });
   }
 
@@ -3923,6 +3958,7 @@ export function launch3DGame(options) {
     if (animId) cancelAnimationFrame(animId);
     window.removeEventListener('keydown', onKeyDown);
     window.removeEventListener('keyup', onKeyUp);
+    disposeAudio();
 
     // Dispose fire particles
     fireParticles.forEach(fp => disposeSceneObject(fp.mesh));
