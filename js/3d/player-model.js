@@ -13,7 +13,7 @@
  * The module is purely visual/geometric — it reads game state but does not mutate it.
  *
  * Dependencies: Three.js (global), 3d/utils.js (box helper)
- * Exports: buildPlayerModel, animatePlayer, updateMuscleGrowth
+ * Exports: buildPlayerModel, animatePlayer, updateMuscleGrowth, updateItemVisuals
  */
 
 import { box } from './utils.js';
@@ -536,5 +536,134 @@ export function updateMuscleGrowth(model, level) {
         feat.scale.set(fS, fS, fS);
       }
     }
+  }
+}
+
+// ============================================================================
+// ITEM VISUALS — BD-70: Display equipped items on the character model
+// ============================================================================
+
+/**
+ * Registry mapping item IDs to voxel box specifications for visual display on the player model.
+ * Each entry defines a slot (for grouping) and an array of box primitives with position/size/color.
+ * Coordinates are in model-local space (same as buildPlayerModel boxes).
+ *
+ * @type {Object.<string, {slot: string, boxes: Array.<{w: number, h: number, d: number, color: number, x: number, y: number, z: number}>}>}
+ */
+const ITEM_VISUALS = {
+  leather: { slot: 'torso', boxes: [
+    { w: 0.75, h: 0.5, d: 0.48, color: 0xb08040, x: 0, y: 0.85, z: 0.02 },
+    { w: 0.15, h: 0.2, d: 0.15, color: 0x8a6030, x: -0.35, y: 1.05, z: 0 },
+    { w: 0.15, h: 0.2, d: 0.15, color: 0x8a6030, x: 0.35, y: 1.05, z: 0 },
+  ]},
+  chainmail: { slot: 'torso', boxes: [
+    { w: 0.78, h: 0.52, d: 0.5, color: 0xaaaacc, x: 0, y: 0.85, z: 0.02 },
+    { w: 0.2, h: 0.22, d: 0.18, color: 0x888aaa, x: -0.38, y: 1.08, z: 0 },
+    { w: 0.2, h: 0.22, d: 0.18, color: 0x888aaa, x: 0.38, y: 1.08, z: 0 },
+  ]},
+  thickFur: { slot: 'torso', boxes: [
+    { w: 0.8, h: 0.55, d: 0.52, color: 0xaa8855, x: 0, y: 0.85, z: 0 },
+  ]},
+  glasses: { slot: 'face', boxes: [
+    { w: 0.12, h: 0.06, d: 0.06, color: 0x222222, x: -0.14, y: 1.56, z: 0.26 },
+    { w: 0.12, h: 0.06, d: 0.06, color: 0x222222, x: 0.14, y: 1.56, z: 0.26 },
+    { w: 0.06, h: 0.03, d: 0.03, color: 0x444444, x: 0, y: 1.57, z: 0.27 },
+  ]},
+  crown: { slot: 'head', boxes: [
+    { w: 0.08, h: 0.12, d: 0.08, color: 0xffaa00, x: -0.15, y: 1.82, z: 0 },
+    { w: 0.08, h: 0.12, d: 0.08, color: 0xffaa00, x: 0.15, y: 1.82, z: 0 },
+    { w: 0.08, h: 0.12, d: 0.08, color: 0xffaa00, x: 0, y: 1.82, z: -0.1 },
+    { w: 0.08, h: 0.12, d: 0.08, color: 0xffaa00, x: 0, y: 1.82, z: 0.1 },
+    { w: 0.08, h: 0.10, d: 0.08, color: 0xffcc00, x: -0.08, y: 1.85, z: 0.08 },
+  ]},
+  cleats: { slot: 'feet', boxes: [
+    { w: 0.2, h: 0.12, d: 0.25, color: 0x228822, x: -0.2, y: 0.06, z: 0 },
+    { w: 0.2, h: 0.12, d: 0.25, color: 0x228822, x: 0.2, y: 0.06, z: 0 },
+  ]},
+  cowboy: { slot: 'feet', boxes: [
+    { w: 0.22, h: 0.25, d: 0.22, color: 0x8B4513, x: -0.2, y: 0.12, z: 0 },
+    { w: 0.22, h: 0.25, d: 0.22, color: 0x8B4513, x: 0.2, y: 0.12, z: 0 },
+  ]},
+  turbo: { slot: 'feet', boxes: [
+    { w: 0.22, h: 0.14, d: 0.26, color: 0x22cccc, x: -0.2, y: 0.07, z: 0 },
+    { w: 0.22, h: 0.14, d: 0.26, color: 0x22cccc, x: 0.2, y: 0.07, z: 0 },
+    { w: 0.06, h: 0.08, d: 0.04, color: 0x88ffff, x: -0.32, y: 0.1, z: 0 },
+    { w: 0.06, h: 0.08, d: 0.04, color: 0x88ffff, x: 0.32, y: 0.1, z: 0 },
+  ]},
+  gloves: { slot: 'hands', boxes: [
+    { w: 0.16, h: 0.12, d: 0.14, color: 0xcc3333, x: -0.3, y: 0.62, z: 0.15 },
+    { w: 0.16, h: 0.12, d: 0.14, color: 0xcc3333, x: 0.3, y: 0.62, z: 0.15 },
+  ]},
+  bandana: { slot: 'head', boxes: [
+    { w: 0.42, h: 0.06, d: 0.42, color: 0xcc2222, x: 0, y: 1.68, z: 0 },
+  ]},
+  duck: { slot: 'belt', boxes: [
+    { w: 0.12, h: 0.12, d: 0.12, color: 0xffdd00, x: 0.35, y: 0.55, z: 0 },
+  ]},
+  magnetRing: { slot: 'hand', boxes: [
+    { w: 0.08, h: 0.04, d: 0.08, color: 0xcccccc, x: -0.32, y: 0.65, z: 0.15 },
+  ]},
+};
+
+/**
+ * Per-animal Y offsets and scale factors for item visual placement.
+ * Adjusts item positions to account for different animal head heights and body sizes.
+ *
+ * @type {Object.<string, {headY: number, torsoScale: number}>}
+ */
+const ANIMAL_OFFSETS = {
+  leopard: { headY: 0, torsoScale: 1.0 },
+  redPanda: { headY: -0.02, torsoScale: 0.93 },
+  lion: { headY: 0.05, torsoScale: 1.1 },
+  gator: { headY: 0.03, torsoScale: 1.05 },
+};
+
+/**
+ * Update the visual item meshes on the player model to reflect current equipped items.
+ *
+ * Removes all existing item meshes, then re-creates meshes for each equipped item
+ * that has a visual definition in ITEM_VISUALS. Meshes are added directly to the
+ * player model's root group so they move/rotate with the character.
+ *
+ * This function is called whenever the player picks up an item, and handles:
+ * - Boolean-slot items (glasses, crown, gloves, etc.) keyed directly by slot name
+ * - String-slot items (armor → 'leather'/'chainmail', boots → value mapped to visual key)
+ * - Stackable items (thickFur, bandana, rubberDucky) keyed by item ID
+ *
+ * @param {PlayerModel} model - The player model object returned by buildPlayerModel.
+ * @param {Object} items - The st.items object containing equipped item state.
+ * @param {string} animalId - One of 'leopard', 'redPanda', 'lion', 'gator'.
+ */
+export function updateItemVisuals(model, items, animalId) {
+  // Remove all existing item meshes
+  if (model.itemMeshes) {
+    for (const key in model.itemMeshes) {
+      for (const mesh of model.itemMeshes[key]) {
+        model.group.remove(mesh);
+        if (mesh.geometry) mesh.geometry.dispose();
+        if (mesh.material) mesh.material.dispose();
+      }
+    }
+  }
+  model.itemMeshes = {};
+
+  const offsets = ANIMAL_OFFSETS[animalId] || ANIMAL_OFFSETS.leopard;
+
+  for (const itemId in items) {
+    if (!items[itemId] || items[itemId] <= 0) continue;
+    const visual = ITEM_VISUALS[itemId];
+    if (!visual) continue;
+
+    const meshes = [];
+    for (const b of visual.boxes) {
+      const geo = new THREE.BoxGeometry(b.w, b.h, b.d);
+      const mat = new THREE.MeshLambertMaterial({ color: b.color });
+      const mesh = new THREE.Mesh(geo, mat);
+      mesh.position.set(b.x, b.y + (offsets.headY || 0), b.z);
+      mesh.castShadow = true;
+      model.group.add(mesh);
+      meshes.push(mesh);
+    }
+    model.itemMeshes[itemId] = meshes;
   }
 }

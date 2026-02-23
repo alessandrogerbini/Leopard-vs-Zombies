@@ -45,7 +45,7 @@ import {
 } from './3d/terrain.js';
 
 import { box } from './3d/utils.js';
-import { buildPlayerModel, animatePlayer, updateMuscleGrowth } from './3d/player-model.js';
+import { buildPlayerModel, animatePlayer, updateMuscleGrowth, updateItemVisuals } from './3d/player-model.js';
 import { drawHUD } from './3d/hud.js';
 import { initAudio, playSound, toggleMute, isMuted, getVolume, disposeAudio } from './3d/audio.js';
 
@@ -1319,6 +1319,7 @@ export function launch3DGame(options) {
   // === PLAYER MODEL (built via 3d/player-model.js) ===
   const playerModel = buildPlayerModel(animalId, scene);
   const playerGroup = playerModel.group;
+  playerModel.itemMeshes = {};
 
   // === FIRE AURA (for race car powerup) ===
   const fireParticles = [];
@@ -4210,6 +4211,7 @@ export function launch3DGame(options) {
           st.floatingTexts3d.push({ text: it.name, color: rarityColor, x: item.x, y: st.playerY + 2.5, z: item.z, life: 2 });
           st.floatingTexts3d.push({ text: it.desc, color: '#ffffff', x: item.x, y: st.playerY + 2, z: item.z, life: 2 });
           playSound('sfx_item_pickup');
+          updateItemVisuals(playerModel, st.items, animalData.id);
           item.alive = false;
           scene.remove(item.mesh);
           item.mesh.geometry.dispose();
