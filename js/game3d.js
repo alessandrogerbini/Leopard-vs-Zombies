@@ -348,6 +348,7 @@ export function launch3DGame(options) {
     _enterCooldown: 0,
     pauseMenu: false,
     selectedPauseOption: 0,
+    showFullMap: false,
     // Auto-attack + power attack
     autoAttackTimer: 0,
     charging: false,
@@ -613,6 +614,11 @@ export function launch3DGame(options) {
     // M key toggles mute (available in all states)
     if (e.code === 'KeyM') {
       toggleMute();
+    }
+    // TAB key toggles full map (BD-76)
+    if (e.code === 'Tab') {
+      e.preventDefault();
+      st.showFullMap = !st.showFullMap;
     }
   }
   /**

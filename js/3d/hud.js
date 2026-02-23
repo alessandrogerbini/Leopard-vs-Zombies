@@ -356,6 +356,118 @@ export function drawHUD(ctx, s, deps) {
     ctx.fillStyle = 'rgba(255,255,255,0.3)'; ctx.font = '14px "Courier New"';
     ctx.fillText('WASD: Move | SPACE: Jump | HOLD B: Power Attack | ESC: Pause', W / 2, H - 10);
 
+    // === MINIMAP (BD-76) ===
+    {
+      const mmSize = s.showFullMap ? Math.min(W * 0.6, H * 0.6) : 120;
+      const mmX = s.showFullMap ? (W - mmSize) / 2 : W - mmSize - 10;
+      const mmY = s.showFullMap ? (H - mmSize) / 2 : H - mmSize - 10;
+      const mmRange = s.showFullMap ? 200 : 60; // world units visible
+
+      // Background
+      ctx.save();
+      ctx.globalAlpha = s.showFullMap ? 0.85 : 0.7;
+      ctx.fillStyle = '#1a2a1a';
+      ctx.fillRect(mmX, mmY, mmSize, mmSize);
+      ctx.globalAlpha = 1;
+      ctx.strokeStyle = '#4a6a4a';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(mmX, mmY, mmSize, mmSize);
+
+      // Clip to minimap bounds
+      ctx.beginPath();
+      ctx.rect(mmX, mmY, mmSize, mmSize);
+      ctx.clip();
+
+      const cx = mmX + mmSize / 2;
+      const cy = mmY + mmSize / 2;
+      const scale = mmSize / (mmRange * 2);
+
+      // Draw fog of war (explored area is lighter)
+      // Simple approach: draw a gradient circle around player showing visible area
+      const fogGrad = ctx.createRadialGradient(cx, cy, 0, cx, cy, mmSize * 0.5);
+      fogGrad.addColorStop(0, 'rgba(40,70,40,0.3)');
+      fogGrad.addColorStop(0.7, 'rgba(40,70,40,0.0)');
+      fogGrad.addColorStop(1, 'rgba(0,0,0,0.5)');
+      ctx.fillStyle = fogGrad;
+      ctx.fillRect(mmX, mmY, mmSize, mmSize);
+
+      // Draw enemies as red dots
+      if (s.enemies) {
+        ctx.fillStyle = '#ff4444';
+        for (const e of s.enemies) {
+          if (!e.alive) continue;
+          const ex = cx + (e.x - s.playerX) * scale;
+          const ez = cy + (e.z - s.playerZ) * scale;
+          if (ex >= mmX && ex <= mmX + mmSize && ez >= mmY && ez <= mmY + mmSize) {
+            const dotSize = Math.max(1.5, (e.tier || 1) * 0.8);
+            ctx.beginPath();
+            ctx.arc(ex, ez, dotSize, 0, Math.PI * 2);
+            ctx.fill();
+          }
+        }
+      }
+
+      // Draw shrines as purple diamonds
+      if (s.chargeShrines) {
+        ctx.fillStyle = '#bb66ff';
+        for (const sh of s.chargeShrines) {
+          const sx = cx + (sh.x - s.playerX) * scale;
+          const sz = cy + (sh.z - s.playerZ) * scale;
+          if (sx >= mmX && sx <= mmX + mmSize && sz >= mmY && sz <= mmY + mmSize) {
+            ctx.save();
+            ctx.translate(sx, sz);
+            ctx.rotate(Math.PI / 4);
+            ctx.fillRect(-3, -3, 6, 6);
+            ctx.restore();
+          }
+        }
+      }
+
+      // Draw item pickups as yellow dots
+      if (s.itemPickups) {
+        ctx.fillStyle = '#ffdd44';
+        for (const ip of s.itemPickups) {
+          const ix = cx + (ip.x - s.playerX) * scale;
+          const iz = cy + (ip.z - s.playerZ) * scale;
+          if (ix >= mmX && ix <= mmX + mmSize && iz >= mmY && iz <= mmY + mmSize) {
+            ctx.beginPath();
+            ctx.arc(ix, iz, 2, 0, Math.PI * 2);
+            ctx.fill();
+          }
+        }
+      }
+
+      // Draw powerup crates as blue squares
+      if (s.powerupCrates) {
+        ctx.fillStyle = '#44aaff';
+        for (const pc of s.powerupCrates) {
+          const px = cx + (pc.x - s.playerX) * scale;
+          const pz = cy + (pc.z - s.playerZ) * scale;
+          if (px >= mmX && px <= mmX + mmSize && pz >= mmY && pz <= mmY + mmSize) {
+            ctx.fillRect(px - 2, pz - 2, 4, 4);
+          }
+        }
+      }
+
+      // Draw player as green triangle (pointing up = north)
+      ctx.fillStyle = '#44ff44';
+      ctx.beginPath();
+      ctx.moveTo(cx, cy - 4);
+      ctx.lineTo(cx - 3, cy + 3);
+      ctx.lineTo(cx + 3, cy + 3);
+      ctx.closePath();
+      ctx.fill();
+
+      ctx.restore();
+
+      // Label
+      ctx.fillStyle = '#aaffaa';
+      ctx.font = 'bold 10px monospace';
+      ctx.textAlign = 'right';
+      ctx.fillText(s.showFullMap ? '[TAB] Close Map' : '[TAB] Map', mmX + mmSize, mmY - 4);
+      ctx.textAlign = 'left';
+    }
+
     // Reset text shadow before charge bar
     ctx.shadowColor = 'transparent'; ctx.shadowBlur = 0; ctx.shadowOffsetX = 0; ctx.shadowOffsetY = 0;
 
