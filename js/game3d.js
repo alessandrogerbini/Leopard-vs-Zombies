@@ -264,7 +264,7 @@ export function launch3DGame(options) {
     collectRadius: 2,
     jumpForce: JUMP_FORCE,
     attackTimer: 0, // legacy, kept for crate proximity check
-    playerX: 0, playerY: terrainHeight(0, 0) + 0.55, playerZ: 0,
+    playerX: 0, playerY: terrainHeight(0, 0) + 0.01, playerZ: 0,
     playerVY: 0,
     onGround: true,
     onPlatformY: null, // Y of the platform we're standing on
@@ -347,6 +347,7 @@ export function launch3DGame(options) {
     invincible: 0,
     enterReleasedSinceGameOver: false,
     _enterCooldown: 0,
+    _menuDismissedAt: 0,
     pauseMenu: false,
     selectedPauseOption: 0,
     showFullMap: false,
@@ -513,7 +514,7 @@ export function launch3DGame(options) {
           localStorage.setItem('avz-feedback', answers[st.feedbackSelection]);
           st.feedbackSaved = true;
         }
-        if (e.code === 'Enter') {
+        if (e.code === 'Enter' && (performance.now() - st._menuDismissedAt > 500)) {
           cleanup();
           onReturn();
         }
@@ -527,6 +528,7 @@ export function launch3DGame(options) {
         st.upgradeMenu = false;
         st.paused = false;
         st._enterCooldown = 0.2; // 200ms grace period
+        st._menuDismissedAt = performance.now();
         st.enterReleasedSinceGameOver = false; // prevent accidental restart
         keys3d['Enter'] = false; // clear held key state
         e.preventDefault();
@@ -580,6 +582,11 @@ export function launch3DGame(options) {
         st.chargeShrineCurrent = null;
         st.chargeShrineProgress = 0;
         st.chargeShrineChoices = [];
+        st._menuDismissedAt = performance.now();
+        keys3d['Enter'] = false;
+        e.preventDefault();
+        e.stopPropagation();
+        return;
       }
     } else if (st.pauseMenu && !st.gameOver) {
       // Pause menu navigation
@@ -587,6 +594,7 @@ export function launch3DGame(options) {
         // Unpause via Escape
         st.paused = false;
         st.pauseMenu = false;
+        st._menuDismissedAt = performance.now();
       } else if (e.code === 'ArrowLeft' || e.code === 'KeyA') {
         st.selectedPauseOption = (st.selectedPauseOption - 1 + 3) % 3;
       } else if (e.code === 'ArrowRight' || e.code === 'KeyD') {
@@ -605,6 +613,11 @@ export function launch3DGame(options) {
           cleanup();
           onReturn();
         }
+        st._menuDismissedAt = performance.now();
+        keys3d['Enter'] = false;
+        e.preventDefault();
+        e.stopPropagation();
+        return;
       }
     } else if (!st.gameOver && !st.upgradeMenu && !st.pauseMenu && !st.chargeShrineMenu) {
       // Normal gameplay — Enter/NumpadEnter/B handled by power attack in game loop via keys3d
@@ -3316,7 +3329,7 @@ export function launch3DGame(options) {
             st.playerY += Math.sin(pitchAngle) * maneuverSpeed * dt;
 
             // Prevent going underground
-            const gManeuverGroundH = getGroundAt(st.playerX, st.playerZ) + 1.0;
+            const gManeuverGroundH = getGroundAt(st.playerX, st.playerZ) + 0.01;
             if (st.playerY < gManeuverGroundH) st.playerY = gManeuverGroundH;
           }
         } else {
@@ -3342,7 +3355,7 @@ export function launch3DGame(options) {
 
       // === GROUND + PLATFORM COLLISION ===
       // Ground collision (offset keeps model above terrain surface)
-      const GROUND_OFFSET = 1.0;
+      const GROUND_OFFSET = 0.01;
       const groundH = getGroundAt(st.playerX, st.playerZ) + GROUND_OFFSET;
       if (!st.flying && st.playerY <= groundH) {
         st.playerY = groundH;
@@ -4161,7 +4174,7 @@ export function launch3DGame(options) {
         st._enterCooldown -= dt;
       }
       const chargeKey = keys3d['Enter'] || keys3d['NumpadEnter'] || keys3d['KeyB'];
-      if (chargeKey && !st.upgradeMenu && !st.pauseMenu && !st.chargeShrineMenu && st._enterCooldown <= 0) {
+      if (chargeKey && !st.upgradeMenu && !st.pauseMenu && !st.chargeShrineMenu && st._enterCooldown <= 0 && (performance.now() - st._menuDismissedAt > 500)) {
         if (!st.charging) {
           st.charging = true;
           st.chargeTime = 0;
