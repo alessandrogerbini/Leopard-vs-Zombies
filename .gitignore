@@ -4,6 +4,7 @@
 # OS files
 .DS_Store
 Thumbs.db
+Desktop.ini
 *.swp
 *~
 
@@ -14,9 +15,22 @@ Thumbs.db
 
 # Dependencies
 node_modules/
+package-lock.json
+
+# Build artifacts
+dist/
+build/
+*.min.js.map
 
 # Logs
 *.log
+npm-debug.log*
 
 # Environment
 .env
+.env.*
+
+# Temporary files
+*.tmp
+*.bak
+*.orig
