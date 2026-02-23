@@ -1573,7 +1573,7 @@ export function launch3DGame(options) {
 
     const totalHp = baseHp * td.hpMult;
     const th = terrainHeight(x, z);
-    group.position.set(x, th + 0.85 * s, z);
+    group.position.set(x, th + 0.01, z);
     scene.add(group);
     return {
       group, body: eBody, head: eHead, armL, armR, legL, legR,
@@ -3914,7 +3914,7 @@ export function launch3DGame(options) {
               const platTop = p.y + 0.2;
               if (e.jumpVY <= 0 && e.group.position.y >= platTop - 0.5 && e.group.position.y <= platTop + 1.0) {
                 const platEScale = ZOMBIE_TIERS[(e.tier || 1) - 1].scale;
-                e.group.position.y = platTop + 0.85 * platEScale;
+                e.group.position.y = platTop + 0.01;
                 e.jumpVY = 0;
                 e.onPlatform = true;
               }
@@ -3922,7 +3922,7 @@ export function launch3DGame(options) {
           }
 
           const eScale = ZOMBIE_TIERS[(e.tier || 1) - 1].scale;
-          const groundH = getGroundAt(e.group.position.x, e.group.position.z) + 0.85 * eScale;
+          const groundH = getGroundAt(e.group.position.x, e.group.position.z) + 0.01;
           if (e.group.position.y <= groundH) {
             e.group.position.y = groundH;
             e.jumpVY = 0;
@@ -3930,7 +3930,7 @@ export function launch3DGame(options) {
           }
         } else {
           const eScale = ZOMBIE_TIERS[(e.tier || 1) - 1].scale;
-          const eh = getGroundAt(e.group.position.x, e.group.position.z) + 0.85 * eScale;
+          const eh = getGroundAt(e.group.position.x, e.group.position.z) + 0.01;
           e.group.position.y = eh;
         }
         // Walking animation: arm swing + leg shuffle

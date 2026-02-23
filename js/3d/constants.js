@@ -436,16 +436,16 @@ export const TOTEM_EFFECT = {
  * @constant {Array.<{scale: number, hpMult: number, dmgMult: number, speed: number, body: number, head: number, eye: number, name: string}>}
  */
 export const ZOMBIE_TIERS = [
-  { scale: 1.0,  hpMult: 1,   dmgMult: 1,   speed: 1.8,  body: 0x4a6a4a, head: 0x5a7a5a, eye: 0xff0000, name: 'Shambler' },
-  { scale: 1.15, hpMult: 2.2, dmgMult: 1.5, speed: 1.7, body: 0x3a6a3a, head: 0x4a8a4a, eye: 0xff2200, name: 'Lurcher' },
-  { scale: 1.3,  hpMult: 3.5, dmgMult: 2,   speed: 1.6, body: 0x3a5a2a, head: 0x4a6a3a, eye: 0xff4400, name: 'Bruiser' },
-  { scale: 1.5,  hpMult: 5,   dmgMult: 2.8, speed: 1.5, body: 0x4a4a2a, head: 0x5a5a3a, eye: 0xff6600, name: 'Brute' },
-  { scale: 1.7,  hpMult: 7,   dmgMult: 3.5, speed: 1.4, body: 0x5a3a2a, head: 0x6a4a3a, eye: 0xff8800, name: 'Ravager' },
-  { scale: 1.9,  hpMult: 10,  dmgMult: 4.5, speed: 1.35, body: 0x6a2a1a, head: 0x7a3a2a, eye: 0xffaa00, name: 'Horror' },
-  { scale: 2.15, hpMult: 14,  dmgMult: 5.5, speed: 1.3, body: 0x7a1a1a, head: 0x8a2a2a, eye: 0xffcc00, name: 'Abomination' },
-  { scale: 2.4,  hpMult: 19,  dmgMult: 7,   speed: 1.25, body: 0x8a1010, head: 0x9a2020, eye: 0xffdd00, name: 'Nightmare' },
-  { scale: 2.7,  hpMult: 25,  dmgMult: 9,   speed: 1.2, body: 0x990808, head: 0xaa1818, eye: 0xffee44, name: 'Titan' },
-  { scale: 3.0,  hpMult: 35,  dmgMult: 12,  speed: 1.15, body: 0xaa0000, head: 0xbb1111, eye: 0xffff66, name: 'Overlord' },
+  { scale: 1.0,  hpMult: 1,   dmgMult: 1,   speed: 1.8, body: 0x4a6a4a, head: 0x5a7a5a, eye: 0xff0000, name: 'Shambler' },
+  { scale: 1.15, hpMult: 2.2, dmgMult: 1.5, speed: 1.8, body: 0x3a6a3a, head: 0x4a8a4a, eye: 0xff2200, name: 'Lurcher' },
+  { scale: 1.3,  hpMult: 3.5, dmgMult: 2,   speed: 1.8, body: 0x3a5a2a, head: 0x4a6a3a, eye: 0xff4400, name: 'Bruiser' },
+  { scale: 1.5,  hpMult: 5,   dmgMult: 2.8, speed: 1.8, body: 0x4a4a2a, head: 0x5a5a3a, eye: 0xff6600, name: 'Brute' },
+  { scale: 1.7,  hpMult: 7,   dmgMult: 3.5, speed: 1.8, body: 0x5a3a2a, head: 0x6a4a3a, eye: 0xff8800, name: 'Ravager' },
+  { scale: 1.9,  hpMult: 10,  dmgMult: 4.5, speed: 1.8, body: 0x6a2a1a, head: 0x7a3a2a, eye: 0xffaa00, name: 'Horror' },
+  { scale: 2.15, hpMult: 14,  dmgMult: 5.5, speed: 1.8, body: 0x7a1a1a, head: 0x8a2a2a, eye: 0xffcc00, name: 'Abomination' },
+  { scale: 2.4,  hpMult: 19,  dmgMult: 7,   speed: 1.8, body: 0x8a1010, head: 0x9a2020, eye: 0xffdd00, name: 'Nightmare' },
+  { scale: 2.7,  hpMult: 25,  dmgMult: 9,   speed: 1.8, body: 0x990808, head: 0xaa1818, eye: 0xffee44, name: 'Titan' },
+  { scale: 3.0,  hpMult: 35,  dmgMult: 12,  speed: 1.8, body: 0xaa0000, head: 0xbb1111, eye: 0xffff66, name: 'Overlord' },
 ];
 
 /**
