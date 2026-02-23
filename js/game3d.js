@@ -1342,36 +1342,37 @@ export function launch3DGame(options) {
   updateChunks(0, 0);
   updatePlatformChunks(0, 0);
 
-  // Pre-generate finite shrines across the map
+  // Pre-generate finite shrines across the map (BD-100: use MAP_HALF for full map coverage)
+  const SPAWN_HALF_RANGE = MAP_HALF - 10; // 118 — keeps all spawns inside the 256x256 playable area
   for (let i = 0; i < SHRINE_COUNT; i++) {
-    const sx = (Math.random() - 0.5) * (ARENA_SIZE * 2 - 20);
-    const sz = (Math.random() - 0.5) * (ARENA_SIZE * 2 - 20);
+    const sx = (Math.random() - 0.5) * (SPAWN_HALF_RANGE * 2);
+    const sz = (Math.random() - 0.5) * (SPAWN_HALF_RANGE * 2);
     const shrine = createShrineMesh(sx, sz);
     st.shrines.push(shrine);
   }
 
-  // Pre-generate difficulty totems
-  const TOTEM_COUNT = 16;
+  // Pre-generate difficulty totems (BD-100: increased from 16 to 24)
+  const TOTEM_COUNT = 24;
   for (let ti = 0; ti < TOTEM_COUNT; ti++) {
-    const tx = (Math.random() - 0.5) * (ARENA_SIZE * 2 - 30);
-    const tz = (Math.random() - 0.5) * (ARENA_SIZE * 2 - 30);
+    const tx = (Math.random() - 0.5) * (SPAWN_HALF_RANGE * 2);
+    const tz = (Math.random() - 0.5) * (SPAWN_HALF_RANGE * 2);
     const totem = createTotemMesh(tx, tz);
     st.totems.push(totem);
   }
 
   // Pre-generate charge shrines across the map
   for (let i = 0; i < CHARGE_SHRINE_COUNT; i++) {
-    const csx = (Math.random() - 0.5) * (ARENA_SIZE * 2 - 20);
-    const csz = (Math.random() - 0.5) * (ARENA_SIZE * 2 - 20);
+    const csx = (Math.random() - 0.5) * (SPAWN_HALF_RANGE * 2);
+    const csz = (Math.random() - 0.5) * (SPAWN_HALF_RANGE * 2);
     const rarity = rollChargeShrineRarity();
     const cs = createChargeShrineMesh(csx, csz, rarity);
     st.chargeShrines.push(cs);
   }
 
-  // === GENERATE CHALLENGE SHRINES (BD-77) ===
+  // === GENERATE CHALLENGE SHRINES (BD-77, BD-100: capped distance to stay inside map) ===
   for (let i = 0; i < CHALLENGE_SHRINE_COUNT; i++) {
     const angle = Math.random() * Math.PI * 2;
-    const dist = 40 + Math.random() * 120;
+    const dist = 40 + Math.random() * (SPAWN_HALF_RANGE - 40);
     const cx = Math.cos(angle) * dist;
     const cz = Math.sin(angle) * dist;
 
@@ -2139,7 +2140,7 @@ export function launch3DGame(options) {
     }
     // Loot drop roll — higher tier zombies drop more often
     // Lucky Charm: +50% chance to drop, Lucky Penny: +8% per stack
-    let dropChance = [0.03, 0.06, 0.10, 0.15, 0.15, 0.20, 0.20, 0.30, 0.30, 0.50][(e.tier || 1) - 1];
+    let dropChance = [0.05, 0.10, 0.15, 0.25, 0.25, 0.30, 0.30, 0.40, 0.40, 0.60][(e.tier || 1) - 1];
     if (st.items.charm) dropChance *= 1.5;
     if (st.items.luckyPenny > 0) dropChance *= (1 + st.items.luckyPenny * 0.08);
     if (Math.random() < dropChance) {
@@ -2150,10 +2151,14 @@ export function launch3DGame(options) {
       if (roll < itemChance) {
         // Item drop — rarer, scales with tier (BD-75)
         const pickup = createItemPickup(dropX, dropZ);
-        if (pickup) st.itemPickups.push(pickup);
+        if (pickup) {
+          st.itemPickups.push(pickup);
+          st.floatingTexts3d.push({ text: pickup.itype.name, color: '#ffd700', x: dropX, y: terrainHeight(dropX, dropZ) + 2, z: dropZ, life: 1.5 });
+        }
       } else if (roll < 0.55) {
         // Powerup crate (adjusted down from 0.6)
         st.powerupCrates.push(createPowerupCrate(dropX, dropZ));
+        st.floatingTexts3d.push({ text: 'POWERUP!', color: '#4488ff', x: dropX, y: terrainHeight(dropX, dropZ) + 2, z: dropZ, life: 1.5 });
       } else if (roll < 0.80) {
         // Health orb — heal 15% max HP
         st.hp = Math.min(st.hp + st.maxHp * 0.15, st.maxHp);
@@ -2163,6 +2168,7 @@ export function launch3DGame(options) {
         for (let g = 0; g < 3; g++) {
           st.xpGems.push(createXpGem(dropX + (Math.random() - 0.5) * 2, dropZ + (Math.random() - 0.5) * 2));
         }
+        st.floatingTexts3d.push({ text: '+XP', color: '#aa88ff', x: dropX, y: terrainHeight(dropX, dropZ) + 2, z: dropZ, life: 1.5 });
       }
     }
     disposeEnemy(e);
