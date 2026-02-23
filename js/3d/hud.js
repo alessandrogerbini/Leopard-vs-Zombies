@@ -132,17 +132,17 @@ export function drawHUD(ctx, s, deps) {
     ctx.fillStyle = '#ffffff'; ctx.font = 'bold 16px "Courier New"';
     ctx.fillText(timeStr, W - 20, 75);
 
-    // --- Wave Warning Countdown (center overlay) ---
+    // --- Wave Warning Countdown (top-center, below HP/XP bars) ---
     if (s.waveWarning > 0) {
-      ctx.fillStyle = 'rgba(255, 0, 0, 0.15)';
+      ctx.fillStyle = 'rgba(255, 0, 0, 0.06)';
       ctx.fillRect(0, 0, W, H);
       ctx.textAlign = 'center';
       ctx.fillStyle = '#ff2222';
-      ctx.font = 'bold 36px "Courier New"';
-      ctx.fillText(`WAVE ${s.wave + 1} INCOMING`, W / 2, H / 2 - 40);
+      ctx.font = 'bold 28px "Courier New"';
+      ctx.fillText(`WAVE ${s.wave + 1} INCOMING`, W / 2, 90);
       ctx.fillStyle = '#ffcc00';
-      ctx.font = 'bold 48px "Courier New"';
-      ctx.fillText(Math.ceil(s.waveWarning).toString(), W / 2, H / 2 + 20);
+      ctx.font = 'bold 36px "Courier New"';
+      ctx.fillText(Math.ceil(s.waveWarning).toString(), W / 2, 125);
       ctx.textAlign = 'left';
     }
 
