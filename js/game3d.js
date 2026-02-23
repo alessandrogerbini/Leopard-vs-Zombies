@@ -217,6 +217,8 @@ import { drawHUD } from './3d/hud.js';
  * @param {Object} options.difficulty - Difficulty multipliers from the difficulty select screen.
  * @param {number} options.difficulty.hpMult - HP scaling multiplier.
  * @param {number} options.difficulty.scoreMult - Score scaling multiplier.
+ * @param {number} options.difficulty.enemySpeedMult - Enemy speed multiplier (default 1.0).
+ * @param {number} options.difficulty.powerupFreqMult - Powerup spawn frequency multiplier (default 1.0).
  */
 export function launch3DGame(options) {
   const onReturn = options.onReturn;
@@ -261,6 +263,8 @@ export function launch3DGame(options) {
     onPlatformY: null, // Y of the platform we're standing on
     moveDir: { x: 0, z: 0 },
     scoreMult: diffData.scoreMult,
+    enemySpeedMult: diffData.enemySpeedMult || 1.0,
+    powerupFreqMult: diffData.powerupFreqMult || 1.0,
     zombieDmgMult: diffData.hpMult >= 1.0 ? 2 : diffData.hpMult >= 0.5 ? 3 : 4,
     score: 0,
     wave: 1,
@@ -268,7 +272,7 @@ export function launch3DGame(options) {
     waveEventTimer: 240,  // 4 minutes until first wave event
     waveWarning: 0,       // countdown seconds (0 = no warning)
     waveActive: false,
-    ambientCrateTimer: 30,
+    ambientCrateTimer: 30 / (diffData.powerupFreqMult || 1.0),
     gameTime: 0,          // total elapsed game time in seconds
     xp: 0, xpToNext: 10, level: 1,
     enemies: [],
@@ -362,7 +366,7 @@ export function launch3DGame(options) {
   };
 
   // Load 3D leaderboard
-  const diffKey = diffData.scoreMult >= 1.5 ? 'hard' : diffData.scoreMult >= 1 ? 'normal' : 'easy';
+  const diffKey = diffData.scoreMult >= 1.5 ? 'hard' : diffData.scoreMult >= 1 ? 'normal' : diffData.scoreMult >= 0.75 ? 'easy' : 'chill';
   st.leaderboard3d = JSON.parse(localStorage.getItem(`avz3d-leaderboard-${diffKey}`) || '[]');
 
   /**
@@ -2574,7 +2578,7 @@ export function launch3DGame(options) {
       // === AMBIENT CRATE SPAWN (every 30s) ===
       st.ambientCrateTimer -= dt;
       if (st.ambientCrateTimer <= 0) {
-        st.ambientCrateTimer = 30;
+        st.ambientCrateTimer = 30 / st.powerupFreqMult;
         const ca = Math.random() * Math.PI * 2;
         const cx = st.playerX + Math.cos(ca) * 15;
         const cz = st.playerZ + Math.sin(ca) * 15;
@@ -2618,7 +2622,7 @@ export function launch3DGame(options) {
         if (dist > 0.01) {
           const nx = dx / dist;
           const nz = dz / dist;
-          const eSpd = e.speed * st.totemSpeedMult;
+          const eSpd = e.speed * st.totemSpeedMult * st.enemySpeedMult;
           e.group.position.x += nx * eSpd * dt;
           e.group.position.z += nz * eSpd * dt;
           // Clamp enemies to map boundaries

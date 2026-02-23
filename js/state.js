@@ -126,18 +126,20 @@ export const DRAW_SCALE = 1.62;
 export const keys = {};
 
 /**
- * Difficulty presets that scale player HP and score rewards. Harder difficulties
- * reduce starting HP but reward higher score multipliers.
+ * Difficulty presets that scale player HP, score rewards, enemy speed, and powerup frequency.
+ * Harder difficulties reduce starting HP but reward higher score multipliers.
  *
- * @type {Object<string, {label: string, color: string, hpMult: number, scoreMult: number, desc: string}>}
+ * @type {Object<string, {label: string, color: string, hpMult: number, scoreMult: number, enemySpeedMult: number, powerupFreqMult: number, desc: string}>}
+ * @property {Object} chill - 150% HP (1.5x), 0.5x score, 0.7x enemy speed, 1.5x powerups. Relaxed play.
  * @property {Object} easy - Full HP (1.0x), 1x score. Beginner-friendly.
  * @property {Object} medium - 55% HP (0.55x), 1.75x score. Intermediate challenge.
  * @property {Object} hard - 35% HP (0.35x), 2.5x score. For expert players.
  */
 export const DIFFICULTY_SETTINGS = {
-  easy:   { label: 'EASY',   color: '#44ff44', hpMult: 1.0,  scoreMult: 1,   desc: 'Full HP - Great for learning!' },
-  medium: { label: 'MEDIUM', color: '#ffaa00', hpMult: 0.55, scoreMult: 1.75, desc: '55% HP - A real challenge!' },
-  hard:   { label: 'HARD',   color: '#ff4444', hpMult: 0.35, scoreMult: 2.5,  desc: '35% HP - For hardcore players!' },
+  chill:  { label: 'CHILL',  color: '#88ccff', hpMult: 1.5,  scoreMult: 0.5,  enemySpeedMult: 0.7, powerupFreqMult: 1.5, desc: 'Relax and have fun!' },
+  easy:   { label: 'EASY',   color: '#44ff44', hpMult: 1.0,  scoreMult: 1,    enemySpeedMult: 1.0, powerupFreqMult: 1.0, desc: 'Full HP - Great for learning!' },
+  medium: { label: 'MEDIUM', color: '#ffaa00', hpMult: 0.55, scoreMult: 1.75, enemySpeedMult: 1.0, powerupFreqMult: 1.0, desc: '55% HP - A real challenge!' },
+  hard:   { label: 'HARD',   color: '#ff4444', hpMult: 0.35, scoreMult: 2.5,  enemySpeedMult: 1.0, powerupFreqMult: 1.0, desc: '35% HP - For hardcore players!' },
 };
 
 /**
