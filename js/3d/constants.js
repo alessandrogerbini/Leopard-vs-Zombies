@@ -86,6 +86,26 @@ export const WEAPON_TYPES = {
     desc: 'Piercing, returns', baseDamage: 8, baseCooldown: 1.8, baseRange: 10, maxLevel: 5,
     levelDescs: ['+20% Damage', '+1 Boomerang', '+25% Speed', '-15% Cooldown', 'Double Damage'],
   },
+  mudBomb: {
+    id: 'mudBomb', name: 'MUD BOMB', type: 'projectile_aoe', color: '#8B6914',
+    desc: 'Arcing glob, slows on impact', baseDamage: 18, baseCooldown: 2.8, baseRange: 9, maxLevel: 5,
+    levelDescs: ['+25% Damage', '+30% Slow Area', '+25% Damage', '-20% Cooldown', '+50% AoE & Slow Duration'],
+  },
+  beehiveLauncher: {
+    id: 'beehiveLauncher', name: 'BEEHIVE LAUNCHER', type: 'summon', color: '#DAA520',
+    desc: 'Releases bees that chase enemies', baseDamage: 6, baseCooldown: 4.0, baseRange: 10, maxLevel: 5,
+    levelDescs: ['+1 Bee', '+30% Bee Duration', '+2 Bees', '-20% Cooldown', 'Bees Explode on Expire'],
+  },
+  snowballTurret: {
+    id: 'snowballTurret', name: 'SNOWBALL TURRET', type: 'orbit', color: '#88ccff',
+    desc: 'Orbiting turret fires snowballs', baseDamage: 7, baseCooldown: 3.5, baseRange: 8, maxLevel: 5,
+    levelDescs: ['+1 Turret', '+25% Fire Rate', '+30% Damage', '-20% Cooldown', '+1 Turret & Freeze Chance'],
+  },
+  stinkLine: {
+    id: 'stinkLine', name: 'STINK LINE', type: 'trail', color: '#44cc44',
+    desc: 'Leaves damaging trail behind you', baseDamage: 4, baseCooldown: 0.15, baseRange: 0, maxLevel: 5,
+    levelDescs: ['+30% Damage', '+25% Trail Duration', '+30% Damage', '+50% Trail Width', 'Poison DoT on Trail Hit'],
+  },
 };
 
 /**
