@@ -1234,7 +1234,7 @@ export function launch3DGame(options) {
 
     const totalHp = baseHp * td.hpMult;
     const th = terrainHeight(x, z);
-    group.position.set(x, th + 0.35 * s, z);
+    group.position.set(x, th + 0.85 * s, z);
     scene.add(group);
     return {
       group, body: eBody, head: eHead, armL, armR, legL, legR,
@@ -2846,7 +2846,7 @@ export function launch3DGame(options) {
 
       // === GROUND + PLATFORM COLLISION ===
       // Ground collision (offset keeps model above terrain surface)
-      const GROUND_OFFSET = 0.75;
+      const GROUND_OFFSET = 1.0;
       const groundH = getGroundAt(st.playerX, st.playerZ) + GROUND_OFFSET;
       if (!st.flying && st.playerY <= groundH) {
         st.playerY = groundH;
@@ -3396,21 +3396,24 @@ export function launch3DGame(options) {
                 e.group.position.z > p.z - halfD && e.group.position.z < p.z + halfD) {
               const platTop = p.y + 0.2;
               if (e.jumpVY <= 0 && e.group.position.y >= platTop - 0.5 && e.group.position.y <= platTop + 1.0) {
-                e.group.position.y = platTop + 0.65;
+                const platEScale = ZOMBIE_TIERS[(e.tier || 1) - 1].scale;
+                e.group.position.y = platTop + 0.85 * platEScale;
                 e.jumpVY = 0;
                 e.onPlatform = true;
               }
             }
           }
 
-          const groundH = getGroundAt(e.group.position.x, e.group.position.z) + 0.65;
+          const eScale = ZOMBIE_TIERS[(e.tier || 1) - 1].scale;
+          const groundH = getGroundAt(e.group.position.x, e.group.position.z) + 0.85 * eScale;
           if (e.group.position.y <= groundH) {
             e.group.position.y = groundH;
             e.jumpVY = 0;
             e.onPlatform = false;
           }
         } else {
-          const eh = getGroundAt(e.group.position.x, e.group.position.z) + 0.65;
+          const eScale = ZOMBIE_TIERS[(e.tier || 1) - 1].scale;
+          const eh = getGroundAt(e.group.position.x, e.group.position.z) + 0.85 * eScale;
           e.group.position.y = eh;
         }
         // Walking animation: arm swing + leg shuffle

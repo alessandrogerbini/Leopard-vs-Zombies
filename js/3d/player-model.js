@@ -448,15 +448,43 @@ export function animatePlayer(model, st, clock, len, mx, mz) {
 }
 
 /**
- * Update muscle growth visual scaling based on player level.
- * Scales all named muscle meshes uniformly. Growth rate is 0.08 per level.
+ * Update muscle growth visual scaling based on player level using tiered non-uniform growth.
+ *
+ * Three growth tiers with different rates and caps:
+ * - **Limbs** (arms + legs arrays): secondary growth, proportional scaling.
+ *   Rate: +0.03/level, cap: 1.5x. Applied first.
+ * - **Muscles** (chest, shoulders, biceps, thighs): primary growth, emphasizes width
+ *   over height (X/Z scale at full rate, Y at 75%). Rate: +0.05/level, cap: 1.8x.
+ *   Applied second to override shared bicep/thigh meshes with the larger muscle scale.
+ * - **Tail**: minimal cosmetic growth. Rate: +0.015/level, cap: 1.3x.
  *
  * @param {PlayerModel} model - The player model object returned by buildPlayerModel.
  * @param {number} level - Current player level (1-based).
  */
 export function updateMuscleGrowth(model, level) {
-  const muscleScale = 1 + (level - 1) * 0.08;
+  const limbGrowth = Math.min(1.5, 1 + (level - 1) * 0.03);
+  const muscleGrowth = Math.min(1.8, 1 + (level - 1) * 0.05);
+
+  // Limbs first (arms + legs arrays — includes some muscle parts like biceps/thighs)
+  if (model.arms) {
+    for (const arm of model.arms) {
+      if (arm) arm.scale.set(limbGrowth, limbGrowth, limbGrowth);
+    }
+  }
+  if (model.legs) {
+    for (const leg of model.legs) {
+      if (leg) leg.scale.set(limbGrowth, limbGrowth, limbGrowth);
+    }
+  }
+  // Muscles override shared parts (biceps, thighs) with bigger, non-uniform growth
   for (const key in model.muscles) {
-    if (model.muscles[key]) model.muscles[key].scale.set(muscleScale, muscleScale, muscleScale);
+    if (model.muscles[key]) {
+      model.muscles[key].scale.set(muscleGrowth, muscleGrowth * 0.75, muscleGrowth);
+    }
+  }
+  // Tail: minimal cosmetic growth
+  if (model.tail) {
+    const tailGrowth = Math.min(1.3, 1 + (level - 1) * 0.015);
+    model.tail.scale.set(tailGrowth, tailGrowth, tailGrowth);
   }
 }
