@@ -49,6 +49,15 @@ Focus: HUD readability, kid-friendliness, art asset needs for agentic art genera
 | BD-76 | Add HUD minimap with fog of war + full map on M key | UX / Gameplay | P1-High | Large | -- |
 | BD-77 | Add challenge shrines that spawn scaled mini-boss zombies with guaranteed loot | Gameplay / Content | P1-High | Large | -- |
 | BD-78 | Improve tree models with rounded canopy (multi-box foliage) | Visual / Polish | P2-Medium | Small | -- |
+| BD-79 | Player model hovers above the ground (Y offset too high) | Bug Fix | P1-High | Small | -- |
+| BD-80 | Enter key STILL resets the round (upgrade menu / charge shrine / gameplay) | Bug Fix | P0-Critical | Small | BD-74 |
+| BD-81 | Zombies hover above the ground (same Y offset issue as player, BD-79) | Bug Fix | P1-High | Small | BD-79 |
+| BD-82 | Double the number of "not hard enough" difficulty totems | Balance | P1-High | Small | -- |
+| BD-83 | High-tier zombies should NOT be slower — uniform speed across all tiers | Balance | P1-High | Small | -- |
+| BD-84 | Final 2 zombie tiers (Titan + Overlord) need telegraphed ranged special attacks | Gameplay / Content | P1-High | Large | -- |
+| BD-85 | Plateaus (raised rock terrain) have no collision — player walks through them | Bug Fix | P1-High | Medium | BD-69 |
+| BD-86 | Enter key STILL resets game — 3rd attempt, needs deep root cause investigation | Bug Fix | P0-Critical | Medium | BD-74, BD-80 |
+| BD-87 | Enter key STILL restarting session (4th attempt) — 2D loop runs during 3D mode | Bug Fix | P0-Critical | Small | BD-86 |
 
 ---
 
@@ -2289,3 +2298,64 @@ Once BD-42 through BD-47 specs are written, they serve as prompts for agentic ar
 - **Machine-actionable**: exact sizes, formats, color codes, naming conventions
 - **Batch-friendly**: each spec covers one category, all icons in a category share style constraints
 - **Integration-ready**: output filenames match the `assets/icons/{category}/{id}.png` convention from BD-41
+
+---
+
+## BD-79 — Player model hovers above the ground (Y offset too high)
+
+**Category:** Bug Fix
+**Priority:** P1-High
+**Scope:** Small
+**Dependencies:** --
+
+### Problem
+The player character model visually floats a few pixels above the flat terrain surface. This is noticeable during normal gameplay and breaks immersion.
+
+### Root Cause
+In `js/game3d.js` line 267, the player Y position is initialized as `terrainHeight(0,0) + 0.55`. Since BD-73 flattened terrain to Y=0, this puts the model at Y=0.55 — higher than needed. The `GROUND_Y` constant and the grounding logic in the game loop also use offsets that were calibrated for the old uneven terrain.
+
+### Files
+- `js/game3d.js` — playerY init offset, ground clamping logic
+
+### Proposed Fix
+- Reduce the `+ 0.55` offset in playerY init to `+ 0.01` or use `GROUND_Y` directly
+- Check the ground clamping in the game loop (where `st.playerY` is set when `onGround`) and reduce the offset there too
+- Verify `GROUND_Y` in constants.js is appropriate for flat terrain (should be ~0)
+
+### Acceptance Criteria
+- Player model feet touch the ground plane visually
+- No clipping through the ground
+- Jumping and landing still work correctly
+
+---
+
+## BD-80 — Enter key STILL resets the round (upgrade menu / charge shrine / gameplay)
+
+**Category:** Bug Fix
+**Priority:** P0-Critical
+**Scope:** Small
+**Dependencies:** BD-74 (previous Enter key fix attempt)
+
+### Problem
+Despite BD-74's cooldown fix, pressing Enter during normal gameplay, upgrade menus, or charge shrine menus still triggers a game restart or unwanted level reset. The Enter key is overloaded: it's used for power attack charge, upgrade selection, charge shrine confirmation, and game-over restart. The current cooldown system (200ms) is insufficient — the key propagates to the game-over/restart handler.
+
+### Root Cause
+Multiple issues:
+1. The `onKeyDown` handler at line 491 checks `st.gameOver && !st.upgradeMenu && st.enterReleasedSinceGameOver` for restart, but during normal gameplay the Enter key triggers power attack charge (line 4164) which can cascade
+2. The upgrade menu Enter handler (line 529) sets `st.enterReleasedSinceGameOver = false` and `_enterCooldown = 0.2`, but this is only 200ms — if the player is still holding Enter through the level-up animation, the cooldown expires and the next keydown fires restart logic
+3. The charge shrine menu may have a similar propagation issue
+
+### Files
+- `js/game3d.js` — onKeyDown handler, upgrade menu Enter handling, game loop Enter/charge logic
+
+### Proposed Fix
+- Add explicit `return` / `e.stopPropagation()` guards so Enter in upgrade/charge shrine menus NEVER falls through to other handlers
+- Increase the cooldown or use a state flag (`_enterConsumed`) that requires a full key release cycle before Enter does anything else
+- Gate the game-over restart on `st.gameOver` being true AND no menu being recently closed (e.g., a 500ms+ cooldown after any menu dismiss)
+
+### Acceptance Criteria
+- Pressing Enter to confirm an upgrade choice does NOT restart the game
+- Pressing Enter to confirm a charge shrine upgrade does NOT restart the game
+- Pressing Enter during normal gameplay (power attack) does NOT restart the game
+- Enter on game-over screen still works to restart (after releasing and re-pressing)
+- The fix works even if Enter is held down continuously

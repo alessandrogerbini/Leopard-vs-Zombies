@@ -248,6 +248,12 @@ function initLevel(level) {
  * 16. Particle and floating text decay, screen shake/flash cooldown
  */
 function update() {
+  // ── Guard: do absolutely nothing while 3D mode is active ─────────
+  // The 2D game loop may still be running (RAF race condition) when 3D
+  // mode launches. This guard prevents ANY 2D state transitions or key
+  // processing until the 3D mode returns and resets gameState.
+  if (state.gameState === '3dMode') return;
+
   // ── Section 1: Pause Toggle ──────────────────────────────────────
   if (keys['Escape'] && !state._escHeld) {
     state._escHeld = true;
@@ -1153,6 +1159,7 @@ function update() {
  * Screen shake is applied via ctx.translate before the gameplay layers.
  */
 function draw() {
+  if (state.gameState === '3dMode') return;
   const ctx = getCtx();
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
