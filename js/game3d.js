@@ -1327,6 +1327,10 @@ export function launch3DGame(options) {
     else if (w.typeId === 'lightningBolt') dmg *= 1 + (w.level - 1) * 0.18;
     else if (w.typeId === 'fireball') dmg *= 1 + (w.level - 1) * 0.22;
     else if (w.typeId === 'boomerang') dmg *= 1 + (w.level - 1) * 0.2;
+    else if (w.typeId === 'mudBomb') dmg *= 1 + (w.level - 1) * 0.22;
+    else if (w.typeId === 'beehiveLauncher') dmg *= 1 + (w.level - 1) * 0.2;
+    else if (w.typeId === 'snowballTurret') dmg *= 1 + (w.level - 1) * 0.25;
+    else if (w.typeId === 'stinkLine') dmg *= 1 + (w.level - 1) * 0.25;
     return dmg * getScrollDmgMult() * st.augmentDmgMult;
   }
 
@@ -1682,6 +1686,107 @@ export function launch3DGame(options) {
           startX: st.playerX, startZ: st.playerZ, elapsed: 0,
         });
       }
+    } else if (w.typeId === 'mudBomb') {
+      // MUD BOMB: Arcing projectile that explodes on impact and leaves a slow zone.
+      // Similar to fireball but with Y-velocity arc and ground slow patch.
+      const target = findNearestEnemy(range);
+      if (target) {
+        const dx = target.group.position.x - st.playerX;
+        const dz = target.group.position.z - st.playerZ;
+        const d = Math.sqrt(dx * dx + dz * dz) || 1;
+        const mbGroup = new THREE.Group();
+        const mudMat = new THREE.MeshLambertMaterial({ color: 0x8B6914 });
+        mbGroup.add(new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.3, 0.3), mudMat));
+        const splatMat = new THREE.MeshBasicMaterial({ color: 0x6B4914, transparent: true, opacity: 0.5 });
+        mbGroup.add(new THREE.Mesh(new THREE.BoxGeometry(0.45, 0.45, 0.45), splatMat));
+        mbGroup.position.set(st.playerX, st.playerY + 0.8, st.playerZ);
+        scene.add(mbGroup);
+        const slowRadius = 2.5 * (1 + (w.level >= 2 ? 0.3 : 0)) * (w.level >= 5 ? 1.5 : 1);
+        const slowDuration = 3 * (w.level >= 5 ? 1.5 : 1);
+        const speed = 8;
+        const arcVY = d * 0.4 + 3;
+        st.weaponProjectiles.push({
+          mesh: mbGroup, vx: (dx / d) * speed, vz: (dz / d) * speed, vy: arcVY,
+          dmg, life: 3, pierce: false, type: 'mudBomb',
+          slowRadius, slowDuration
+        });
+      }
+    } else if (w.typeId === 'beehiveLauncher') {
+      // BEEHIVE LAUNCHER: Fires a beehive projectile toward nearest enemy.
+      // On reaching target, spawns independent bee summons that chase enemies.
+      const target = findNearestEnemy(range);
+      if (target) {
+        const dx = target.group.position.x - st.playerX;
+        const dz = target.group.position.z - st.playerZ;
+        const d = Math.sqrt(dx * dx + dz * dz) || 1;
+        const hiveGroup = new THREE.Group();
+        const hiveMat = new THREE.MeshLambertMaterial({ color: 0xDAA520 });
+        hiveGroup.add(new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.35, 0.35), hiveMat));
+        const stripeMat = new THREE.MeshLambertMaterial({ color: 0x8B6508 });
+        const stripe = new THREE.Mesh(new THREE.BoxGeometry(0.38, 0.08, 0.38), stripeMat);
+        stripe.position.y = 0.05;
+        hiveGroup.add(stripe);
+        hiveGroup.position.set(st.playerX, st.playerY + 0.8, st.playerZ);
+        scene.add(hiveGroup);
+        let beeCount = 3;
+        if (w.level >= 1) beeCount += 0; // base 3
+        if (w.level >= 2) beeCount += 1;
+        if (w.level >= 4) beeCount += 2;
+        const beeDuration = 4 * (1 + (w.level >= 3 ? 0.3 : 0));
+        st.weaponProjectiles.push({
+          mesh: hiveGroup, vx: (dx / d) * 10, vz: (dz / d) * 10,
+          dmg, life: 2, pierce: false, type: 'beehive',
+          beeCount, beeDuration, weaponLevel: w.level
+        });
+      }
+    } else if (w.typeId === 'snowballTurret') {
+      // SNOWBALL TURRET: Spawns an orbiting turret around the player.
+      // Count existing active turrets to check if we need a new one.
+      let activeTurrets = 0;
+      for (const eff of st.weaponEffects) {
+        if (eff.type === 'snowballTurret') activeTurrets++;
+      }
+      let maxTurrets = 1;
+      if (w.level >= 2) maxTurrets++;
+      if (w.level >= 5) maxTurrets++;
+      if (activeTurrets < maxTurrets) {
+        const turretGroup = new THREE.Group();
+        const bodyMat = new THREE.MeshLambertMaterial({ color: 0x88ccff });
+        turretGroup.add(new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.5, 0.4), bodyMat));
+        const topMat = new THREE.MeshLambertMaterial({ color: 0xffffff });
+        const top = new THREE.Mesh(new THREE.BoxGeometry(0.25, 0.15, 0.25), topMat);
+        top.position.y = 0.3;
+        turretGroup.add(top);
+        turretGroup.position.set(st.playerX + 3, st.playerY + 0.8, st.playerZ);
+        scene.add(turretGroup);
+        const fireRate = 1.2 * (1 / (1 + (w.level >= 3 ? 0.25 : 0)));
+        const freezeChance = w.level >= 5 ? 0.2 : 0;
+        st.weaponEffects.push({
+          mesh: turretGroup, life: 15, type: 'snowballTurret',
+          orbitAngle: Math.random() * Math.PI * 2, orbitSpeed: 1.5,
+          fireTimer: 0, fireRate, dmg, weaponRange: range,
+          freezeChance, weaponLevel: w.level
+        });
+      }
+    } else if (w.typeId === 'stinkLine') {
+      // STINK LINE: Leaves a damaging trail segment at the player's previous position.
+      const trailSize = 0.5 * (1 + (w.level >= 4 ? 0.5 : 0));
+      const trailDuration = 3 * (1 + (w.level >= 2 ? 0.25 : 0));
+      const trailX = st._prevX || st.playerX;
+      const trailZ = st._prevZ || st.playerZ;
+      const gh = getGroundAt(trailX, trailZ);
+      const trailMesh = new THREE.Mesh(
+        new THREE.BoxGeometry(trailSize, 0.3, trailSize),
+        new THREE.MeshBasicMaterial({ color: 0x44cc44, transparent: true, opacity: 0.4 })
+      );
+      trailMesh.position.set(trailX, gh + 0.15, trailZ);
+      scene.add(trailMesh);
+      const poisonDoT = w.level >= 5;
+      st.weaponEffects.push({
+        mesh: trailMesh, x: trailX, z: trailZ, radius: trailSize * 0.5,
+        dmgPerSec: dmg, life: trailDuration, type: 'stinkTrail',
+        dmgTickTimer: 0, poisonDoT
+      });
     }
   }
 
@@ -1695,15 +1800,32 @@ export function launch3DGame(options) {
     for (const w of st.weapons) {
       w.cooldownTimer = Math.max(0, w.cooldownTimer - dt);
       if (w.cooldownTimer <= 0) {
-        const hasTarget = findNearestEnemy(getWeaponRange(w));
-        if (hasTarget) {
+        if (w.typeId === 'stinkLine') {
+          // Stink Line fires based on player movement, not targets
+          const dx = st.playerX - (st._prevX || st.playerX);
+          const dz = st.playerZ - (st._prevZ || st.playerZ);
+          if (dx * dx + dz * dz > 0.01) {
+            fireWeapon(w);
+            w.cooldownTimer = getWeaponCooldown(w);
+          }
+        } else if (w.typeId === 'snowballTurret') {
+          // Snowball Turret spawns orbiting turrets, doesn't need direct target
           fireWeapon(w);
           w.cooldownTimer = getWeaponCooldown(w);
         } else {
-          w.cooldownTimer = 0.1; // retry soon
+          const hasTarget = findNearestEnemy(getWeaponRange(w));
+          if (hasTarget) {
+            fireWeapon(w);
+            w.cooldownTimer = getWeaponCooldown(w);
+          } else {
+            w.cooldownTimer = 0.1; // retry soon
+          }
         }
       }
     }
+    // Track previous player position for stink line
+    st._prevX = st.playerX;
+    st._prevZ = st.playerZ;
   }
 
   /**
@@ -1727,6 +1849,22 @@ export function launch3DGame(options) {
         p.mesh.position.x = p.startX + Math.sin(p.angle + t * 4) * outDist;
         p.mesh.position.z = p.startZ + Math.cos(p.angle + t * 4) * outDist;
         p.mesh.rotation.y += dt * 15;
+      } else if (p.type === 'mudBomb') {
+        // Mud bomb arcs through the air with gravity
+        p.mesh.position.x += p.vx * dt;
+        p.mesh.position.z += p.vz * dt;
+        p.vy -= GRAVITY_3D * dt;
+        p.mesh.position.y += p.vy * dt;
+        p.mesh.rotation.y += dt * 6;
+        p.mesh.rotation.x += dt * 4;
+        // Check if hit the ground
+        const groundH = getGroundAt(p.mesh.position.x, p.mesh.position.z);
+        if (p.mesh.position.y <= groundH + 0.2) {
+          spawnMudSlowZone(p.mesh.position.x, p.mesh.position.z, p.slowRadius, p.slowDuration, p.dmg);
+          disposeSceneObject(p.mesh);
+          st.weaponProjectiles.splice(i, 1);
+          continue;
+        }
       } else {
         p.mesh.position.x += p.vx * dt;
         p.mesh.position.z += p.vz * dt;
@@ -1737,6 +1875,14 @@ export function launch3DGame(options) {
         // Fireball explosion on timeout
         if (p.type === 'fireball' && p.explosionRadius) {
           spawnExplosion(p.mesh.position.x, p.mesh.position.z, p.explosionRadius, p.explosionDmg);
+        }
+        // Mud bomb explodes on timeout too
+        if (p.type === 'mudBomb') {
+          spawnMudSlowZone(p.mesh.position.x, p.mesh.position.z, p.slowRadius, p.slowDuration, p.dmg);
+        }
+        // Beehive spawns bees on timeout
+        if (p.type === 'beehive') {
+          spawnBees(p.mesh.position.x, p.mesh.position.z, p.beeCount, p.beeDuration, p.dmg, p.weaponLevel);
         }
         disposeSceneObject(p.mesh);
         st.weaponProjectiles.splice(i, 1);
@@ -1750,10 +1896,32 @@ export function launch3DGame(options) {
         const dz = p.mesh.position.z - e.group.position.z;
         if (dx * dx + dz * dz < 1.2) {
           damageEnemy(e, p.dmg);
+          // Snowball slow/freeze on hit
+          if (p.type === 'snowball') {
+            if (!e._snowSlowed) {
+              e._origSpeed = e._origSpeed || e.speed;
+              e._snowSlowed = true;
+              e.speed = e._origSpeed * 0.7;
+            }
+            e._snowSlowTimer = 2;
+            // Freeze chance (level 5)
+            if (p.freezeChance && Math.random() < p.freezeChance) {
+              e._snowFrozen = true;
+              e._snowFreezeTimer = 1;
+            }
+          }
           if (!p.pierce) {
             // Fireball explosion on hit
             if (p.type === 'fireball' && p.explosionRadius) {
               spawnExplosion(p.mesh.position.x, p.mesh.position.z, p.explosionRadius, p.explosionDmg);
+            }
+            // Mud bomb creates slow zone on hit
+            if (p.type === 'mudBomb') {
+              spawnMudSlowZone(p.mesh.position.x, p.mesh.position.z, p.slowRadius, p.slowDuration, p.dmg);
+            }
+            // Beehive spawns bees on hit
+            if (p.type === 'beehive') {
+              spawnBees(p.mesh.position.x, p.mesh.position.z, p.beeCount, p.beeDuration, p.dmg, p.weaponLevel);
             }
             disposeSceneObject(p.mesh);
             st.weaponProjectiles.splice(i, 1);
@@ -1791,6 +1959,57 @@ export function launch3DGame(options) {
       if (dx * dx + dz * dz < radius * radius) {
         damageEnemy(e, dmg);
       }
+    }
+  }
+
+  function spawnMudSlowZone(x, z, radius, duration, dmg) {
+    const h = terrainHeight(x, z);
+    const mesh = new THREE.Mesh(
+      new THREE.BoxGeometry(radius * 2, 0.15, radius * 2),
+      new THREE.MeshBasicMaterial({ color: 0x8B6914, transparent: true, opacity: 0.45 })
+    );
+    mesh.position.set(x, h + 0.08, z);
+    scene.add(mesh);
+    st.weaponEffects.push({ mesh, x, z, radius, life: duration, maxLife: duration, type: 'mudSlowZone', dmg });
+    // Impact damage to all enemies in radius
+    const radiusSq = radius * radius;
+    for (const e of st.enemies) {
+      if (!e.alive) continue;
+      const dx = x - e.group.position.x;
+      const dz = z - e.group.position.z;
+      if (dx * dx + dz * dz < radiusSq) {
+        damageEnemy(e, dmg);
+      }
+    }
+  }
+
+  function spawnBees(x, z, count, duration, dmgPerBee, weaponLevel) {
+    const h = terrainHeight(x, z);
+    for (let b = 0; b < count; b++) {
+      const beeGroup = new THREE.Group();
+      const bodyMat = new THREE.MeshBasicMaterial({ color: 0xffdd00 });
+      beeGroup.add(new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.12, 0.15), bodyMat));
+      const stripeMat = new THREE.MeshBasicMaterial({ color: 0x222200 });
+      const stripe = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.04, 0.16), stripeMat);
+      stripe.position.y = 0.02;
+      beeGroup.add(stripe);
+      const wingMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.5 });
+      const wingL = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.02, 0.06), wingMat);
+      wingL.position.set(-0.1, 0.06, 0);
+      beeGroup.add(wingL);
+      const wingR = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.02, 0.06), wingMat);
+      wingR.position.set(0.1, 0.06, 0);
+      beeGroup.add(wingR);
+      // Offset each bee slightly so they don't all start at same point
+      const offsetAngle = (b / count) * Math.PI * 2;
+      beeGroup.position.set(x + Math.cos(offsetAngle) * 0.5, h + 0.8, z + Math.sin(offsetAngle) * 0.5);
+      scene.add(beeGroup);
+      st.weaponEffects.push({
+        mesh: beeGroup, life: duration, type: 'bee',
+        dmg: dmgPerBee, dmgCooldown: 0, speed: 6,
+        weaponLevel, explodeOnExpire: weaponLevel >= 5,
+        buzzPhase: Math.random() * Math.PI * 2
+      });
     }
   }
 
@@ -1861,7 +2080,161 @@ export function launch3DGame(options) {
         if (eff.mesh.material) eff.mesh.material.opacity = Math.min(1, Math.max(0, eff.life / 0.15));
       }
 
+      if (eff.type === 'mudSlowZone') {
+        // Slow enemies walking through the mud zone
+        const radiusSq = eff.radius * eff.radius;
+        for (const e of st.enemies) {
+          if (!e.alive) continue;
+          const dx = eff.x - e.group.position.x;
+          const dz = eff.z - e.group.position.z;
+          if (dx * dx + dz * dz < radiusSq) {
+            if (!e._mudSlowed) {
+              e._mudSlowed = true;
+              e._mudSlowTimer = 0.3;
+              e._origSpeed = e._origSpeed || e.speed;
+              e.speed = e._origSpeed * 0.5;
+            } else {
+              e._mudSlowTimer = 0.3;
+            }
+          }
+        }
+        // Fade out opacity near end of life
+        if (eff.mesh.material) {
+          eff.mesh.material.opacity = Math.min(0.45, Math.max(0, (eff.life / eff.maxLife) * 0.45));
+        }
+      }
+
+      if (eff.type === 'bee') {
+        // Bee chases nearest enemy and deals damage on contact
+        let nearestE = null, nearDistSq = Infinity;
+        for (const e of st.enemies) {
+          if (!e.alive) continue;
+          const dx = eff.mesh.position.x - e.group.position.x;
+          const dz = eff.mesh.position.z - e.group.position.z;
+          const dSq = dx * dx + dz * dz;
+          if (dSq < nearDistSq) { nearestE = e; nearDistSq = dSq; }
+        }
+        if (nearestE) {
+          const dx = nearestE.group.position.x - eff.mesh.position.x;
+          const dz = nearestE.group.position.z - eff.mesh.position.z;
+          const d = Math.sqrt(dx * dx + dz * dz) || 1;
+          eff.mesh.position.x += (dx / d) * eff.speed * dt;
+          eff.mesh.position.z += (dz / d) * eff.speed * dt;
+          // Buzzing vertical oscillation
+          eff.buzzPhase += dt * 15;
+          eff.mesh.position.y = getGroundAt(eff.mesh.position.x, eff.mesh.position.z) + 0.8 + Math.sin(eff.buzzPhase) * 0.15;
+          eff.mesh.rotation.y = Math.atan2(dx, dz);
+          // Damage on contact (every 0.5s)
+          eff.dmgCooldown -= dt;
+          if (nearDistSq < 1.0 && eff.dmgCooldown <= 0) {
+            damageEnemy(nearestE, eff.dmg);
+            eff.dmgCooldown = 0.5;
+          }
+        } else {
+          // No enemies, just buzz in place
+          eff.buzzPhase += dt * 15;
+          eff.mesh.position.y = getGroundAt(eff.mesh.position.x, eff.mesh.position.z) + 0.8 + Math.sin(eff.buzzPhase) * 0.15;
+        }
+        // Wing flap animation
+        if (eff.mesh.children.length >= 4) {
+          const wingAngle = Math.sin(eff.buzzPhase * 2) * 0.3;
+          eff.mesh.children[2].rotation.z = wingAngle;
+          eff.mesh.children[3].rotation.z = -wingAngle;
+        }
+      }
+
+      if (eff.type === 'snowballTurret') {
+        // Orbit around player
+        eff.orbitAngle += eff.orbitSpeed * dt;
+        const orbitR = 3;
+        eff.mesh.position.x = st.playerX + Math.cos(eff.orbitAngle) * orbitR;
+        eff.mesh.position.z = st.playerZ + Math.sin(eff.orbitAngle) * orbitR;
+        eff.mesh.position.y = st.playerY + 0.8;
+        eff.mesh.rotation.y += dt * 2;
+        // Fire snowballs at nearest enemy
+        eff.fireTimer -= dt;
+        if (eff.fireTimer <= 0) {
+          let nearestE = null, nearDistSq = Infinity;
+          const wRangeSq = eff.weaponRange * eff.weaponRange;
+          for (const e of st.enemies) {
+            if (!e.alive) continue;
+            const dx = eff.mesh.position.x - e.group.position.x;
+            const dz = eff.mesh.position.z - e.group.position.z;
+            const dSq = dx * dx + dz * dz;
+            if (dSq < wRangeSq && dSq < nearDistSq) { nearestE = e; nearDistSq = dSq; }
+          }
+          if (nearestE) {
+            const dx = nearestE.group.position.x - eff.mesh.position.x;
+            const dz = nearestE.group.position.z - eff.mesh.position.z;
+            const d = Math.sqrt(dx * dx + dz * dz) || 1;
+            const snowMesh = new THREE.Mesh(
+              new THREE.BoxGeometry(0.18, 0.18, 0.18),
+              new THREE.MeshBasicMaterial({ color: 0xffffff })
+            );
+            snowMesh.position.set(eff.mesh.position.x, eff.mesh.position.y, eff.mesh.position.z);
+            scene.add(snowMesh);
+            st.weaponProjectiles.push({
+              mesh: snowMesh, vx: (dx / d) * 12, vz: (dz / d) * 12,
+              dmg: eff.dmg, life: 1.5, pierce: false, type: 'snowball',
+              freezeChance: eff.freezeChance
+            });
+          }
+          eff.fireTimer = eff.fireRate;
+        }
+      }
+
+      if (eff.type === 'stinkTrail') {
+        // Damage enemies walking through trail
+        eff.dmgTickTimer -= dt;
+        if (eff.dmgTickTimer <= 0) {
+          eff.dmgTickTimer = 0.3;
+          const radiusSq = eff.radius * eff.radius;
+          for (const e of st.enemies) {
+            if (!e.alive) continue;
+            const dx = eff.x - e.group.position.x;
+            const dz = eff.z - e.group.position.z;
+            if (dx * dx + dz * dz < radiusSq) {
+              damageEnemy(e, eff.dmgPerSec * 0.3);
+              // Poison DoT at level 5: apply poison that ticks for extra damage
+              if (eff.poisonDoT && !e._stinkPoisoned) {
+                e._stinkPoisoned = true;
+                e._stinkPoisonTimer = 2;
+                e._stinkPoisonDmg = eff.dmgPerSec * 0.2;
+              }
+            }
+          }
+        }
+        // Fade out opacity as trail ages
+        if (eff.mesh.material) {
+          eff.mesh.material.opacity = Math.min(0.4, Math.max(0, eff.life / 3 * 0.4));
+        }
+        // Slight color shift toward yellow-green as it ages
+        eff.mesh.rotation.y += dt * 0.5;
+      }
+
       if (eff.life <= 0) {
+        // Bee explosion on expire (level 5)
+        if (eff.type === 'bee' && eff.explodeOnExpire) {
+          const bx = eff.mesh.position.x;
+          const bz = eff.mesh.position.z;
+          const explR = 1.5;
+          for (const e of st.enemies) {
+            if (!e.alive) continue;
+            const dx = bx - e.group.position.x;
+            const dz = bz - e.group.position.z;
+            if (dx * dx + dz * dz < explR * explR) {
+              damageEnemy(e, eff.dmg * 2);
+            }
+          }
+          // Small yellow explosion visual
+          const explMesh = new THREE.Mesh(
+            new THREE.BoxGeometry(explR * 2, 0.3, explR * 2),
+            new THREE.MeshBasicMaterial({ color: 0xffdd00, transparent: true, opacity: 0.4 })
+          );
+          explMesh.position.set(bx, getGroundAt(bx, bz) + 0.2, bz);
+          scene.add(explMesh);
+          st.weaponEffects.push({ mesh: explMesh, life: 0.25, type: 'explosion' });
+        }
         if (eff.shared) {
           // Shared geometry/material — only remove from scene, do not dispose
           scene.remove(eff.mesh);
@@ -2610,6 +2983,43 @@ export function launch3DGame(options) {
       for (const e of st.enemies) {
         if (!e.alive) continue;
         if (e.frozen) continue; // Frost Nova: frozen enemies don't move
+        // Mud slow timer decrement — restore speed when expired
+        if (e._mudSlowed) {
+          e._mudSlowTimer -= dt;
+          if (e._mudSlowTimer <= 0) {
+            e._mudSlowed = false;
+            e.speed = e._origSpeed || e.speed;
+          }
+        }
+        // Snowball slow timer decrement — restore speed when expired
+        if (e._snowSlowed) {
+          e._snowSlowTimer -= dt;
+          if (e._snowSlowTimer <= 0) {
+            e._snowSlowed = false;
+            if (!e._mudSlowed) e.speed = e._origSpeed || e.speed;
+          }
+        }
+        // Snowball freeze timer decrement
+        if (e._snowFrozen) {
+          e._snowFreezeTimer -= dt;
+          if (e._snowFreezeTimer <= 0) {
+            e._snowFrozen = false;
+          } else {
+            continue; // Skip movement while frozen
+          }
+        }
+        // Stink poison DoT timer
+        if (e._stinkPoisoned) {
+          e._stinkPoisonTimer -= dt;
+          if (e._stinkPoisonTimer <= 0) {
+            e._stinkPoisoned = false;
+          } else {
+            e.hp -= e._stinkPoisonDmg * dt;
+            e.hurtTimer = 0.1;
+            if (e.hp <= 0 && e.alive) killEnemy(e);
+            if (!e.alive) continue;
+          }
+        }
         // Lazy-init jump state fields
         if (e.jumpVY === undefined) { e.jumpVY = 0; e.jumpCooldown = 0; e.onPlatform = false; }
         const dx = st.playerX - e.group.position.x;
