@@ -10,7 +10,7 @@
  * The world uses chunk-based infinite terrain with procedural noise-driven forest biome
  * and grounded plateaus. Enemies follow a 10-tier zombie merge system where same-tier zombies
  * collide and combine into stronger variants. The player has an auto-attack system,
- * a hold-to-charge power attack, up to 4 weapon slots with 6 weapon types, passive scrolls,
+ * a hold-to-charge power attack, up to 4 weapon slots with 6 weapon types, passive howls,
  * shrine augments, difficulty totems, 18 temporary powerups, and 25 permanent items (4 rarity tiers).
  *
  * Dependencies: Three.js (global, loaded via CDN in index.html), 3d/constants.js (game constants),
@@ -25,13 +25,13 @@
  * - Chunk system: 16x16 terrain/platform/shrine chunks loaded around the player
  * - Zombie tiers 1-10: visual upgrades (eyes, horns, auras) and stat scaling per tier
  * - Weapon slot system: auto-fire weapons with per-type projectile/effect logic
- * - Level-up menu: random draw from weapons, upgrades, scrolls; 3 rerolls per game
+ * - Level-up menu: random draw from weapons, upgrades, howls; 3 rerolls per game
  */
 
 
 import {
   ARENA_SIZE, SHRINE_COUNT, CHUNK_SIZE, GRAVITY_3D, JUMP_FORCE, GROUND_Y, MAP_HALF,
-  ANIMAL_PALETTES, WEAPON_TYPES, SCROLL_TYPES, POWERUPS_3D, ITEMS_3D, ITEM_RARITIES,
+  ANIMAL_PALETTES, WEAPON_TYPES, HOWL_TYPES, POWERUPS_3D, ITEMS_3D, ITEM_RARITIES,
   SHRINE_AUGMENTS, TOTEM_EFFECT, ZOMBIE_TIERS, ANIMAL_WEAPONS,
 } from './3d/constants.js';
 
@@ -158,10 +158,10 @@ import { drawHUD } from './3d/hud.js';
  * @property {number} chargeTime            - Seconds charged (0-2 range).
  * @property {THREE.Mesh|null} chargeGlow   - Visual glow mesh during charging.
  *
- * --- Weapon Slots + Scrolls ---
+ * --- Weapon Slots + Howls ---
  * @property {Array.<{typeId: string, level: number, cooldownTimer: number}>} weapons - Active weapon instances.
  * @property {number} maxWeaponSlots        - Maximum weapon slots (1, unlocks at levels 5/10/15 up to 4).
- * @property {Object.<string, number>} scrolls - Scroll stack counts by type ID.
+ * @property {Object.<string, number>} howls - Howl stack counts by type ID.
  * @property {number} rerolls               - Remaining rerolls for upgrade menu (starts at 3).
  * @property {Array} weaponProjectiles      - Active weapon projectile objects.
  * @property {Array} weaponEffects          - Active weapon visual effects (slashes, clouds, bolts).
@@ -346,7 +346,7 @@ export function launch3DGame(options) {
     // Weapon slots
     weapons: [],
     maxWeaponSlots: 1,
-    scrolls: { power: 0, haste: 0, arcane: 0, vitality: 0, fortune: 0, range: 0 },
+    howls: { power: 0, haste: 0, arcane: 0, vitality: 0, fortune: 0, range: 0, thorns: 0, magnet: 0, frenzy: 0, guardian: 0 },
     rerolls: 3, // rerolls per game
     weaponProjectiles: [],
     weaponEffects: [],
@@ -1468,26 +1468,26 @@ export function launch3DGame(options) {
     }
   }
 
-  // === SCROLL MULTIPLIER HELPERS ===
+  // === HOWL MULTIPLIER HELPERS ===
 
-  /** @returns {number} Scroll effect strength multiplier (1.0 base, 1.5 with Rainbow Scarf). */
-  function getScrollStrength() { return st.items.scarf ? 1.5 : 1.0; }
-  /** @returns {number} Damage multiplier from Power Scrolls (+15% per stack, boosted by Rainbow Scarf). */
-  function getScrollDmgMult() { return 1 + st.scrolls.power * 0.15 * getScrollStrength(); }
-  /** @returns {number} Cooldown multiplier from Haste Scrolls (-15% per stack, floor 0.3, boosted by Rainbow Scarf). */
-  function getScrollCdMult() { return Math.max(0.3, 1 - st.scrolls.haste * 0.15 * getScrollStrength()); }
-  /** @returns {number} Range multiplier from Range Scrolls (+20% per stack, boosted by Rainbow Scarf). */
-  function getScrollRangeMult() { return 1 + st.scrolls.range * 0.2 * getScrollStrength(); }
-  /** @returns {number} Bonus projectile count from Arcane Scrolls (+1 per stack, boosted by Rainbow Scarf). */
-  function getScrollBonusProj() { return Math.floor(st.scrolls.arcane * getScrollStrength()); }
-  /** @returns {number} XP multiplier from Fortune Scrolls (+30% per stack, boosted by Rainbow Scarf). */
-  function getScrollXpMult() { return 1 + st.scrolls.fortune * 0.3 * getScrollStrength(); }
+  /** @returns {number} Howl effect strength multiplier (1.0 base, 1.5 with Rainbow Scarf). */
+  function getHowlStrength() { return st.items.scarf ? 1.5 : 1.0; }
+  /** @returns {number} Damage multiplier from Power Howls (+15% per stack, boosted by Rainbow Scarf). */
+  function getHowlDmgMult() { return 1 + st.howls.power * 0.15 * getHowlStrength(); }
+  /** @returns {number} Cooldown multiplier from Haste Howls (-15% per stack, floor 0.3, boosted by Rainbow Scarf). Also includes Frenzy Howl attack speed bonus. */
+  function getHowlCdMult() { return Math.max(0.3, 1 - st.howls.haste * 0.15 * getHowlStrength()) / (1 + st.howls.frenzy * 0.10 * getHowlStrength()); }
+  /** @returns {number} Range multiplier from Range Howls (+20% per stack, boosted by Rainbow Scarf). */
+  function getHowlRangeMult() { return 1 + st.howls.range * 0.2 * getHowlStrength(); }
+  /** @returns {number} Bonus projectile count from Arcane Howls (+1 per stack, boosted by Rainbow Scarf). */
+  function getHowlBonusProj() { return Math.floor(st.howls.arcane * getHowlStrength()); }
+  /** @returns {number} XP multiplier from Fortune Howls (+30% per stack, boosted by Rainbow Scarf). */
+  function getHowlXpMult() { return 1 + st.howls.fortune * 0.3 * getHowlStrength(); }
 
   // === WEAPON FUNCTIONS ===
 
   /**
    * Calculate the effective damage for a weapon instance.
-   * Applies per-weapon-type level scaling, Power Scroll bonus, and augment damage multiplier.
+   * Applies per-weapon-type level scaling, Power Howl bonus, and augment damage multiplier.
    *
    * @param {{typeId: string, level: number}} w - Weapon instance.
    * @returns {number} Final damage value.
@@ -1506,7 +1506,7 @@ export function launch3DGame(options) {
     else if (w.typeId === 'beehiveLauncher') dmg *= 1 + (w.level - 1) * 0.2;
     else if (w.typeId === 'snowballTurret') dmg *= 1 + (w.level - 1) * 0.25;
     else if (w.typeId === 'stinkLine') dmg *= 1 + (w.level - 1) * 0.25;
-    dmg *= getScrollDmgMult() * st.augmentDmgMult;
+    dmg *= getHowlDmgMult() * st.augmentDmgMult;
     if (st.items.bandana > 0) dmg *= (1 + st.items.bandana * 0.05); // Bandana: +5% per stack
     if (st.items.goldenbone) dmg *= 1.30; // Golden Bone: +30% all weapon damage
     return dmg;
@@ -1514,7 +1514,7 @@ export function launch3DGame(options) {
 
   /**
    * Calculate the effective cooldown for a weapon instance.
-   * Applies the level 4 cooldown reduction (-18%) and Haste Scroll multiplier.
+   * Applies the level 4 cooldown reduction (-18%) and Haste Howl multiplier.
    *
    * @param {{typeId: string, level: number}} w - Weapon instance.
    * @returns {number} Cooldown in seconds.
@@ -1523,14 +1523,14 @@ export function launch3DGame(options) {
     const def = WEAPON_TYPES[w.typeId];
     let cd = def.baseCooldown;
     if (w.level >= 4) cd *= 0.82;
-    cd *= getScrollCdMult();
+    cd *= getHowlCdMult();
     if (st.items.alarmClock > 0) cd *= Math.pow(0.92, st.items.alarmClock); // Alarm Clock: -8% per stack
     return cd;
   }
 
   /**
    * Calculate the effective range for a weapon instance.
-   * Claw Swipe gets range bonuses at levels 3 and 5. Range Scroll multiplier applies to all.
+   * Claw Swipe gets range bonuses at levels 3 and 5. Range Howl multiplier applies to all.
    *
    * @param {{typeId: string, level: number}} w - Weapon instance.
    * @returns {number} Effective range in world units.
@@ -1540,13 +1540,13 @@ export function launch3DGame(options) {
     let r = def.baseRange;
     if (w.typeId === 'clawSwipe' && w.level >= 3) r *= 1.15;
     if (w.typeId === 'clawSwipe' && w.level >= 5) r *= 1.15;
-    return r * getScrollRangeMult();
+    return r * getHowlRangeMult();
   }
 
   /**
    * Calculate the number of projectiles for a weapon instance.
    * Bone Toss gains extra at levels 2 (+1) and 5 (+2). Boomerang gains +1 at level 2.
-   * Arcane Scroll adds bonus projectiles on top.
+   * Arcane Howl adds bonus projectiles on top.
    *
    * @param {{typeId: string, level: number}} w - Weapon instance.
    * @returns {number} Total projectile count.
@@ -1558,7 +1558,7 @@ export function launch3DGame(options) {
       if (w.level >= 5) count += 2;
     }
     if (w.typeId === 'boomerang' && w.level >= 2) count++;
-    count += getScrollBonusProj();
+    count += getHowlBonusProj();
     return count;
   }
 
@@ -1836,7 +1836,7 @@ export function launch3DGame(options) {
       // FIREBALL: Projectile + AoE explosion — launches a glowing core with outer glow and flame trail.
       // On hit or timeout, triggers spawnExplosion() dealing AoE damage within explosionRadius.
       // Level 2 increases explosion radius by 30%; level 5 increases explosion damage by 50%.
-      const count = Math.max(1, getScrollBonusProj());
+      const count = Math.max(1, getHowlBonusProj());
       for (let i = 0; i < count; i++) {
         const target = findNearestEnemy(range);
         if (!target) break;
@@ -2483,7 +2483,7 @@ export function launch3DGame(options) {
    * Pauses the game and generates up to 3 random choices from a pool of:
    * - New weapons (if weapon slots available)
    * - Weapon level upgrades (if below max level)
-   * - Scroll acquisitions (if below max stacks)
+   * - Howl acquisitions (if below max stacks)
    * - Fallback heal options (if pool has fewer than 3)
    *
    * Also unlocks additional weapon slots at levels 5, 10, and 15 (up to 4 max).
@@ -2535,20 +2535,28 @@ export function launch3DGame(options) {
       }
     }
 
-    // Scrolls (below max)
-    for (const id in SCROLL_TYPES) {
-      const def = SCROLL_TYPES[id];
-      if (st.scrolls[id] < def.maxLevel) {
+    // Howls (below max)
+    for (const id in HOWL_TYPES) {
+      const def = HOWL_TYPES[id];
+      if (st.howls[id] < def.maxLevel) {
         pool.push({
-          category: 'SCROLL',
+          category: 'HOWL',
           name: def.name,
           color: def.color,
           desc: def.desc,
           apply: s => {
-            s.scrolls[id]++;
+            s.howls[id]++;
             if (id === 'vitality') {
               s.maxHp += 20;
               s.hp = Math.min(s.hp + 20, s.maxHp);
+            }
+            if (id === 'magnet') {
+              s.collectRadius *= 1.25;
+            }
+            if (id === 'guardian') {
+              s.maxHp = Math.floor(s.maxHp * 1.08);
+              s.hp = Math.min(s.hp + 10, s.maxHp);
+              s.augmentRegen += 2;
             }
           }
         });
@@ -3347,6 +3355,12 @@ export function launch3DGame(options) {
             st.hp -= dmg;
             // Thorned Vest: reflect 20% damage back
             if (st.items.vest && dmg > 0) { e.hp -= dmg * 0.2; e.hurtTimer = 0.1; }
+            // Thorns Howl: reflect 10% contact damage per stack
+            if (st.howls.thorns > 0 && dmg > 0) {
+              const thornsDmg = dmg * 0.10 * st.howls.thorns;
+              e.hp -= thornsDmg;
+              e.hurtTimer = 0.1;
+            }
             st.invincible = 0.2;
           }
         }
@@ -3610,7 +3624,7 @@ export function launch3DGame(options) {
 
       // === XP GEMS ===
       // XP gems bob, spin, and are magnetically pulled toward the player when within 2x collectRadius.
-      // Collection grants XP scaled by augmentXpMult, Fortune Scroll, and totem bonuses.
+      // Collection grants XP scaled by augmentXpMult, Fortune Howl, and totem bonuses.
       // Reaching xpToNext triggers level-up with upgrade menu.
       for (let i = st.xpGems.length - 1; i >= 0; i--) {
         const gem = st.xpGems[i];
@@ -3628,7 +3642,7 @@ export function launch3DGame(options) {
           gem.mesh.position.z += (dz / dist) * pull;
         }
         if (dist < st.collectRadius) {
-          st.xp += Math.max(1, Math.round(st.augmentXpMult * getScrollXpMult() * (st.totemXpMult || 1)));
+          st.xp += Math.max(1, Math.round(st.augmentXpMult * getHowlXpMult() * (st.totemXpMult || 1)));
           scene.remove(gem.mesh);
           st.xpGems.splice(i, 1);
           if (st.xp >= st.xpToNext) {

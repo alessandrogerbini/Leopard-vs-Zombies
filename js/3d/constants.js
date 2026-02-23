@@ -109,8 +109,8 @@ export const WEAPON_TYPES = {
 };
 
 /**
- * Scroll type definitions — passive global buffs selected during level-up.
- * Scrolls stack multiplicatively and affect all weapons simultaneously.
+ * Howl type definitions — passive global buffs selected during level-up.
+ * Howls stack multiplicatively and affect all weapons simultaneously.
  *
  * @constant {Object.<string, {id: string, name: string, color: string, desc: string, maxLevel: number}>}
  * @property {Object} power    - +15% all weapon damage per level (max 5).
@@ -119,14 +119,22 @@ export const WEAPON_TYPES = {
  * @property {Object} vitality - +20 max HP and instant heal per level (max 5).
  * @property {Object} fortune  - +30% XP gain per level (max 3).
  * @property {Object} range    - +20% weapon range per level (max 5).
+ * @property {Object} thorns   - Reflect 10% contact damage per level (max 3).
+ * @property {Object} magnet   - +25% pickup radius per level (max 4).
+ * @property {Object} frenzy   - +10% attack speed per level (max 4).
+ * @property {Object} guardian - +8% max HP and +2 HP/s regen per level (max 3).
  */
-export const SCROLL_TYPES = {
-  power: { id: 'power', name: 'POWER SCROLL', color: '#ff4444', desc: '+15% all weapon damage', maxLevel: 5 },
-  haste: { id: 'haste', name: 'HASTE SCROLL', color: '#ffaa44', desc: '-15% all cooldowns', maxLevel: 5 },
-  arcane: { id: 'arcane', name: 'ARCANE SCROLL', color: '#aa44ff', desc: '+1 projectile count', maxLevel: 3 },
-  vitality: { id: 'vitality', name: 'VITALITY SCROLL', color: '#44ff44', desc: '+20 max HP & heal', maxLevel: 5 },
-  fortune: { id: 'fortune', name: 'FORTUNE SCROLL', color: '#ffff44', desc: '+30% XP gain', maxLevel: 3 },
-  range: { id: 'range', name: 'RANGE SCROLL', color: '#44aaff', desc: '+20% weapon range', maxLevel: 5 },
+export const HOWL_TYPES = {
+  power: { id: 'power', name: 'POWER HOWL', color: '#ff4444', desc: '+15% all weapon damage', maxLevel: 5 },
+  haste: { id: 'haste', name: 'HASTE HOWL', color: '#ffaa44', desc: '-15% all cooldowns', maxLevel: 5 },
+  arcane: { id: 'arcane', name: 'ARCANE HOWL', color: '#aa44ff', desc: '+1 projectile count', maxLevel: 3 },
+  vitality: { id: 'vitality', name: 'VITALITY HOWL', color: '#44ff44', desc: '+20 max HP & heal', maxLevel: 5 },
+  fortune: { id: 'fortune', name: 'FORTUNE HOWL', color: '#ffff44', desc: '+30% XP gain', maxLevel: 3 },
+  range: { id: 'range', name: 'RANGE HOWL', color: '#44aaff', desc: '+20% weapon range', maxLevel: 5 },
+  thorns: { id: 'thorns', name: 'THORNS HOWL', color: '#cc4422', desc: 'Reflect 10% contact damage', maxLevel: 3 },
+  magnet: { id: 'magnet', name: 'MAGNET HOWL', color: '#cccccc', desc: '+25% pickup radius', maxLevel: 4 },
+  frenzy: { id: 'frenzy', name: 'FRENZY HOWL', color: '#ff44ff', desc: '+10% attack speed', maxLevel: 4 },
+  guardian: { id: 'guardian', name: 'GUARDIAN HOWL', color: '#44ff88', desc: '+8% max HP, +2 HP/s regen', maxLevel: 3 },
 };
 
 /**
@@ -231,7 +239,7 @@ export const ITEM_RARITIES = {
  * - goldenBone (goldenbone slot): +30% all weapon damage
  * - crownOfClaws (crown slot): Auto-attacks hit 1 additional target
  * - zombieMagnet (zombiemagnet slot): Enemies drop 2x XP gems
- * - rainbowScarf (scarf slot): All scroll effects +50% stronger
+ * - rainbowScarf (scarf slot): All howl effects +50% stronger
  *
  * @constant {Array.<{id: string, name: string, color: string, colorHex: number, desc: string, slot: string, rarity: string, tier?: number, stackable?: boolean}>}
  */
@@ -264,7 +272,7 @@ export const ITEMS_3D = [
   { id: 'goldenBone', name: 'GOLDEN BONE', color: '#ff8800', colorHex: 0xffcc00, desc: '+30% All Weapon Damage', slot: 'goldenbone', rarity: 'legendary' },
   { id: 'crownOfClaws', name: 'CROWN OF CLAWS', color: '#ff8800', colorHex: 0xffaa00, desc: '+1 Auto-Attack Target', slot: 'crown', rarity: 'legendary' },
   { id: 'zombieMagnet', name: 'ZOMBIE MAGNET', color: '#ff8800', colorHex: 0x88ff88, desc: '2x XP Gem Drops', slot: 'zombiemagnet', rarity: 'legendary' },
-  { id: 'rainbowScarf', name: 'RAINBOW SCARF', color: '#ff8800', colorHex: 0xff44ff, desc: 'Scroll Effects +50%', slot: 'scarf', rarity: 'legendary' },
+  { id: 'rainbowScarf', name: 'RAINBOW SCARF', color: '#ff8800', colorHex: 0xff44ff, desc: 'Howl Effects +50%', slot: 'scarf', rarity: 'legendary' },
 ];
 
 /**

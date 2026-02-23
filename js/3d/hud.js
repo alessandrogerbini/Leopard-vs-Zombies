@@ -7,9 +7,9 @@
  * writes it. Extracted from game3d.js as part of the modular decomposition.
  *
  * The HUD renders different elements based on game state:
- * - Normal gameplay: HP/XP bars, weapon slots, scrolls, wave/score, powerups, items, augments, minimap labels
+ * - Normal gameplay: HP/XP bars, weapon slots, howls, wave/score, powerups, items, augments, minimap labels
  * - Pause menu: dark overlay with Resume/Restart/Main Menu cards
- * - Upgrade menu: dark overlay with weapon/scroll/upgrade cards and reroll indicator
+ * - Upgrade menu: dark overlay with weapon/howl/upgrade cards and reroll indicator
  * - Game over: score summary, name entry, and leaderboard display
  *
  * Dependencies: Three.js (global), 3d/constants.js (game constants)
@@ -17,7 +17,7 @@
  */
 
 import {
-  WEAPON_TYPES, SCROLL_TYPES, ITEMS_3D, ITEM_RARITIES, SHRINE_AUGMENTS,
+  WEAPON_TYPES, HOWL_TYPES, ITEMS_3D, ITEM_RARITIES, SHRINE_AUGMENTS,
 } from './constants.js';
 
 /**
@@ -29,7 +29,7 @@ import {
  * - XP bar (below HP bar)
  * - Level + animal name display
  * - Weapon slot bars with cooldown fill (left side)
- * - Scroll counts (right side below timer)
+ * - Howl counts (right side below timer)
  * - Wave + score display (top-right)
  * - Game timer (top-right)
  * - Wave warning countdown (center, with red overlay)
@@ -111,13 +111,13 @@ export function drawHUD(ctx, s, deps) {
       wy += 22;
     }
 
-    // --- Scroll Display (right side below timer) ---
+    // --- Howl Display (right side below timer) ---
     ctx.textAlign = 'right';
     let ty = 92;
-    const scrollEntries = Object.entries(s.scrolls).filter(([, v]) => v > 0);
-    if (scrollEntries.length > 0) {
-      for (const [tid, count] of scrollEntries) {
-        const def = SCROLL_TYPES[tid];
+    const howlEntries = Object.entries(s.howls).filter(([, v]) => v > 0);
+    if (howlEntries.length > 0) {
+      for (const [tid, count] of howlEntries) {
+        const def = HOWL_TYPES[tid];
         ctx.fillStyle = def.color; ctx.font = '10px "Courier New"';
         ctx.fillText(`${def.name} x${count}`, W - 20, ty);
         ty += 13;
@@ -355,7 +355,7 @@ export function drawHUD(ctx, s, deps) {
     ctx.fillText('<  ARROW KEYS  >', W / 2, cardY + cardH + 25);
   }
 
-  // --- Upgrade Menu Overlay (weapons / upgrades / scrolls) ---
+  // --- Upgrade Menu Overlay (weapons / upgrades / howls) ---
   if (s.upgradeMenu && !s.gameOver) {
     ctx.fillStyle = 'rgba(0,0,0,0.7)'; ctx.fillRect(0, 0, W, H);
     ctx.textAlign = 'center';
@@ -382,7 +382,7 @@ export function drawHUD(ctx, s, deps) {
       ctx.fillRect(cx, cardY, cardW, cardH);
 
       // Category badge
-      const badgeColors = { 'NEW WEAPON': '#ff8844', 'UPGRADE': '#44aaff', 'SCROLL': '#aa44ff', 'HEAL': '#44ff44' };
+      const badgeColors = { 'NEW WEAPON': '#ff8844', 'UPGRADE': '#44aaff', 'HOWL': '#aa44ff', 'HEAL': '#44ff44' };
       const badgeColor = badgeColors[u.category] || '#666';
       ctx.fillStyle = badgeColor; ctx.font = 'bold 10px "Courier New"';
       // Badge background
