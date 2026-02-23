@@ -17,7 +17,7 @@
  */
 
 import {
-  WEAPON_TYPES, SCROLL_TYPES, ITEMS_3D, SHRINE_AUGMENTS,
+  WEAPON_TYPES, SCROLL_TYPES, ITEMS_3D, ITEM_RARITIES, SHRINE_AUGMENTS,
 } from './constants.js';
 
 /**
@@ -171,32 +171,48 @@ export function drawHUD(ctx, s, deps) {
     if (s.items.armor) {
       const armorDef = ITEMS_3D.find(i => i.id === s.items.armor);
       if (armorDef) {
-        ctx.fillStyle = armorDef.color; ctx.font = '11px "Courier New"';
+        const rarityColor = (ITEM_RARITIES[armorDef.rarity] || ITEM_RARITIES.common).color;
+        ctx.fillStyle = rarityColor; ctx.font = '11px "Courier New"';
         ctx.fillText(`[${armorDef.name}]`, 20, iy);
         iy -= 16;
       }
     }
     if (s.items.glasses) {
-      ctx.fillStyle = '#ffaa00'; ctx.font = '11px "Courier New"';
+      ctx.fillStyle = ITEM_RARITIES.common.color; ctx.font = '11px "Courier New"';
       ctx.fillText('[AVIATOR GLASSES]', 20, iy);
       iy -= 16;
     }
     if (s.items.boots) {
       const bootDef = ITEMS_3D.find(i => i.id === s.items.boots);
       if (bootDef) {
-        ctx.fillStyle = bootDef.color; ctx.font = '11px "Courier New"';
+        const rarityColor = (ITEM_RARITIES[bootDef.rarity] || ITEM_RARITIES.common).color;
+        ctx.fillStyle = rarityColor; ctx.font = '11px "Courier New"';
         ctx.fillText(`[${bootDef.name}]`, 20, iy);
         iy -= 16;
       }
     }
-    // New items display
-    const boolSlots = ['ring', 'charm', 'vest', 'pendant', 'bracelet', 'gloves'];
+    // Boolean-slot items (non-stackable)
+    const boolSlots = ['ring', 'charm', 'vest', 'pendant', 'bracelet', 'gloves', 'cushion', 'turboshoes', 'goldenbone', 'crown', 'zombiemagnet', 'scarf'];
     for (const slot of boolSlots) {
       if (s.items[slot]) {
         const itemDef = ITEMS_3D.find(i => i.slot === slot);
         if (itemDef) {
-          ctx.fillStyle = itemDef.color; ctx.font = '11px "Courier New"';
+          const rarityColor = (ITEM_RARITIES[itemDef.rarity] || ITEM_RARITIES.common).color;
+          ctx.fillStyle = rarityColor; ctx.font = '11px "Courier New"';
           ctx.fillText(`[${itemDef.name}]`, 20, iy);
+          iy -= 16;
+        }
+      }
+    }
+    // Stackable items (show count)
+    const stackableIds = ['rubberDucky', 'thickFur', 'sillyStraw', 'bandana', 'hotSauce', 'bouncyBall', 'luckyPenny', 'alarmClock'];
+    for (const id of stackableIds) {
+      if (s.items[id] > 0) {
+        const itemDef = ITEMS_3D.find(i => i.id === id);
+        if (itemDef) {
+          const rarityColor = (ITEM_RARITIES[itemDef.rarity] || ITEM_RARITIES.common).color;
+          ctx.fillStyle = rarityColor; ctx.font = '11px "Courier New"';
+          ctx.fillText(`[${itemDef.name} x${s.items[id]}]`, 20, iy);
           iy -= 16;
         }
       }
