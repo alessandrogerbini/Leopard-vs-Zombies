@@ -275,8 +275,8 @@ export function launch3DGame(options) {
     zombieDmgMult: 2,
     score: 0,
     wave: 1,
-    ambientSpawnTimer: 1.7,
-    waveEventTimer: 150,  // 2.5 minutes until first wave event
+    ambientSpawnTimer: 1.36,
+    waveEventTimer: 105,  // ~1.75 minutes until first wave event
     waveWarning: 0,       // countdown seconds (0 = no warning)
     waveActive: false,
     ambientCrateTimer: 30 / (diffData.powerupFreqMult || 1.0),
@@ -1886,7 +1886,7 @@ export function launch3DGame(options) {
    */
   function spawnAmbient() {
     const elapsedMin = st.gameTime / 60;
-    const count = Math.min(8, 3 + Math.floor(elapsedMin / 2));
+    const count = Math.min(10, 4 + Math.floor(elapsedMin / 2));
     const baseHp = 8 + Math.floor(elapsedMin * 2.5);
     for (let i = 0; i < count; i++) {
       const angle = Math.random() * Math.PI * 2;
@@ -1917,7 +1917,7 @@ export function launch3DGame(options) {
     const elapsedMin = st.gameTime / 60;
     const baseHp = 8 + Math.floor(elapsedMin * 2.5);
     const waveHp = Math.floor(baseHp * (1 + st.wave * 0.15));
-    const count = 36 + st.wave * 16;
+    const count = 45 + st.wave * 20;
     for (let i = 0; i < count; i++) {
       const angle = (i / count) * Math.PI * 2 + Math.random() * 0.3;
       const dist = 20 + Math.random() * 15;
@@ -3880,7 +3880,7 @@ export function launch3DGame(options) {
       st.ambientSpawnTimer -= dt;
       if (st.ambientSpawnTimer <= 0) {
         spawnAmbient();
-        st.ambientSpawnTimer = 1.7;
+        st.ambientSpawnTimer = 1.36;
       }
 
       // === AMBIENT CRATE SPAWN (every 30s) ===
@@ -3914,7 +3914,7 @@ export function launch3DGame(options) {
         if (st.waveWarning <= 0) {
           st.waveWarning = 0;
           spawnWaveEvent();
-          st.waveEventTimer = 180; // Reset for next wave in 3 min
+          st.waveEventTimer = 126; // Reset for next wave in ~2 min
         }
       }
 
