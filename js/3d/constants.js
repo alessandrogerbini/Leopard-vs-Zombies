@@ -63,6 +63,7 @@ export const ANIMAL_PALETTES = {
  * @property {Object} lightningBolt - Chain lightning that jumps between enemies; gains chains at levels 1/3/5.
  * @property {Object} fireball      - Projectile that explodes on impact dealing AoE damage.
  * @property {Object} boomerang     - Piercing cross-shaped disc that arcs out and returns to player.
+ * @property {Object} turdMine      - Stationary mine dropped at player position; detonates on proximity dealing AoE damage + slow debuff.
  */
 export const WEAPON_TYPES = {
   clawSwipe: {
@@ -124,6 +125,12 @@ export const WEAPON_TYPES = {
     desc: 'Leaves damaging trail behind you', baseDamage: 4, baseCooldown: 0.15, baseRange: 0, maxLevel: 5,
     weaponClass: 'aoe',
     levelDescs: ['+30% Damage', '+25% Trail Duration', '+30% Damage', '+50% Trail Width', 'Poison DoT on Trail Hit'],
+  },
+  turdMine: {
+    id: 'turdMine', name: 'TURD MINE', type: 'mine', color: '#8B4513',
+    desc: 'Drops a stinky mine that explodes on contact', baseDamage: 30, baseCooldown: 3.0, baseRange: 2.5, maxLevel: 5,
+    weaponClass: 'mine',
+    levelDescs: ['+25% Damage', '+30% Blast Radius', '+25% Damage', '-20% Cooldown', '+50% Damage & Slow Duration'],
   },
 };
 

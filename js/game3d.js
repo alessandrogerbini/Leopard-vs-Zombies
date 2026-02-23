@@ -1929,6 +1929,7 @@ export function launch3DGame(options) {
     else if (w.typeId === 'beehiveLauncher') dmg *= 1 + (w.level - 1) * 0.2;
     else if (w.typeId === 'snowballTurret') dmg *= 1 + (w.level - 1) * 0.25;
     else if (w.typeId === 'stinkLine') dmg *= 1 + (w.level - 1) * 0.25;
+    else if (w.typeId === 'turdMine') dmg *= 1 + (w.level - 1) * 0.22;
     dmg *= getHowlDmgMult() * st.augmentDmgMult;
     if (st.items.bandana > 0) dmg *= (1 + st.items.bandana * 0.05); // Bandana: +5% per stack
     if (st.items.goldenbone) dmg *= 1.30; // Golden Bone: +30% all weapon damage
@@ -2141,6 +2142,7 @@ export function launch3DGame(options) {
    * - **lightningBolt**: Zigzag bolt segments with glow impacts; chains to nearby unhit enemies.
    * - **fireball**: Glowing core + outer glow with flame trail; explodes on impact or timeout.
    * - **boomerang**: Cross-shaped disc that arcs outward along a sine path and returns; pierces enemies.
+   * - **turdMine**: Stationary brown mine dropped at player position; detonates on proximity, AoE damage + slow.
    *
    * @param {{typeId: string, level: number, cooldownTimer: number}} w - The weapon instance to fire.
    * @see getWeaponDamage
@@ -2159,6 +2161,7 @@ export function launch3DGame(options) {
     else if (w.typeId === 'boomerang') playSound('sfx_weapon_boomerang');
     else if (w.typeId === 'boneToss') playSound(w.level >= 3 ? 'sfx_weapon_multishot' : 'sfx_weapon_projectile');
     else if (w.typeId === 'clawSwipe') playSound('sfx_melee_hit');
+    else if (w.typeId === 'turdMine') playSound('sfx_comedic_drop');
     else playSound('sfx_weapon_projectile');
 
     if (w.typeId === 'clawSwipe') {
@@ -2452,6 +2455,40 @@ export function launch3DGame(options) {
         dmgPerSec: dmg, life: trailDuration, type: 'stinkTrail',
         dmgTickTimer: 0, poisonDoT
       });
+    } else if (w.typeId === 'turdMine') {
+      // TURD MINE: Drops a stationary mine at the player's current position.
+      // Mine sits on the ground and detonates when an enemy walks within range,
+      // dealing AoE damage and applying a slow debuff to all enemies caught in the blast.
+      const mineRange = range * (1 + (w.level >= 2 ? 0.3 : 0));
+      const slowDuration = 3 * (1 + (w.level >= 5 ? 0.5 : 0));
+      const gh = getGroundAt(st.playerX, st.playerZ);
+      const mineGroup = new THREE.Group();
+      // Main body — brown lump
+      const bodyMat = new THREE.MeshLambertMaterial({ color: 0x8B4513 });
+      mineGroup.add(new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.3, 0.6), bodyMat));
+      // Darker top detail
+      const topMat = new THREE.MeshLambertMaterial({ color: 0x5C2E0A });
+      const topMesh = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.15, 0.35), topMat);
+      topMesh.position.y = 0.2;
+      mineGroup.add(topMesh);
+      // Stink indicator — small green wisp
+      const stinkMat = new THREE.MeshBasicMaterial({ color: 0x44cc44, transparent: true, opacity: 0.35 });
+      const stinkMesh = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.25, 0.15), stinkMat);
+      stinkMesh.position.y = 0.4;
+      mineGroup.add(stinkMesh);
+      mineGroup.position.set(st.playerX, gh + 0.15, st.playerZ);
+      mineGroup.castShadow = true;
+      scene.add(mineGroup);
+      st.weaponProjectiles.push({
+        mesh: mineGroup,
+        x: st.playerX, z: st.playerZ,
+        vx: 0, vz: 0,
+        damage: dmg,
+        mineRange: mineRange,
+        life: 15, // mine lasts 15 seconds
+        type: 'turdMine',
+        slowDuration: slowDuration,
+      });
     }
   }
 
@@ -2475,6 +2512,10 @@ export function launch3DGame(options) {
           }
         } else if (w.typeId === 'snowballTurret') {
           // Snowball Turret spawns orbiting turrets, doesn't need direct target
+          fireWeapon(w);
+          w.cooldownTimer = getWeaponCooldown(w);
+        } else if (w.typeId === 'turdMine') {
+          // Turd Mine drops at player position, no target needed
           fireWeapon(w);
           w.cooldownTimer = getWeaponCooldown(w);
         } else {
@@ -2506,7 +2547,62 @@ export function launch3DGame(options) {
       const p = st.weaponProjectiles[i];
       p.life -= dt;
 
-      if (p.type === 'boomerang') {
+      if (p.type === 'turdMine') {
+        // TURD MINE: Stationary mine — check if any enemy walks within detonation range.
+        // On detonation: deal AoE damage, apply slow debuff, show explosion effect.
+        // Animate stink wisp bobbing
+        if (p.mesh.children[2]) {
+          p.mesh.children[2].position.y = 0.4 + Math.sin(performance.now() * 0.003) * 0.1;
+        }
+        if (p.life <= 0) {
+          // Mine expired without detonating
+          disposeSceneObject(p.mesh);
+          st.weaponProjectiles.splice(i, 1);
+          continue;
+        }
+        // Check enemy proximity for detonation
+        let detonated = false;
+        for (const e of st.enemies) {
+          if (!e.alive) continue;
+          const dx = e.group.position.x - p.x;
+          const dz = e.group.position.z - p.z;
+          if (dx * dx + dz * dz < p.mineRange * p.mineRange) {
+            detonated = true;
+            break;
+          }
+        }
+        if (detonated) {
+          // Explode: damage + slow all enemies in range
+          const rangeSq = p.mineRange * p.mineRange;
+          for (const e of st.enemies) {
+            if (!e.alive) continue;
+            const dx = e.group.position.x - p.x;
+            const dz = e.group.position.z - p.z;
+            if (dx * dx + dz * dz < rangeSq) {
+              damageEnemy(e, p.damage);
+              // Apply turd mine slow debuff
+              e._origSpeed = e._origSpeed || e.speed;
+              e._turdSlowed = true;
+              e._turdSlowTimer = p.slowDuration;
+              e.speed = e._origSpeed * 0.5;
+            }
+          }
+          // Explosion visual — brown/green burst
+          const explH = getGroundAt(p.x, p.z);
+          const explMesh = new THREE.Mesh(
+            new THREE.BoxGeometry(p.mineRange * 2, 0.5, p.mineRange * 2),
+            new THREE.MeshBasicMaterial({ color: 0x8B6914, transparent: true, opacity: 0.5 })
+          );
+          explMesh.position.set(p.x, explH + 0.3, p.z);
+          scene.add(explMesh);
+          st.weaponEffects.push({ mesh: explMesh, life: 0.4, type: 'explosion' });
+          // Remove mine mesh
+          disposeSceneObject(p.mesh);
+          st.weaponProjectiles.splice(i, 1);
+          playSound('sfx_explosion');
+        }
+        continue; // skip normal projectile movement
+      } else if (p.type === 'boomerang') {
         p.elapsed += dt;
         // Boomerang follows an arc path
         const t = p.elapsed / 1.2;
@@ -3720,7 +3816,15 @@ export function launch3DGame(options) {
           e._mudSlowTimer -= dt;
           if (e._mudSlowTimer <= 0) {
             e._mudSlowed = false;
-            e.speed = e._origSpeed || e.speed;
+            if (!e._turdSlowed && !e._snowSlowed) e.speed = e._origSpeed || e.speed;
+          }
+        }
+        // Turd mine slow timer decrement — restore speed when expired
+        if (e._turdSlowed) {
+          e._turdSlowTimer -= dt;
+          if (e._turdSlowTimer <= 0) {
+            e._turdSlowed = false;
+            if (!e._mudSlowed && !e._snowSlowed) e.speed = e._origSpeed || e.speed;
           }
         }
         // Snowball slow timer decrement — restore speed when expired
@@ -3728,7 +3832,7 @@ export function launch3DGame(options) {
           e._snowSlowTimer -= dt;
           if (e._snowSlowTimer <= 0) {
             e._snowSlowed = false;
-            if (!e._mudSlowed) e.speed = e._origSpeed || e.speed;
+            if (!e._mudSlowed && !e._turdSlowed) e.speed = e._origSpeed || e.speed;
           }
         }
         // Snowball freeze timer decrement
