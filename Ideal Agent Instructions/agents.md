@@ -4,7 +4,21 @@
 - **Planning**: "plan", "architect", "design", "alternatives" → `docs/navigation.md`
 - **Implementing**: "implement", "build", "code", "execute" → `docs/execution.md`
 - **Landing**: "done", "complete", "finish", "ready" → `docs/landing.md`
+- **Parallelized Sprint**: "parallel", "spin up agents", "sprint" → `parallelization.md`
 - **Auto-detect**: Read bead `status` field if ambiguous
+
+## Execution Model Selection
+When a navigation phase produces implementation tasks:
+- **1-3 tasks**: Serial execution via `execution.md` (single agent, sequential)
+- **4+ independent tasks**: Parallelized sprint via `parallelization.md` (worktree agents, batched by dependency)
+
+The orchestrating agent builds a conflict matrix, batches tasks, writes detailed sub-agent prompts, and manages merges. Sub-agents still follow `execution.md` rules individually.
+
+## Effort Estimation
+- **Implementation time** scales sub-linearly with parallelism (more tasks ≈ same wall-clock time)
+- **Verification time** scales with integration surface area and is human-speed
+- Budget 80% of calendar time for QA/testing, 20% for implementation
+- See `parallelization.md` for the full protocol and anti-patterns
 
 ## Bead Mandate (Non-Negotiable)
 ALL work requires a bead. Beads are the source of truth.
