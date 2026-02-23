@@ -1579,12 +1579,12 @@ export function launch3DGame(options) {
 
   /**
    * Spawn a small group of tier-1 zombies around the player.
-   * Called every 2 seconds. Count increases with game time (2-6 zombies),
+   * Called every 2 seconds. Count increases with game time (3-8 zombies),
    * and base HP scales with elapsed minutes. Zombies spawn 25-35 units away in a random direction.
    */
   function spawnAmbient() {
     const elapsedMin = st.gameTime / 60;
-    const count = Math.min(6, 2 + Math.floor(elapsedMin / 2));
+    const count = Math.min(8, 3 + Math.floor(elapsedMin / 2));
     const baseHp = 8 + Math.floor(elapsedMin * 2.5);
     for (let i = 0; i < count; i++) {
       const angle = Math.random() * Math.PI * 2;
@@ -1600,7 +1600,7 @@ export function launch3DGame(options) {
   /**
    * Spawn a large wave event burst of zombies in a ring around the player.
    * Wave events occur every 3 minutes with a 10-second warning countdown.
-   * Higher waves spawn more zombies (18 + wave * 8) with scaled HP and
+   * Higher waves spawn more zombies (36 + wave * 16) with scaled HP and
    * a chance for higher-tier zombies. Also spawns a powerup crate and
    * an item pickup with every wave.
    */
@@ -1608,7 +1608,7 @@ export function launch3DGame(options) {
     const elapsedMin = st.gameTime / 60;
     const baseHp = 8 + Math.floor(elapsedMin * 2.5);
     const waveHp = Math.floor(baseHp * (1 + st.wave * 0.15));
-    const count = 18 + st.wave * 8;
+    const count = 36 + st.wave * 16;
     for (let i = 0; i < count; i++) {
       const angle = (i / count) * Math.PI * 2 + Math.random() * 0.3;
       const dist = 20 + Math.random() * 15;
@@ -3611,7 +3611,7 @@ export function launch3DGame(options) {
       // Merging is capped at Tier 4 (index 3) for alpha. Beyond that, just push apart.
       // When the merge counter fills, the surviving zombie is replaced by a new higher-tier one
       // with a brief scale bounce effect.
-      const ZOMBIE_RADIUS = 0.5;
+      const ZOMBIE_RADIUS = 0.6;
       const MERGE_RATIOS = [5, 3, 2]; // merges needed: tier1->2=5, tier2->3=3, tier3->4=2
       const MAX_MERGE_TIER = 4;       // Cap at tier 4 for alpha
       const mergedSet = new Set();
