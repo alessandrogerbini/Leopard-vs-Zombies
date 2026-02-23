@@ -1245,7 +1245,7 @@ export function launch3DGame(options) {
   }
 
   // Pre-generate difficulty totems
-  const TOTEM_COUNT = 8;
+  const TOTEM_COUNT = 16;
   for (let ti = 0; ti < TOTEM_COUNT; ti++) {
     const tx = (Math.random() - 0.5) * (ARENA_SIZE * 2 - 30);
     const tz = (Math.random() - 0.5) * (ARENA_SIZE * 2 - 30);
