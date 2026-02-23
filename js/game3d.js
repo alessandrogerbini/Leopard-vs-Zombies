@@ -839,8 +839,32 @@ export function launch3DGame(options) {
 
   // === FIRE AURA (for race car powerup) ===
   const fireParticles = [];
+  /** Maximum concurrent fire particles to prevent GPU memory exhaustion. */
+  const MAX_FIRE_PARTICLES = 80;
   const fireGeo = new THREE.BoxGeometry(0.2, 0.2, 0.2);
   const fireMat = new THREE.MeshBasicMaterial({ color: 0xff6600 });
+
+  /**
+   * Spawn a fire particle if below the cap. Returns null if at capacity.
+   * @param {number} hex - Particle color.
+   * @param {number} x - World X.
+   * @param {number} y - World Y.
+   * @param {number} z - World Z.
+   * @param {number} life - Lifetime in seconds.
+   * @param {Object} [opts] - Optional overrides: { transparent, opacity }.
+   * @returns {{mesh: THREE.Mesh, life: number}|null} The particle, or null if at cap.
+   */
+  function spawnFireParticle(hex, x, y, z, life, opts) {
+    if (fireParticles.length >= MAX_FIRE_PARTICLES) return null;
+    const mat = new THREE.MeshBasicMaterial({ color: hex });
+    if (opts && opts.transparent) { mat.transparent = true; mat.opacity = opts.opacity || 1.0; }
+    const fp = new THREE.Mesh(fireGeo, mat);
+    fp.position.set(x, y, z);
+    scene.add(fp);
+    const entry = { mesh: fp, life };
+    fireParticles.push(entry);
+    return entry;
+  }
 
   // === ZOMBIE TIER SYSTEM === (ZOMBIE_TIERS imported from 3d/constants.js)
 
@@ -1146,6 +1170,13 @@ export function launch3DGame(options) {
     scene.add(mesh);
     return { mesh, itype, x: px, z: pz, bobPhase: Math.random() * Math.PI * 2, alive: true };
   }
+
+  // === SHARED WEAPON EFFECT RESOURCES ===
+  // Shared geometry and material for lightning bolt segments to avoid per-segment allocation.
+  const boltSegGeo = new THREE.BoxGeometry(0.06, 0.06, 1);
+  const boltSegMat = new THREE.MeshBasicMaterial({ color: 0xaaddff });
+  const boltGlowGeo = new THREE.BoxGeometry(0.5, 0.5, 0.5);
+  const boltGlowMat = new THREE.MeshBasicMaterial({ color: 0xccddff, transparent: true, opacity: 0.6 });
 
   // === ATTACK LINE ===
   const attackLineMat = new THREE.LineBasicMaterial({ color: 0xffff44 });
@@ -1566,19 +1597,19 @@ export function launch3DGame(options) {
             const x2 = prevX + boltDx * t2 + (Math.random() - 0.5) * jitter;
             const z2 = prevZ + boltDz * t2 + (Math.random() - 0.5) * jitter;
             const segLen = Math.sqrt((x2 - x1) ** 2 + (z2 - z1) ** 2) || 0.1;
-            const boltMat = new THREE.MeshBasicMaterial({ color: 0xaaddff });
-            const boltSeg = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.06, segLen), boltMat);
+            // Reuse shared bolt geometry + material; scale Z for segment length
+            const boltSeg = new THREE.Mesh(boltSegGeo, boltSegMat);
             boltSeg.position.set((x1 + x2) / 2, st.playerY + 1 + (Math.random() - 0.5) * 0.3, (z1 + z2) / 2);
             boltSeg.rotation.y = Math.atan2(x2 - x1, z2 - z1);
+            boltSeg.scale.z = segLen;
             scene.add(boltSeg);
-            st.weaponEffects.push({ mesh: boltSeg, life: 0.15, type: 'bolt' });
+            st.weaponEffects.push({ mesh: boltSeg, life: 0.15, type: 'bolt', shared: true });
           }
-          // Glow at impact point
-          const glowMat = new THREE.MeshBasicMaterial({ color: 0xccddff, transparent: true, opacity: 0.6 });
-          const glow = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.5, 0.5), glowMat);
+          // Glow at impact point (shared geometry + material)
+          const glow = new THREE.Mesh(boltGlowGeo, boltGlowMat);
           glow.position.set(ex, ey, ez);
           scene.add(glow);
-          st.weaponEffects.push({ mesh: glow, life: 0.2, type: 'bolt' });
+          st.weaponEffects.push({ mesh: glow, life: 0.2, type: 'bolt', shared: true });
 
           hit.add(current);
           prevX = ex; prevZ = ez;
@@ -1707,9 +1738,7 @@ export function launch3DGame(options) {
         if (p.type === 'fireball' && p.explosionRadius) {
           spawnExplosion(p.mesh.position.x, p.mesh.position.z, p.explosionRadius, p.explosionDmg);
         }
-        scene.remove(p.mesh);
-        p.mesh.geometry.dispose();
-        p.mesh.material.dispose();
+        disposeSceneObject(p.mesh);
         st.weaponProjectiles.splice(i, 1);
         continue;
       }
@@ -1726,9 +1755,7 @@ export function launch3DGame(options) {
             if (p.type === 'fireball' && p.explosionRadius) {
               spawnExplosion(p.mesh.position.x, p.mesh.position.z, p.explosionRadius, p.explosionDmg);
             }
-            scene.remove(p.mesh);
-            p.mesh.geometry.dispose();
-            p.mesh.material.dispose();
+            disposeSceneObject(p.mesh);
             st.weaponProjectiles.splice(i, 1);
             break;
           }
@@ -1768,13 +1795,19 @@ export function launch3DGame(options) {
   }
 
   /**
-   * Remove a weapon effect mesh from the scene and dispose all its child geometries/materials.
+   * Remove an object from the scene and dispose all its geometries/materials.
+   * Works for both individual Meshes and Groups with children.
    *
-   * @param {THREE.Object3D} mesh - The effect mesh or group to dispose.
+   * @param {THREE.Object3D} obj - The mesh or group to dispose.
    */
-  function disposeEffectMesh(mesh) {
-    scene.remove(mesh);
-    mesh.traverse(c => { if (c.geometry) c.geometry.dispose(); if (c.material) c.material.dispose(); });
+  function disposeSceneObject(obj) {
+    scene.remove(obj);
+    if (obj.traverse) {
+      obj.traverse(c => { if (c.geometry) c.geometry.dispose(); if (c.material) c.material.dispose(); });
+    } else {
+      if (obj.geometry) obj.geometry.dispose();
+      if (obj.material) obj.material.dispose();
+    }
   }
 
   /**
@@ -1823,13 +1856,18 @@ export function launch3DGame(options) {
         if (eff.mesh.material) eff.mesh.material.opacity = Math.min(1, Math.max(0, eff.life / 0.2 * 0.7));
       }
 
-      if (eff.type === 'bolt') {
-        // Fade lightning segments
+      if (eff.type === 'bolt' && !eff.shared) {
+        // Fade lightning segments (only for non-shared materials)
         if (eff.mesh.material) eff.mesh.material.opacity = Math.min(1, Math.max(0, eff.life / 0.15));
       }
 
       if (eff.life <= 0) {
-        disposeEffectMesh(eff.mesh);
+        if (eff.shared) {
+          // Shared geometry/material — only remove from scene, do not dispose
+          scene.remove(eff.mesh);
+        } else {
+          disposeSceneObject(eff.mesh);
+        }
         st.weaponEffects.splice(i, 1);
       }
     }
@@ -2173,15 +2211,13 @@ export function launch3DGame(options) {
       if (st.fireAura) {
         // Spawn fire particles
         if (Math.random() < 0.3) {
-          const fp = new THREE.Mesh(fireGeo, fireMat.clone());
-          fp.material.color.setHex(Math.random() > 0.5 ? 0xff6600 : 0xff2200);
-          fp.position.set(
+          spawnFireParticle(
+            Math.random() > 0.5 ? 0xff6600 : 0xff2200,
             st.playerX + (Math.random() - 0.5) * 1.5,
             st.playerY + 0.5 + Math.random(),
-            st.playerZ + (Math.random() - 0.5) * 1.5
+            st.playerZ + (Math.random() - 0.5) * 1.5,
+            0.5
           );
-          scene.add(fp);
-          fireParticles.push({ mesh: fp, life: 0.5 });
         }
         // Damage nearby enemies
         for (const e of st.enemies) {
@@ -2200,7 +2236,7 @@ export function launch3DGame(options) {
         fireParticles[i].mesh.position.y += dt * 3;
         if (fireParticles[i].life <= 0) {
           scene.remove(fireParticles[i].mesh);
-          fireParticles[i].mesh.geometry.dispose();
+          // Geometry is shared (fireGeo) — only dispose the per-particle material
           fireParticles[i].mesh.material.dispose();
           fireParticles.splice(i, 1);
         }
@@ -2221,11 +2257,13 @@ export function launch3DGame(options) {
         for (let i = 0; i < 20; i++) {
           const angle = Math.random() * Math.PI * 2;
           const dist = Math.random() * 8;
-          const fp = new THREE.Mesh(fireGeo, fireMat.clone());
-          fp.material.color.setHex(0x88ccff);
-          fp.position.set(st.playerX + Math.cos(angle) * dist, st.playerY + 0.5 + Math.random(), st.playerZ + Math.sin(angle) * dist);
-          scene.add(fp);
-          fireParticles.push({ mesh: fp, life: 1.0 });
+          spawnFireParticle(
+            0x88ccff,
+            st.playerX + Math.cos(angle) * dist,
+            st.playerY + 0.5 + Math.random(),
+            st.playerZ + Math.sin(angle) * dist,
+            1.0
+          );
         }
         st.frostNova = false; // instant burst, only triggers once
       }
@@ -2246,15 +2284,13 @@ export function launch3DGame(options) {
 
       // === BERSERKER RAGE visual (red aura particles) ===
       if (st.berserkVulnerable && Math.random() < 0.25) {
-        const fp = new THREE.Mesh(fireGeo, fireMat.clone());
-        fp.material.color.setHex(0x881111);
-        fp.position.set(
+        spawnFireParticle(
+          0x881111,
           st.playerX + (Math.random() - 0.5) * 1.5,
           st.playerY + 0.3 + Math.random() * 0.8,
-          st.playerZ + (Math.random() - 0.5) * 1.5
+          st.playerZ + (Math.random() - 0.5) * 1.5,
+          0.4
         );
-        scene.add(fp);
-        fireParticles.push({ mesh: fp, life: 0.4 });
       }
 
       // === GHOST FORM visual (transparent player + ghost particles) ===
@@ -2266,17 +2302,13 @@ export function launch3DGame(options) {
           }
         });
         if (Math.random() < 0.2) {
-          const fp = new THREE.Mesh(fireGeo, fireMat.clone());
-          fp.material.color.setHex(0xeeeeff);
-          fp.material.transparent = true;
-          fp.material.opacity = 0.5;
-          fp.position.set(
+          spawnFireParticle(
+            0xeeeeff,
             st.playerX + (Math.random() - 0.5) * 1,
             st.playerY + Math.random() * 1.5,
-            st.playerZ + (Math.random() - 0.5) * 1
+            st.playerZ + (Math.random() - 0.5) * 1,
+            0.6, { transparent: true, opacity: 0.5 }
           );
-          scene.add(fp);
-          fireParticles.push({ mesh: fp, life: 0.6 });
         }
       } else {
         // Restore opacity when ghost form ends
@@ -2306,15 +2338,13 @@ export function launch3DGame(options) {
           // Visual: expanding ring of brown particles
           for (let i = 0; i < 24; i++) {
             const angle = (i / 24) * Math.PI * 2;
-            const fp = new THREE.Mesh(fireGeo, fireMat.clone());
-            fp.material.color.setHex(0x8B6914);
-            fp.position.set(
+            spawnFireParticle(
+              0x8B6914,
               st.playerX + Math.cos(angle) * 2,
               st.playerY + 0.2,
-              st.playerZ + Math.sin(angle) * 2
+              st.playerZ + Math.sin(angle) * 2,
+              0.8
             );
-            scene.add(fp);
-            fireParticles.push({ mesh: fp, life: 0.8 });
           }
         }
         st.wasAirborne = currentlyAirborne;
@@ -2324,15 +2354,13 @@ export function launch3DGame(options) {
       if (st.vampireHeal) {
         st.hp = Math.min(st.hp + 3 * dt, st.maxHp);
         if (Math.random() < 0.15) {
-          const fp = new THREE.Mesh(fireGeo, fireMat.clone());
-          fp.material.color.setHex(0x6a0dad);
-          fp.position.set(
+          spawnFireParticle(
+            0x6a0dad,
             st.playerX + (Math.random() - 0.5) * 0.8,
             st.playerY + 0.5 + Math.random() * 0.5,
-            st.playerZ + (Math.random() - 0.5) * 0.8
+            st.playerZ + (Math.random() - 0.5) * 0.8,
+            0.5
           );
-          scene.add(fp);
-          fireParticles.push({ mesh: fp, life: 0.5 });
         }
       }
 
@@ -2360,30 +2388,26 @@ export function launch3DGame(options) {
             const ey = nearest.group.position.y + 0.5;
             for (let i = 0; i < 6; i++) {
               const t = i / 5;
-              const fp = new THREE.Mesh(fireGeo, fireMat.clone());
-              fp.material.color.setHex(0x44aaff);
-              fp.position.set(
+              spawnFireParticle(
+                0x44aaff,
                 st.playerX + (ex - st.playerX) * t + (Math.random() - 0.5) * 0.3,
                 st.playerY + 1 + (ey - st.playerY - 1) * t,
-                st.playerZ + (ez - st.playerZ) * t + (Math.random() - 0.5) * 0.3
+                st.playerZ + (ez - st.playerZ) * t + (Math.random() - 0.5) * 0.3,
+                0.3
               );
-              scene.add(fp);
-              fireParticles.push({ mesh: fp, life: 0.3 });
             }
           }
         }
         // Orbiting spark particles
         if (Math.random() < 0.3) {
           const angle = clock.elapsedTime * 4 + Math.random() * Math.PI;
-          const fp = new THREE.Mesh(fireGeo, fireMat.clone());
-          fp.material.color.setHex(0x44aaff);
-          fp.position.set(
+          spawnFireParticle(
+            0x44aaff,
             st.playerX + Math.cos(angle) * 1.5,
             st.playerY + 0.8 + Math.random() * 0.5,
-            st.playerZ + Math.sin(angle) * 1.5
+            st.playerZ + Math.sin(angle) * 1.5,
+            0.4
           );
-          scene.add(fp);
-          fireParticles.push({ mesh: fp, life: 0.4 });
         }
       }
 
@@ -2399,17 +2423,13 @@ export function launch3DGame(options) {
       // === TIME WARP visual (purple distortion particles around player) ===
       if (st.timeWarp && Math.random() < 0.2) {
         const angle = Math.random() * Math.PI * 2;
-        const fp = new THREE.Mesh(fireGeo, fireMat.clone());
-        fp.material.color.setHex(0x9944ff);
-        fp.material.transparent = true;
-        fp.material.opacity = 0.6;
-        fp.position.set(
+        spawnFireParticle(
+          0x9944ff,
           st.playerX + Math.cos(angle) * 3,
           st.playerY + Math.random() * 2,
-          st.playerZ + Math.sin(angle) * 3
+          st.playerZ + Math.sin(angle) * 3,
+          0.7, { transparent: true, opacity: 0.6 }
         );
-        scene.add(fp);
-        fireParticles.push({ mesh: fp, life: 0.7 });
       }
 
       // === MIRROR IMAGE (2 orbiting clones that damage enemies) ===
@@ -2510,15 +2530,13 @@ export function launch3DGame(options) {
           }
           // Explosion particles
           for (let j = 0; j < 10; j++) {
-            const fp = new THREE.Mesh(fireGeo, fireMat.clone());
-            fp.material.color.setHex(Math.random() > 0.5 ? 0xff6622 : 0xff2200);
-            fp.position.set(
+            spawnFireParticle(
+              Math.random() > 0.5 ? 0xff6622 : 0xff2200,
               b.x + (Math.random() - 0.5) * 2,
               b.mesh.position.y + Math.random() * 1.5,
-              b.z + (Math.random() - 0.5) * 2
+              b.z + (Math.random() - 0.5) * 2,
+              0.5
             );
-            scene.add(fp);
-            fireParticles.push({ mesh: fp, life: 0.5 });
           }
           scene.remove(b.mesh);
           b.mesh.geometry.dispose();
@@ -2531,15 +2549,13 @@ export function launch3DGame(options) {
       if (st.regenBurst) {
         st.hp = Math.min(st.hp + (st.maxHp / 5) * dt, st.maxHp);
         if (Math.random() < 0.25) {
-          const fp = new THREE.Mesh(fireGeo, fireMat.clone());
-          fp.material.color.setHex(0x33ff33);
-          fp.position.set(
+          spawnFireParticle(
+            0x33ff33,
             st.playerX + (Math.random() - 0.5) * 1,
             st.playerY + 0.3 + Math.random() * 1.2,
-            st.playerZ + (Math.random() - 0.5) * 1
+            st.playerZ + (Math.random() - 0.5) * 1,
+            0.6
           );
-          scene.add(fp);
-          fireParticles.push({ mesh: fp, life: 0.6 });
         }
       }
 
@@ -2934,6 +2950,10 @@ export function launch3DGame(options) {
             st.level++;
             showUpgradeMenu();
           }
+        } else if (dist > 50) {
+          // Cleanup far-away XP gems to prevent unbounded accumulation
+          scene.remove(gem.mesh);
+          st.xpGems.splice(i, 1);
         }
       }
 
@@ -2972,7 +2992,7 @@ export function launch3DGame(options) {
           }
         }
         // Cleanup far crates
-        if (dist > 60) {
+        if (distSq > 3600) { // 60*60
           c.alive = false;
           scene.remove(c.group);
           c.group.traverse(ch => { if (ch.geometry) ch.geometry.dispose(); if (ch.material) ch.material.dispose(); });
@@ -3016,7 +3036,7 @@ export function launch3DGame(options) {
           item.mesh.material.dispose();
           st.itemPickups.splice(i, 1);
         }
-        if (dist > 60) {
+        if (distSq > 3600) { // 60*60
           item.alive = false;
           scene.remove(item.mesh);
           item.mesh.geometry.dispose();
@@ -3124,7 +3144,10 @@ export function launch3DGame(options) {
 
       // === CLEANUP + DEATH CHECK ===
       // Clean dead enemies
-      st.enemies = st.enemies.filter(e => e.alive);
+      // Remove dead enemies in-place (avoids allocating a new array every frame)
+      for (let i = st.enemies.length - 1; i >= 0; i--) {
+        if (!st.enemies[i].alive) st.enemies.splice(i, 1);
+      }
 
       // Player death
       if (st.hp <= 0) {
@@ -3188,17 +3211,17 @@ export function launch3DGame(options) {
     window.removeEventListener('keyup', onKeyUp);
 
     // Dispose fire particles
-    fireParticles.forEach(fp => { scene.remove(fp.mesh); fp.mesh.geometry.dispose(); fp.mesh.material.dispose(); });
+    fireParticles.forEach(fp => disposeSceneObject(fp.mesh));
     // Dispose mirror clone groups
-    st.mirrorCloneGroups.forEach(cd => { cd.group.traverse(c => { if (c.geometry) c.geometry.dispose(); if (c.material) c.material.dispose(); }); scene.remove(cd.group); });
+    st.mirrorCloneGroups.forEach(cd => disposeSceneObject(cd.group));
     // Dispose bomb trail bombs
-    st.bombTrailBombs.forEach(b => { scene.remove(b.mesh); b.mesh.geometry.dispose(); b.mesh.material.dispose(); });
+    st.bombTrailBombs.forEach(b => disposeSceneObject(b.mesh));
 
     // Dispose weapon projectiles and effects
-    st.weaponProjectiles.forEach(p => { scene.remove(p.mesh); p.mesh.geometry.dispose(); p.mesh.material.dispose(); });
-    st.weaponEffects.forEach(e => { scene.remove(e.mesh); e.mesh.geometry.dispose(); e.mesh.material.dispose(); });
+    st.weaponProjectiles.forEach(p => disposeSceneObject(p.mesh));
+    st.weaponEffects.forEach(e => { if (e.shared) scene.remove(e.mesh); else disposeSceneObject(e.mesh); });
     // Dispose charge glow
-    if (st.chargeGlow) { scene.remove(st.chargeGlow); st.chargeGlow.geometry.dispose(); st.chargeGlow.material.dispose(); }
+    if (st.chargeGlow) disposeSceneObject(st.chargeGlow);
 
     // Dispose all Three.js objects
     scene.traverse(child => {
