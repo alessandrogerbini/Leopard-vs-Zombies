@@ -148,29 +148,48 @@ function createTree(dx, dz, h, scene) {
   // Vary tree size slightly using noise
   const sizeVar = 0.8 + noise2D(dx * 7.1, dz * 3.7) * 0.4; // 0.8-1.2
   const trunkH = 2 * sizeVar;
-  const canopyH = 1.5 * sizeVar;
-  const canopyW = 1.8 * sizeVar;
+  const canopyBase = h + trunkH;
+  const meshes = [];
+  const s = sizeVar;
 
+  // Trunk (unchanged)
   const trunk = new THREE.Mesh(
-    new THREE.BoxGeometry(0.3 * sizeVar, trunkH, 0.3 * sizeVar),
+    new THREE.BoxGeometry(0.3 * s, trunkH, 0.3 * s),
     new THREE.MeshLambertMaterial({ color: 0x664422 })
   );
   trunk.position.set(dx, h + trunkH / 2, dz);
   trunk.castShadow = true;
   scene.add(trunk);
+  meshes.push(trunk);
 
-  // Vary canopy color slightly
+  // Canopy color variation
   const canopyColors = [0x226622, 0x1a5a1a, 0x2a7a2a, 0x1e6e1e];
-  const canopyColor = canopyColors[Math.floor(noise2D(dx * 2.3, dz * 5.1) * canopyColors.length)];
-  const canopy = new THREE.Mesh(
-    new THREE.BoxGeometry(canopyW, canopyH, canopyW),
-    new THREE.MeshLambertMaterial({ color: canopyColor })
-  );
-  canopy.position.set(dx, h + trunkH + canopyH / 2, dz);
-  canopy.castShadow = true;
-  scene.add(canopy);
+  const cc = canopyColors[Math.floor(noise2D(dx * 2.3, dz * 5.1) * canopyColors.length)];
 
-  return [trunk, canopy];
+  // Helper to add a canopy box
+  const addBox = (w, bh, d, ox, oy, oz) => {
+    const m = new THREE.Mesh(
+      new THREE.BoxGeometry(w, bh, d),
+      new THREE.MeshLambertMaterial({ color: cc })
+    );
+    m.position.set(dx + ox, canopyBase + oy, dz + oz);
+    m.castShadow = true;
+    scene.add(m);
+    meshes.push(m);
+  };
+
+  // Multi-box rounded canopy
+  // Center block (largest)
+  addBox(1.4 * s, 1.2 * s, 1.4 * s, 0, 0.6 * s, 0);
+  // Top cap (smaller, higher)
+  addBox(0.9 * s, 0.6 * s, 0.9 * s, 0, 1.3 * s, 0);
+  // 4 side lobes (medium, offset outward)
+  addBox(0.7 * s, 0.8 * s, 1.0 * s,  0.5 * s, 0.5 * s, 0);
+  addBox(0.7 * s, 0.8 * s, 1.0 * s, -0.5 * s, 0.5 * s, 0);
+  addBox(1.0 * s, 0.8 * s, 0.7 * s, 0, 0.5 * s,  0.5 * s);
+  addBox(1.0 * s, 0.8 * s, 0.7 * s, 0, 0.5 * s, -0.5 * s);
+
+  return meshes;
 }
 
 /**
