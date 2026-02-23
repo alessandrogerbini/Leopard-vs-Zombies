@@ -23,14 +23,17 @@
  *  STATE MACHINE TRANSITION DIAGRAM
  * ============================================================
  *
- *   title ──[Enter]──> modeSelect ──[Enter]──> difficulty ──[Enter]──> select
- *     ^                   |  ^                    |  ^                   |
- *     |                  [Esc]                   [Esc]                  [Esc]
- *     |                   v  |                    v  |                   |
- *     |                 title                  modeSelect               |
- *     |                                                                 |
- *     |          ┌──────────────────────────────────────────────────────┘
- *     |          |                   [Enter on mode=0 (2D)]
+ *   title ──[Enter]──> modeSelect ──[Enter, mode=0]──> difficulty ──[Enter]──> select
+ *     ^                   |  ^                           |  ^                   |
+ *     |                  [Esc]                          [Esc]                  [Esc]
+ *     |                   v  |                           v  |                   |
+ *     |                 title                         modeSelect           difficulty (2D)
+ *     |                                                                   modeSelect (3D)
+ *     |
+ *     |   modeSelect ──[Enter, mode=1]──> select (skip difficulty)
+ *     |
+ *     |          ┌──── select ──[Enter on mode=0 (2D)]──────────────────┐
+ *     |          |                                                      |
  *     |          v
  *     |       playing ──[all zombies dead, level<3]──> portal ──[enter portal]──> levelComplete
  *     |          |                                                                    |
@@ -262,7 +265,8 @@ function update() {
   // Each state handles its own input and either returns early or falls through
   // to the gameplay subsections below.
   if (state.gameState === 'title') {
-    if (keys['Enter'] && !state._enterHeld) { state._enterHeld = true; state.selectedMode = 0; state.gameState = 'modeSelect'; }
+    // Enter goes to mode select
+    if (keys['Enter'] && !state._enterHeld) { state._enterHeld = true; state.selectedMode = 1; state.gameState = 'modeSelect'; }
     if (!keys['Enter']) state._enterHeld = false;
     return;
   }
@@ -280,9 +284,15 @@ function update() {
     if (!keys['ArrowRight']) state._selectRightHeld = false;
     if (keys['Enter'] && !state._enterHeld) {
       state._enterHeld = true;
-      // Both modes go through difficulty + animal select
-      state.selectedDifficulty = 0;
-      state.gameState = 'difficulty';
+      if (state.selectedMode === 0) {
+        // 2D Classic: go through difficulty select
+        state.selectedDifficulty = 0;
+        state.gameState = 'difficulty';
+      } else {
+        // 3D Survivor: skip difficulty, go to animal select
+        state.selectedAnimal = 0;
+        state.gameState = 'select';
+      }
     }
     if (!keys['Enter']) state._enterHeld = false;
     if (keys['Escape'] && !state._escHeld) {
@@ -353,6 +363,14 @@ function update() {
             // Clear all 2D keys to prevent ghost inputs
             Object.keys(keys).forEach(k => { keys[k] = false; });
             state.gameState = 'title';
+            // Reset stale 2D game state
+            state.particles = [];
+            state.floatingTexts = [];
+            state.zombies = [];
+            state.healthPickups = [];
+            state.powerupCrates = [];
+            state.projectiles = [];
+            state.allies = [];
             startGameLoop();
           }
         });
@@ -378,7 +396,8 @@ function update() {
     if (!keys['Enter']) state._enterHeld = false;
     if (keys['Escape'] && !state._escHeld) {
       state._escHeld = true;
-      state.gameState = 'difficulty';
+      // 2D goes back to difficulty, 3D goes back to mode select
+      state.gameState = state.selectedMode === 0 ? 'difficulty' : 'modeSelect';
     }
     return;
   }
