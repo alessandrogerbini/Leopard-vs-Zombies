@@ -1186,6 +1186,8 @@ export function launch3DGame(options) {
       bodyColor: td.body,
       headColor: td.head,
       walkPhase: Math.random() * Math.PI * 2,
+      mergeCount: 0,       // Tracks absorbed same-tier zombies toward next tier
+      mergeBounce: 0,      // Visual bounce timer after successful tier-up merge
     };
   }
 
@@ -3331,6 +3333,21 @@ export function launch3DGame(options) {
         if (e.armR) e.armR.position.z = 0.15 - armSwing * 0.3;
         if (e.legL) e.legL.position.z = legSwing;
         if (e.legR) e.legR.position.z = -legSwing;
+        // Merge bounce effect: brief scale-up then back to normal on tier upgrade
+        if (e.mergeBounce > 0) {
+          e.mergeBounce -= dt;
+          const bouncePhase = e.mergeBounce / 0.4; // 0->1 normalized (1 at start)
+          const bounceScale = 1 + Math.sin(bouncePhase * Math.PI) * 0.35;
+          e.group.scale.set(bounceScale, bounceScale, bounceScale);
+          // Flash bright on the body
+          if (e.body && bouncePhase > 0.5) {
+            e.body.material.color.setHex(0xffaa00);
+          }
+          if (e.mergeBounce <= 0) {
+            e.group.scale.set(1, 1, 1);
+            if (e.body) e.body.material.color.setHex(e.bodyColor);
+          }
+        }
         // Contact damage (scaled by tier + difficulty) - check Y distance so platforms/air protect player
         const dy = Math.abs(st.playerY - e.group.position.y);
         const tierData = ZOMBIE_TIERS[(e.tier || 1) - 1];
@@ -3392,17 +3409,22 @@ export function launch3DGame(options) {
         if (dist > 60) { disposeEnemy(e); }
       }
 
-      // === ZOMBIE-ZOMBIE COLLISION: MERGE INTO HIGHER TIERS ===
-      // When two same-tier zombies collide (below tier 10), they merge into one zombie
-      // of the next tier at their midpoint. Different-tier or max-tier collisions
-      // just push the zombies apart. This creates an emergent difficulty escalation.
+      // === ZOMBIE-ZOMBIE COLLISION: TIERED MERGE SYSTEM ===
+      // Same-tier zombies collide to progress toward merging into the next tier.
+      // Merge ratios: Tier 1 (Shambler) -> Tier 2 (Lurcher) = 5:1,
+      //               Tier 2 (Lurcher) -> Tier 3 (Bruiser) = 3:1,
+      //               Tier 3 (Bruiser) -> Tier 4 (Mega) = 2:1.
+      // Merging is capped at Tier 4 (index 3) for alpha. Beyond that, just push apart.
+      // When the merge counter fills, the surviving zombie is replaced by a new higher-tier one
+      // with a brief scale bounce effect.
       const ZOMBIE_RADIUS = 0.5;
+      const MERGE_RATIOS = [5, 3, 2]; // merges needed: tier1->2=5, tier2->3=3, tier3->4=2
+      const MAX_MERGE_TIER = 4;       // Cap at tier 4 for alpha
       const mergedSet = new Set();
       const newEnemies = [];
       for (let i = 0; i < st.enemies.length; i++) {
         const a = st.enemies[i];
         if (!a.alive || mergedSet.has(i)) continue;
-        let merged = false;
         for (let j = i + 1; j < st.enemies.length; j++) {
           const b = st.enemies[j];
           if (!b.alive || mergedSet.has(j)) continue;
@@ -3413,21 +3435,40 @@ export function launch3DGame(options) {
           const bScale = ZOMBIE_TIERS[(b.tier || 1) - 1].scale;
           const minDist = ZOMBIE_RADIUS * (aScale + bScale);
           if (distSq < minDist * minDist && distSq > 0.001) {
-            // Same tier and below max → merge!
             const aTier = a.tier || 1;
             const bTier = b.tier || 1;
-            if (aTier === bTier && aTier < 10) {
-              const mx = (a.group.position.x + b.group.position.x) / 2;
-              const mz = (a.group.position.z + b.group.position.z) / 2;
-              const newTier = aTier + 1;
-              const baseHp = 8 + Math.floor((st.gameTime / 60) * 2.5);
-              disposeEnemy(a); disposeEnemy(b);
-              mergedSet.add(i); mergedSet.add(j);
-              newEnemies.push(createEnemy(mx, mz, baseHp, newTier));
-              merged = true;
-              break;
+            // Same tier and below merge cap → absorb
+            if (aTier === bTier && aTier < MAX_MERGE_TIER) {
+              const mergeIdx = aTier - 1; // 0-indexed into MERGE_RATIOS
+              const needed = MERGE_RATIOS[mergeIdx] || 2;
+              // Survivor (a) absorbs victim (b), including b's progress
+              a.mergeCount = (a.mergeCount || 0) + (b.mergeCount || 0) + 1;
+              disposeEnemy(b);
+              mergedSet.add(j);
+              // Check if enough absorbed to tier up
+              if (a.mergeCount >= needed - 1) {
+                // Tier up: replace survivor with next-tier zombie at its position
+                const mx = a.group.position.x;
+                const mz = a.group.position.z;
+                const newTier = aTier + 1;
+                const baseHp = 8 + Math.floor((st.gameTime / 60) * 2.5);
+                disposeEnemy(a);
+                mergedSet.add(i);
+                const upgraded = createEnemy(mx, mz, baseHp, newTier);
+                upgraded.mergeBounce = 0.4; // 0.4s bounce animation
+                newEnemies.push(upgraded);
+                // Floating text announcement
+                const tierName = ZOMBIE_TIERS[newTier - 1].name;
+                st.floatingTexts3d.push({
+                  text: tierName.toUpperCase() + '!',
+                  color: '#ff8800',
+                  x: mx, y: terrainHeight(mx, mz) + 2.5, z: mz,
+                  life: 1.5,
+                });
+                break;
+              }
             } else {
-              // Different tiers or max tier: just push apart
+              // Different tiers, at merge cap, or max tier: just push apart
               const dist = Math.sqrt(distSq);
               const overlap = (minDist - dist) * 0.5;
               const nx = dx / dist;
