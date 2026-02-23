@@ -159,8 +159,9 @@ import { initAudio, playSound, toggleMute, isMuted, getVolume, disposeAudio } fr
  * @property {boolean} pauseMenu            - True when ESC pause menu is shown.
  * @property {number} selectedPauseOption   - Index of highlighted pause menu option.
  *
- * --- Auto-Attack + Power Attack ---
- * @property {number} autoAttackTimer       - Countdown to next auto-attack.
+ * --- Power Attack + Interaction ---
+ * @property {number} autoAttackTimer       - Deprecated (BD-102), kept for compatibility.
+ * @property {number} interactionTimer      - Cooldown for shrine/totem proximity hits.
  * @property {boolean} charging             - True while Enter/B is held for power attack.
  * @property {number} chargeTime            - Seconds charged (0-2 range).
  * @property {THREE.Mesh|null} chargeGlow   - Visual glow mesh during charging.
@@ -352,8 +353,9 @@ export function launch3DGame(options) {
     selectedPauseOption: 0,
     showFullMap: false,
     fogRevealed: new Set(), // BD-97: fog-of-war grid cells revealed by player
-    // Auto-attack + power attack
-    autoAttackTimer: 0,
+    // Power attack + interaction (BD-102: auto-attack removed)
+    autoAttackTimer: 0, // kept for compatibility, no longer used
+    interactionTimer: 0, // cooldown for shrine/totem hits
     charging: false,
     chargeTime: 0,
     chargeGlow: null,
@@ -4379,75 +4381,11 @@ export function launch3DGame(options) {
         st.enemies.push(...newEnemies);
       }
 
-      // === AUTO-ATTACK ===
-      // Timer-based auto-attack targeting the nearest enemy within range.
-      // Cowboy Boots and Banana Cannon extend range. Crit Gloves give 15% chance for 2x.
-      // Creates attack line visual and optional banana projectile in ranged mode.
-      st.autoAttackTimer -= dt;
-      if (st.autoAttackTimer <= 0 && !st.ghostForm) {
-        let range = st.attackRange;
-        if (st.items.boots === 'cowboyBoots') range *= 1.2;
-        if (st.rangedMode) range *= 2;
-
-        let nearest = null, nearDistSq = Infinity;
-        const rangeSqAA = range * range;
-        for (const e of st.enemies) {
-          if (!e.alive) continue;
-          const dx = st.playerX - e.group.position.x;
-          const dz = st.playerZ - e.group.position.z;
-          const distSq = dx * dx + dz * dz;
-          if (distSq < rangeSqAA && distSq < nearDistSq) {
-            nearest = e;
-            nearDistSq = distSq;
-          }
-        }
-        if (nearest) {
-          let dmg = st.attackDamage * getPlayerDmgMult();
-          if (st.items.gloves && Math.random() < 0.15) dmg *= 2;
-          nearest.hp -= dmg;
-          nearest.hurtTimer = 0.15;
-          playSound('sfx_melee_hit');
-
-          const py = st.playerY + 0.8;
-          const ey = nearest.group.position.y + 0.8;
-          st.attackLines.push(createAttackLine(st.playerX, py, st.playerZ, nearest.group.position.x, ey, nearest.group.position.z));
-
-          if (st.rangedMode) {
-            const dx = nearest.group.position.x - st.playerX;
-            const dz = nearest.group.position.z - st.playerZ;
-            const d = Math.sqrt(dx * dx + dz * dz) || 1;
-            st.projectiles.push(createProjectile(st.playerX, py, st.playerZ, dx / d * 15, dz / d * 15));
-          }
-
-          if (nearest.hp <= 0 && nearest.alive) killEnemy(nearest);
-
-          // Crown of Claws: hit 1 additional target
-          if (st.items.crown) {
-            let second = null, secondDistSq = Infinity;
-            for (const e of st.enemies) {
-              if (!e.alive || e === nearest) continue;
-              const dx2 = st.playerX - e.group.position.x;
-              const dz2 = st.playerZ - e.group.position.z;
-              const distSq2 = dx2 * dx2 + dz2 * dz2;
-              if (distSq2 < rangeSqAA && distSq2 < secondDistSq) {
-                second = e;
-                secondDistSq = distSq2;
-              }
-            }
-            if (second) {
-              let dmg2 = st.attackDamage * getPlayerDmgMult();
-              if (st.items.gloves && Math.random() < 0.15) dmg2 *= 2;
-              second.hp -= dmg2;
-              second.hurtTimer = 0.15;
-              const ey2 = second.group.position.y + 0.8;
-              st.attackLines.push(createAttackLine(st.playerX, py, st.playerZ, second.group.position.x, ey2, second.group.position.z));
-              if (second.hp <= 0 && second.alive) killEnemy(second);
-            }
-          }
-
-          st.autoAttackTimer = 1 / (st.attackSpeed * st.atkSpeedBoost);
-        }
-      }
+      // === AUTO-ATTACK REMOVED (BD-102) ===
+      // Creatures now only attack via weapon slots and power attack.
+      // Interaction timer for shrine/totem hits (replaces autoAttackTimer gating).
+      st.interactionTimer -= dt;
+      if (st.interactionTimer < 0) st.interactionTimer = 0;
 
       // === POWER ATTACK (Hold Enter/B to charge, release to strike) ===
       // Charge for 0-2 seconds by holding Enter/NumpadEnter/B. Releasing triggers an AoE
@@ -4657,11 +4595,6 @@ export function launch3DGame(options) {
         // Show label if glasses equipped
         c.showLabel = st.items.glasses && distSq < 64; // 8*8
 
-        // Auto-attack hits crates
-        const atkRng15 = st.attackRange * 1.5;
-        if (distSq < atkRng15 * atkRng15 && st.autoAttackTimer <= 0) {
-          // Handled by proximity - player walks into crate to break
-        }
         // Walk into crate to break (must be at similar height)
         const cdy = Math.abs(st.playerY - c.group.position.y);
         if (distSq < 1.44 && cdy < 2.0) { // 1.2*1.2
@@ -4752,7 +4685,7 @@ export function launch3DGame(options) {
       }
 
       // === SHRINES ===
-      // Animate shrine orb bobbing and rune rotation. Player's auto-attack hits shrines
+      // Animate shrine orb bobbing and rune rotation. Player proximity hits shrines
       // within 1.5x attack range. After 3 hits, shrine grants a random augment and is destroyed.
       for (let i = st.shrines.length - 1; i >= 0; i--) {
         const shrine = st.shrines[i];
@@ -4764,14 +4697,15 @@ export function launch3DGame(options) {
           shrine.rune.rotation.y += dt * 2;
           shrine.rune.rotation.x += dt * 1.3;
         }
-        // Check if auto-attack or power attack hits shrine
+        // Check if player is near shrine (proximity-based interaction)
         const dx = st.playerX - shrine.x;
         const dz = st.playerZ - shrine.z;
         const distSq = dx * dx + dz * dz;
         const shrineRng = st.attackRange * 1.5;
         const sdy = Math.abs(st.playerY - shrine.group.position.y);
-        if (distSq < shrineRng * shrineRng && sdy < 2.5 && st.autoAttackTimer <= 0.05) {
+        if (distSq < shrineRng * shrineRng && sdy < 2.5 && st.interactionTimer <= 0) {
           shrine.hp--;
+          st.interactionTimer = 0.5; // cooldown between interaction hits
           if (shrine.hp <= 0) {
             shrine.alive = false;
             playSound('sfx_shrine_break');
@@ -4794,21 +4728,22 @@ export function launch3DGame(options) {
       }
 
       // === DIFFICULTY TOTEMS ===
-      // Animate totem orb bobbing. Player's auto-attack hits totems within 1.5x attack range.
+      // Animate totem orb bobbing. Player proximity hits totems within 1.5x attack range.
       // After 5 hits, totem is destroyed: increases zombie difficulty but boosts XP and score rewards.
       for (let i = st.totems.length - 1; i >= 0; i--) {
         const totem = st.totems[i];
         if (!totem.alive) continue;
         // Animate orb
         if (totem.orb) totem.orb.position.y = 2.0 + Math.sin(clock.elapsedTime * 3 + totem.x) * 0.1;
-        // Check if player attacks totem
+        // Check if player is near totem (proximity-based interaction)
         const tdx = st.playerX - totem.x;
         const tdz = st.playerZ - totem.z;
         const tdistSq = tdx * tdx + tdz * tdz;
         const totemRng = st.attackRange * 1.5;
         const tdy = Math.abs(st.playerY - totem.y);
-        if (tdistSq < totemRng * totemRng && tdy < 2.5 && st.autoAttackTimer <= 0.05) {
+        if (tdistSq < totemRng * totemRng && tdy < 2.5 && st.interactionTimer <= 0) {
           totem.hp--;
+          st.interactionTimer = 0.5; // cooldown between interaction hits
           if (totem.hp <= 0) {
             totem.alive = false;
             st.totemCount++;
