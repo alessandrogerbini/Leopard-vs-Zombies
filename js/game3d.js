@@ -1682,7 +1682,7 @@ export function launch3DGame(options) {
   // === XP GEM ===
   // NOTE: Shared geometry and material for all XP gems to reduce draw calls.
   const gemGeo = new THREE.BoxGeometry(0.25, 0.25, 0.25);
-  const gemMat = new THREE.MeshLambertMaterial({ color: 0x44ff44, emissive: 0x22aa22 });
+  const gemMat = new THREE.MeshLambertMaterial({ color: 0x7744ff, emissive: 0x4422aa });
 
   /**
    * Create an XP gem pickup at the given world position.
@@ -1774,7 +1774,10 @@ export function launch3DGame(options) {
    * @returns {{mesh: THREE.Mesh, itype: Object, x: number, z: number, bobPhase: number, alive: boolean}|null} Item pickup object, or null if all items owned.
    * @see ITEMS_3D
    */
-  function createItemPickup(x, z, forcedItemId) {
+  function createItemPickup(x, z, forcedItemId, minRarity) {
+    // Rarity tier order for minimum-rarity filtering (BD-95/BD-96)
+    const RARITY_ORDER = ['common', 'uncommon', 'rare', 'legendary'];
+
     // If a forced item ID is provided, use that item directly (BD-77 boss rewards)
     if (forcedItemId) {
       const forcedItem = ITEMS_3D.find(it => it.id === forcedItemId);
@@ -1797,7 +1800,10 @@ export function launch3DGame(options) {
 
     // Pick a random available item using rarity-weighted selection.
     // Stackable items are always available; non-stackable items are only available if slot is free.
+    const minRarityIdx = minRarity ? RARITY_ORDER.indexOf(minRarity) : 0;
     const available = ITEMS_3D.filter(it => {
+      // Filter out items below minimum rarity (BD-95/BD-96)
+      if (minRarity && RARITY_ORDER.indexOf(it.rarity) < minRarityIdx) return false;
       // Stackable items are always available
       if (it.stackable) return true;
       if (it.slot === 'armor') {
@@ -1811,6 +1817,8 @@ export function launch3DGame(options) {
       if (st.items[it.slot] !== undefined && typeof st.items[it.slot] === 'boolean') return !st.items[it.slot];
       return true;
     });
+    // If minRarity filter left nothing, fall back to unfiltered pool
+    if (available.length === 0 && minRarity) return createItemPickup(x, z, null, null);
     if (available.length === 0) return null;
 
     // Rarity-weighted random selection
@@ -2116,7 +2124,8 @@ export function launch3DGame(options) {
   /**
    * Handle enemy death: award score (scaled by tier, wave, difficulty, and totems),
    * spawn XP gems (extra gems for higher tiers), increment kill tracking,
-   * roll for loot drops (crate 60%, health 25%, XP burst 15%), and dispose the enemy.
+   * roll for loot drops with tier-based rates (BD-95: T1=1%, T2=2%, T3=3%, T4+=5%),
+   * and dispose the enemy. Totem-spawned zombies always drop loot (BD-96).
    * Lucky Charm item increases drop chance by 50%.
    *
    * @param {Enemy} e - The enemy that was killed.
@@ -2171,22 +2180,28 @@ export function launch3DGame(options) {
       spawnExplosion(e.group.position.x, e.group.position.z, 2.5, 15 * getPlayerDmgMult());
       st.floatingTexts3d.push({ text: 'BOOM!', color: '#ff88cc', x: e.group.position.x, y: e.group.position.y + 2, z: e.group.position.z, life: 1 });
     }
-    // Loot drop roll — higher tier zombies drop more often
+    // Loot drop roll — tier-based rates (BD-95): T1=1%, T2=2%, T3=3%, T4+=5%
+    // Totem-spawned zombies always drop loot (BD-96)
     // Lucky Charm: +50% chance to drop, Lucky Penny: +8% per stack
-    let dropChance = [0.03, 0.06, 0.10, 0.15, 0.15, 0.20, 0.20, 0.30, 0.30, 0.50][(e.tier || 1) - 1];
+    const tierNum = e.tier || 1;
+    let dropChance = tierNum <= 1 ? 0.01 : tierNum === 2 ? 0.02 : tierNum === 3 ? 0.03 : 0.05;
     if (st.items.charm) dropChance *= 1.5;
     if (st.items.luckyPenny > 0) dropChance *= (1 + st.items.luckyPenny * 0.08);
-    if (Math.random() < dropChance) {
+    const forceDrop = e.isTotemSpawned && !(e.isBoss && e.bossShrine); // BD-96: totem zombies always drop (bosses already get legendary)
+    if (forceDrop || Math.random() < dropChance) {
       const dropX = e.group.position.x;
       const dropZ = e.group.position.z;
       const roll = Math.random();
-      const itemChance = 0.01 + (e.tier || 1) * 0.05; // 6% for tier 1, 11% tier 2, 16% tier 3, etc.
+      // Higher tier zombies bias toward item drops; totem zombies get extra item bias
+      const itemChance = e.isTotemSpawned ? 0.40 : (0.01 + tierNum * 0.05); // 6% T1, 11% T2, etc.; 40% for totem spawns
       if (roll < itemChance) {
-        // Item drop — rarer, scales with tier (BD-75)
-        const pickup = createItemPickup(dropX, dropZ);
+        // Item drop — rarity biased by tier (BD-95) and totem flag (BD-96)
+        const pickup = e.isTotemSpawned
+          ? createItemPickup(dropX, dropZ, null, 'uncommon') // BD-96: bias uncommon+
+          : createItemPickup(dropX, dropZ, null, tierNum >= 3 ? 'uncommon' : null); // BD-95: T3+ bias uncommon+
         if (pickup) st.itemPickups.push(pickup);
       } else if (roll < 0.55) {
-        // Powerup crate (adjusted down from 0.6)
+        // Powerup crate
         st.powerupCrates.push(createPowerupCrate(dropX, dropZ));
       } else if (roll < 0.80) {
         // Health orb — heal 15% max HP
@@ -4880,6 +4895,7 @@ export function launch3DGame(options) {
           const bossTier = Math.min(st.wave + 2, 8);
           const boss = createEnemy(cs.x + 5, cs.z + 5, bossHp, bossTier);
           boss.isBoss = true;
+          boss.isTotemSpawned = true; // BD-96: flag for guaranteed loot drop
           boss.bossShrine = cs;
           boss.speed = (boss.speed || 2) * BOSS_SPEED_MULT;
           boss.bossDmgMult = BOSS_DMG_MULT;
