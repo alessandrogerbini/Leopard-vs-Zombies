@@ -3100,7 +3100,7 @@ export function drawDifficultyScreen() {
     ctx.fillStyle = '#222222';
     ctx.fillRect(barX, barY, barW, 16);
     ctx.fillStyle = d.color;
-    ctx.fillRect(barX, barY, barW * d.hpMult, 16);
+    ctx.fillRect(barX, barY, Math.min(barW, barW * d.hpMult), 16);
     ctx.fillStyle = '#ffffff'; ctx.font = '10px "Courier New"';
     ctx.fillText('HP', cx + cardW / 2, barY + 12);
 

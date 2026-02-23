@@ -262,11 +262,19 @@ function update() {
   // Each state handles its own input and either returns early or falls through
   // to the gameplay subsections below.
   if (state.gameState === 'title') {
-    if (keys['Enter'] && !state._enterHeld) { state._enterHeld = true; state.selectedMode = 0; state.gameState = 'modeSelect'; }
+    // Skip mode selection - go directly to 3D Survivor mode setup
+    if (keys['Enter'] && !state._enterHeld) {
+      state._enterHeld = true;
+      state.selectedMode = 1; // 3D Survivor mode
+      state.selectedDifficulty = 0;
+      state.gameState = 'difficulty';
+    }
     if (!keys['Enter']) state._enterHeld = false;
     return;
   }
 
+  // NOTE: modeSelect state is bypassed (2D mode gated). The state handler
+  // remains in case 2D mode is re-enabled later.
   if (state.gameState === 'modeSelect') {
     if (keys['ArrowLeft'] && !state._selectLeftHeld) {
       state._selectLeftHeld = true;
@@ -314,7 +322,7 @@ function update() {
     if (!keys['Enter']) state._enterHeld = false;
     if (keys['Escape'] && !state._escHeld) {
       state._escHeld = true;
-      state.gameState = 'modeSelect';
+      state.gameState = 'title'; // Go back to title (mode select is bypassed)
     }
     return;
   }
