@@ -56,7 +56,7 @@ export const ANIMAL_PALETTES = {
  * Each weapon has a unique attack pattern, base stats, and 5 level-up tiers.
  * Weapons auto-fire at the nearest enemy within range when their cooldown expires.
  *
- * @constant {Object.<string, {id: string, name: string, type: string, color: string, desc: string, baseDamage: number, baseCooldown: number, baseRange: number, maxLevel: number, levelDescs: string[]}>}
+ * @constant {Object.<string, {id: string, name: string, type: string, color: string, desc: string, baseDamage: number, baseCooldown: number, baseRange: number, maxLevel: number, weaponClass: string, levelDescs: string[]}>}
  * @property {Object} clawSwipe     - Melee AoE arc slash hitting all enemies in range.
  * @property {Object} boneToss      - Ranged projectile(s) that fly toward targets; gains extra projectiles at levels 2/5.
  * @property {Object} poisonCloud   - AoE damage-over-time cloud placed at enemy position.
@@ -68,53 +68,73 @@ export const WEAPON_TYPES = {
   clawSwipe: {
     id: 'clawSwipe', name: 'CLAW SWIPE', type: 'melee', color: '#ff8844',
     desc: 'AoE arc slash', baseDamage: 12, baseCooldown: 1.2, baseRange: 2.5, maxLevel: 5,
+    weaponClass: 'aoe',
     levelDescs: ['+20% Damage', '+15% Range', '+20% Damage', '-15% Cooldown', '+30% Damage & Range'],
   },
   boneToss: {
     id: 'boneToss', name: 'BONE TOSS', type: 'projectile', color: '#ccccaa',
     desc: 'Ranged bone projectile', baseDamage: 10, baseCooldown: 1.5, baseRange: 12, maxLevel: 5,
+    weaponClass: 'projectile',
     levelDescs: ['+25% Damage', '+1 Projectile', '+20% Speed', '-20% Cooldown', '+2 Projectiles'],
   },
   poisonCloud: {
     id: 'poisonCloud', name: 'POISON CLOUD', type: 'aoe', color: '#44cc44',
     desc: 'DoT cloud at enemy', baseDamage: 5, baseCooldown: 3, baseRange: 8, maxLevel: 5,
+    weaponClass: 'mine',
     levelDescs: ['+30% Damage', '+25% Area', '+30% Duration', '-20% Cooldown', '+50% Damage'],
   },
   lightningBolt: {
     id: 'lightningBolt', name: 'LIGHTNING BOLT', type: 'chain', color: '#aaddff',
     desc: 'Chains between enemies', baseDamage: 15, baseCooldown: 2, baseRange: 8, maxLevel: 5,
+    weaponClass: 'projectile',
     levelDescs: ['+1 Chain', '+20% Damage', '+1 Chain', '-15% Cooldown', '+2 Chains & +30% Dmg'],
   },
   fireball: {
     id: 'fireball', name: 'FIREBALL', type: 'projectile_aoe', color: '#ff4400',
     desc: 'Explodes on impact', baseDamage: 20, baseCooldown: 2.5, baseRange: 10, maxLevel: 5,
+    weaponClass: 'projectile',
     levelDescs: ['+25% Damage', '+30% Explosion', '+25% Damage', '-20% Cooldown', '+50% AoE Damage'],
   },
   boomerang: {
     id: 'boomerang', name: 'BOOMERANG', type: 'boomerang', color: '#aa44ff',
     desc: 'Piercing, returns', baseDamage: 8, baseCooldown: 1.8, baseRange: 10, maxLevel: 5,
+    weaponClass: 'projectile',
     levelDescs: ['+20% Damage', '+1 Boomerang', '+25% Speed', '-15% Cooldown', 'Double Damage'],
   },
   mudBomb: {
     id: 'mudBomb', name: 'MUD BOMB', type: 'projectile_aoe', color: '#8B6914',
     desc: 'Arcing glob, slows on impact', baseDamage: 18, baseCooldown: 2.8, baseRange: 9, maxLevel: 5,
+    weaponClass: 'aoe',
     levelDescs: ['+25% Damage', '+30% Slow Area', '+25% Damage', '-20% Cooldown', '+50% AoE & Slow Duration'],
   },
   beehiveLauncher: {
     id: 'beehiveLauncher', name: 'BEEHIVE LAUNCHER', type: 'summon', color: '#DAA520',
     desc: 'Releases bees that chase enemies', baseDamage: 6, baseCooldown: 4.0, baseRange: 10, maxLevel: 5,
+    weaponClass: 'projectile',
     levelDescs: ['+1 Bee', '+30% Bee Duration', '+2 Bees', '-20% Cooldown', 'Bees Explode on Expire'],
   },
   snowballTurret: {
     id: 'snowballTurret', name: 'SNOWBALL TURRET', type: 'orbit', color: '#88ccff',
     desc: 'Orbiting turret fires snowballs', baseDamage: 7, baseCooldown: 3.5, baseRange: 8, maxLevel: 5,
+    weaponClass: 'projectile',
     levelDescs: ['+1 Turret', '+25% Fire Rate', '+30% Damage', '-20% Cooldown', '+1 Turret & Freeze Chance'],
   },
   stinkLine: {
     id: 'stinkLine', name: 'STINK LINE', type: 'trail', color: '#44cc44',
     desc: 'Leaves damaging trail behind you', baseDamage: 4, baseCooldown: 0.15, baseRange: 0, maxLevel: 5,
+    weaponClass: 'aoe',
     levelDescs: ['+30% Damage', '+25% Trail Duration', '+30% Damage', '+50% Trail Width', 'Poison DoT on Trail Hit'],
   },
+};
+
+/**
+ * Per-class scaling multipliers applied when upgrading weapons.
+ * These scale the weapon's base stats when the player picks weapon upgrades.
+ */
+export const WEAPON_CLASS_SCALING = {
+  aoe:        { damageMult: 1.3, cooldownMult: 0.9, rangeMult: 1.2 },
+  projectile: { damageMult: 1.1, cooldownMult: 0.85, rangeMult: 1.0 },
+  mine:       { damageMult: 1.2, cooldownMult: 0.95, rangeMult: 1.5 },
 };
 
 /**
