@@ -150,10 +150,10 @@ export const DIFFICULTY_SETTINGS = {
  * @type {Array<{id: string, name: string, color: string, speed: number, damage: number, hp: number, desc: string}>}
  */
 export const ANIMAL_TYPES = [
-  { id: 'leopard', name: 'LEOPARD', color: '#e8a828', speed: 1.0, damage: 1.0, hp: 100, desc: 'Balanced fighter' },
-  { id: 'redPanda', name: 'RED PANDA', color: '#cc4422', speed: 1.2, damage: 0.8, hp: 80, desc: 'Fast & agile' },
-  { id: 'lion', name: 'LION', color: '#dda030', speed: 0.85, damage: 1.3, hp: 120, desc: 'Strong & tough' },
-  { id: 'gator', name: 'GATOR', color: '#44aa44', speed: 0.75, damage: 1.5, hp: 150, desc: 'Slow but deadly' },
+  { id: 'leopard', name: 'LEOPARD', color: '#e8a828', speed: 1.0, damage: 1.0, hp: 50, desc: 'Balanced fighter' },
+  { id: 'redPanda', name: 'RED PANDA', color: '#cc4422', speed: 1.2, damage: 0.8, hp: 40, desc: 'Fast & agile' },
+  { id: 'lion', name: 'LION', color: '#dda030', speed: 0.85, damage: 1.3, hp: 60, desc: 'Strong & tough' },
+  { id: 'gator', name: 'GATOR', color: '#44aa44', speed: 0.75, damage: 1.5, hp: 75, desc: 'Slow but deadly' },
 ];
 
 /**

@@ -345,6 +345,7 @@ export function launch3DGame(options) {
     running: true,
     invincible: 0,
     enterReleasedSinceGameOver: false,
+    _enterCooldown: 0,
     pauseMenu: false,
     selectedPauseOption: 0,
     // Auto-attack + power attack
@@ -520,6 +521,12 @@ export function launch3DGame(options) {
         choice.apply(st);
         st.upgradeMenu = false;
         st.paused = false;
+        st._enterCooldown = 0.2; // 200ms grace period
+        st.enterReleasedSinceGameOver = false; // prevent accidental restart
+        keys3d['Enter'] = false; // clear held key state
+        e.preventDefault();
+        e.stopPropagation();
+        return;
       }
       if (e.code === 'KeyR' && st.rerolls > 0) {
         st.rerolls--;
@@ -1975,15 +1982,20 @@ export function launch3DGame(options) {
       const dropX = e.group.position.x;
       const dropZ = e.group.position.z;
       const roll = Math.random();
-      if (roll < 0.6) {
-        // Powerup crate (60% of drops)
+      const itemChance = 0.01 + (e.tier || 1) * 0.05; // 6% for tier 1, 11% tier 2, 16% tier 3, etc.
+      if (roll < itemChance) {
+        // Item drop — rarer, scales with tier (BD-75)
+        const pickup = createItemPickup(dropX, dropZ);
+        if (pickup) st.itemPickups.push(pickup);
+      } else if (roll < 0.55) {
+        // Powerup crate (adjusted down from 0.6)
         st.powerupCrates.push(createPowerupCrate(dropX, dropZ));
-      } else if (roll < 0.85) {
-        // Health orb (25% of drops) — heal 15% max HP
+      } else if (roll < 0.80) {
+        // Health orb — heal 15% max HP
         st.hp = Math.min(st.hp + st.maxHp * 0.15, st.maxHp);
         st.floatingTexts3d.push({ text: '+HEALTH', color: '#44ff44', x: dropX, y: terrainHeight(dropX, dropZ) + 2, z: dropZ, life: 1.5 });
       } else {
-        // XP burst (15% of drops) — bonus XP gems
+        // XP burst — bonus XP gems
         for (let g = 0; g < 3; g++) {
           st.xpGems.push(createXpGem(dropX + (Math.random() - 0.5) * 2, dropZ + (Math.random() - 0.5) * 2));
         }
@@ -3915,8 +3927,12 @@ export function launch3DGame(options) {
       // Charge for 0-2 seconds by holding Enter/NumpadEnter/B. Releasing triggers an AoE
       // power attack that hits all enemies in range. Charge multiplier increases damage and range.
       // A growing glow mesh provides visual feedback during charging.
+      // BD-74: Decrement enter cooldown to prevent upgrade-menu Enter from triggering charge
+      if (st._enterCooldown > 0) {
+        st._enterCooldown -= dt;
+      }
       const chargeKey = keys3d['Enter'] || keys3d['NumpadEnter'] || keys3d['KeyB'];
-      if (chargeKey && !st.upgradeMenu && !st.pauseMenu && !st.chargeShrineMenu) {
+      if (chargeKey && !st.upgradeMenu && !st.pauseMenu && !st.chargeShrineMenu && st._enterCooldown <= 0) {
         if (!st.charging) {
           st.charging = true;
           st.chargeTime = 0;

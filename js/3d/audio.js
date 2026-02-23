@@ -11,11 +11,11 @@
  * restriction will never crash the game. The game works identically without sound.
  *
  * Dependencies: None (pure browser APIs)
- * Exports: initAudio, playSound, setVolume, getVolume, toggleMute, isMuted, disposeAudio
+ * Exports: initAudio, playSound, setVolume, getVolume, toggleMute, isMuted, disposeAudio, checkAudioHealth
  */
 
 /** Maximum simultaneous sounds to prevent audio overload. */
-const MAX_CONCURRENT = 8;
+const MAX_CONCURRENT = 12;
 
 /** localStorage keys for persisting user preferences. */
 const VOLUME_KEY = 'avz-volume';
@@ -23,6 +23,9 @@ const MUTED_KEY = 'avz-muted';
 
 /** Default volume (0.0 - 1.0). */
 const DEFAULT_VOLUME = 0.3;
+
+/** Minimum interval (ms) between plays of the same event ID to prevent spam. */
+const DEFAULT_MIN_INTERVAL = 100;
 
 /**
  * Sound event ID to file path mappings.
@@ -164,6 +167,9 @@ let muted = false;
 /** Whether initAudio has been called successfully. */
 let initialized = false;
 
+/** Tracks the last time each event ID was played for throttling. */
+const lastPlayedTime = {};
+
 // ============================================================================
 // Public API
 // ============================================================================
@@ -213,8 +219,10 @@ export function initAudio(base) {
  * Play a sound by game event ID.
  *
  * Picks a random variant from the pool for that event, clones the cached Audio
- * element, and plays it. Limits concurrent sounds to MAX_CONCURRENT. Fails silently
- * if the event ID is unknown, the file is missing, or the browser blocks autoplay.
+ * element, and plays it. Limits concurrent sounds to MAX_CONCURRENT. Includes
+ * per-event throttling and stale sound cleanup to prevent audio system exhaustion.
+ * Fails silently if the event ID is unknown, the file is missing, or the browser
+ * blocks autoplay.
  *
  * @param {string} eventId - The sound event ID (e.g. 'sfx_melee_hit').
  */
@@ -224,13 +232,26 @@ export function playSound(eventId) {
   const variants = SOUND_MAP[eventId];
   if (!variants || variants.length === 0) return;
 
+  // Per-event cooldown to prevent rapid-fire sound spam
+  const now = performance.now();
+  if (lastPlayedTime[eventId] && now - lastPlayedTime[eventId] < DEFAULT_MIN_INTERVAL) return;
+  lastPlayedTime[eventId] = now;
+
   // Pick random variant
   const file = variants[Math.floor(Math.random() * variants.length)];
   const template = audioCache[file];
   if (!template) return;
 
-  // Prune finished sounds from the active list
-  activeSounds = activeSounds.filter(a => !a.ended && !a.paused);
+  // Prune finished sounds and force-remove stale sounds from the active list
+  activeSounds = activeSounds.filter(a => {
+    if (a.ended || a.paused) return false;
+    // Force-remove sounds stuck for more than 10 seconds
+    if (a._startTime && now - a._startTime > 10000) {
+      try { a.pause(); } catch(_) {}
+      return false;
+    }
+    return true;
+  });
 
   // Enforce concurrent limit
   if (activeSounds.length >= MAX_CONCURRENT) return;
@@ -239,6 +260,7 @@ export function playSound(eventId) {
     const sound = template.cloneNode(true);
     sound.volume = masterVolume;
     sound.currentTime = 0;
+    sound._startTime = performance.now();
 
     // Auto-remove from active list when finished
     sound.addEventListener('ended', () => {
@@ -248,7 +270,6 @@ export function playSound(eventId) {
 
     activeSounds.push(sound);
     sound.play().catch(() => {
-      // Browser autoplay policy blocked playback; silently ignore
       const idx = activeSounds.indexOf(sound);
       if (idx >= 0) activeSounds.splice(idx, 1);
     });
@@ -302,6 +323,15 @@ export function toggleMute() {
  */
 export function isMuted() {
   return muted;
+}
+
+/**
+ * Periodic health check for the audio system. Removes ended/paused sounds
+ * from the active list to prevent pool starvation. Call from the game loop
+ * (e.g. every few seconds) as a safety net.
+ */
+export function checkAudioHealth() {
+  activeSounds = activeSounds.filter(a => !a.ended && !a.paused);
 }
 
 /**

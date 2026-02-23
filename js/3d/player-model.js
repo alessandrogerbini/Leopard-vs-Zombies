@@ -26,6 +26,11 @@ import { box } from './utils.js';
  * @property {THREE.Mesh|null} tail  - Tail mesh for wag animation, or null.
  * @property {Object.<string, THREE.Mesh>} muscles - Named muscle meshes for growth scaling
  *   (chest, bicepL, bicepR, shoulderL, shoulderR, thighL, thighR).
+ * @property {THREE.Mesh|null} head  - Head mesh for minimal growth scaling.
+ * @property {THREE.Mesh[]} hands    - [leftHand, rightHand] paw/hand meshes.
+ * @property {THREE.Mesh[]} feet     - [leftFoot, rightFoot] foot meshes.
+ * @property {Object.<string, THREE.Mesh|THREE.Mesh[]>} features - Animal-specific cosmetic parts
+ *   (leopard: spots array; redPanda: faceMask; lion: mane array; gator: ridges array).
  * @property {THREE.Group} wingGroup - Angel wings group (child of group, initially hidden).
  * @property {Object} wingMeshes     - Individual wing segment meshes for flap animation.
  * @property {THREE.Mesh} wingMeshes.wingL1 - Left wing inner segment.
@@ -52,6 +57,10 @@ export function buildPlayerModel(animalId, scene) {
   const arms = []; // [leftArm, rightArm]
   let tail = null;
   const muscles = {}; // { chest, bicepL, bicepR, shoulderL, shoulderR, thighL, thighR }
+  let head = null;     // Head mesh for minimal growth scaling
+  const hands = [];    // [leftHand, rightHand] paw/hand meshes
+  const feet = [];     // [leftFoot, rightFoot] foot meshes
+  const features = {}; // Animal-specific cosmetic parts (spots, mane, etc.)
 
   if (animalId === 'leopard') {
     // === BIPEDAL LEOPARD ===
@@ -60,16 +69,18 @@ export function buildPlayerModel(animalId, scene) {
     // Belly
     box(group, 0.55, 0.2, 0.35, 0xf0c858, 0, 0.65, 0.05);
     // Rosette spots on torso
+    const leopardSpots = [];
     [[0.25, 1.0, 0.15], [-0.2, 0.95, -0.1], [0.15, 0.8, 0.18], [-0.25, 0.85, 0.1]].forEach(p => {
-      box(group, 0.1, 0.08, 0.08, 0xc08018, p[0], p[1], p[2]);
+      leopardSpots.push(box(group, 0.1, 0.08, 0.08, 0xc08018, p[0], p[1], p[2]));
     });
+    features.spots = leopardSpots;
     // Shoulders
     muscles.shoulderL = box(group, 0.22, 0.2, 0.22, 0xe8a828, -0.42, 1.1, 0);
     muscles.shoulderR = box(group, 0.22, 0.2, 0.22, 0xe8a828, 0.42, 1.1, 0);
     // Neck
     box(group, 0.3, 0.25, 0.22, 0xe8a828, 0, 1.25, 0);
     // Head
-    box(group, 0.5, 0.42, 0.45, 0xe8a828, 0, 1.55, 0, true);
+    head = box(group, 0.5, 0.42, 0.45, 0xe8a828, 0, 1.55, 0, true);
     box(group, 0.4, 0.12, 0.1, 0xe8a828, 0, 1.75, 0);
     // Snout
     box(group, 0.22, 0.18, 0.22, 0xf0c050, 0, 1.42, 0.25);
@@ -90,15 +101,15 @@ export function buildPlayerModel(animalId, scene) {
     muscles.bicepR = box(group, 0.16, 0.35, 0.16, 0xe8a828, 0.48, 0.85, 0, true);
     arms.push(muscles.bicepL, muscles.bicepR);
     // Hands/paws
-    box(group, 0.13, 0.1, 0.13, 0xd09020, -0.48, 0.62, 0.05);
-    box(group, 0.13, 0.1, 0.13, 0xd09020, 0.48, 0.62, 0.05);
+    hands.push(box(group, 0.13, 0.1, 0.13, 0xd09020, -0.48, 0.62, 0.05));
+    hands.push(box(group, 0.13, 0.1, 0.13, 0xd09020, 0.48, 0.62, 0.05));
     // Legs (standing)
     muscles.thighL = box(group, 0.2, 0.45, 0.2, 0xc89020, -0.18, 0.25, 0, true);
     muscles.thighR = box(group, 0.2, 0.45, 0.2, 0xc89020, 0.18, 0.25, 0, true);
     legs.push(muscles.thighL, muscles.thighR);
     // Feet
-    box(group, 0.22, 0.08, 0.25, 0xd09020, -0.18, 0.02, 0.03);
-    box(group, 0.22, 0.08, 0.25, 0xd09020, 0.18, 0.02, 0.03);
+    feet.push(box(group, 0.22, 0.08, 0.25, 0xd09020, -0.18, 0.02, 0.03));
+    feet.push(box(group, 0.22, 0.08, 0.25, 0xd09020, 0.18, 0.02, 0.03));
     // Tail (from lower back)
     tail = box(group, 0.08, 0.08, 0.25, 0xe8a828, 0, 0.6, -0.3);
     box(group, 0.08, 0.08, 0.2, 0xd09020, 0, 0.55, -0.5);
@@ -117,10 +128,10 @@ export function buildPlayerModel(animalId, scene) {
     // Neck
     box(group, 0.28, 0.22, 0.2, 0xcc4422, 0, 1.22, 0);
     // Head (large, round)
-    box(group, 0.58, 0.5, 0.5, 0xcc4422, 0, 1.55, 0, true);
+    head = box(group, 0.58, 0.5, 0.5, 0xcc4422, 0, 1.55, 0, true);
     box(group, 0.48, 0.12, 0.1, 0xcc4422, 0, 1.78, 0);
     // White face mask
-    box(group, 0.44, 0.26, 0.12, 0xffffff, 0, 1.48, 0.22);
+    features.faceMask = box(group, 0.44, 0.26, 0.12, 0xffffff, 0, 1.48, 0.22);
     // White cheek patches
     box(group, 0.16, 0.15, 0.1, 0xffffff, -0.28, 1.45, 0.2);
     box(group, 0.16, 0.15, 0.1, 0xffffff, 0.28, 1.45, 0.2);
@@ -146,15 +157,15 @@ export function buildPlayerModel(animalId, scene) {
     muscles.bicepR = box(group, 0.15, 0.35, 0.15, 0x111111, 0.44, 0.85, 0, true);
     arms.push(muscles.bicepL, muscles.bicepR);
     // Paws
-    box(group, 0.12, 0.1, 0.12, 0x0a0a0a, -0.44, 0.62, 0.05);
-    box(group, 0.12, 0.1, 0.12, 0x0a0a0a, 0.44, 0.62, 0.05);
+    hands.push(box(group, 0.12, 0.1, 0.12, 0x0a0a0a, -0.44, 0.62, 0.05));
+    hands.push(box(group, 0.12, 0.1, 0.12, 0x0a0a0a, 0.44, 0.62, 0.05));
     // Legs (BLACK)
     muscles.thighL = box(group, 0.18, 0.45, 0.18, 0x111111, -0.16, 0.25, 0, true);
     muscles.thighR = box(group, 0.18, 0.45, 0.18, 0x111111, 0.16, 0.25, 0, true);
     legs.push(muscles.thighL, muscles.thighR);
     // Feet
-    box(group, 0.2, 0.08, 0.22, 0x0a0a0a, -0.16, 0.02, 0.03);
-    box(group, 0.2, 0.08, 0.22, 0x0a0a0a, 0.16, 0.02, 0.03);
+    feet.push(box(group, 0.2, 0.08, 0.22, 0x0a0a0a, -0.16, 0.02, 0.03));
+    feet.push(box(group, 0.2, 0.08, 0.22, 0x0a0a0a, 0.16, 0.02, 0.03));
     // Bushy striped tail
     tail = box(group, 0.22, 0.22, 0.3, 0xcc4422, 0, 0.6, -0.3);
     box(group, 0.23, 0.12, 0.06, 0xffccaa, 0, 0.6, -0.2);
@@ -174,13 +185,14 @@ export function buildPlayerModel(animalId, scene) {
     // Neck
     box(group, 0.35, 0.3, 0.28, 0xdda030, 0, 1.28, 0);
     // Mane (around head, layered)
-    box(group, 0.95, 0.75, 0.8, 0xaa6610, 0, 1.6, -0.02);
-    box(group, 0.8, 0.65, 0.7, 0xbb7720, 0, 1.6, -0.02);
+    const maneOuter = box(group, 0.95, 0.75, 0.8, 0xaa6610, 0, 1.6, -0.02);
+    const maneInner = box(group, 0.8, 0.65, 0.7, 0xbb7720, 0, 1.6, -0.02);
     box(group, 0.12, 0.45, 0.55, 0x996610, -0.45, 1.6, 0);
     box(group, 0.12, 0.45, 0.55, 0x996610, 0.45, 1.6, 0);
     box(group, 0.65, 0.12, 0.1, 0x996610, 0, 2.0, 0);
+    features.mane = [maneOuter, maneInner];
     // Head
-    box(group, 0.5, 0.44, 0.48, 0xdda030, 0, 1.62, 0.05, true);
+    head = box(group, 0.5, 0.44, 0.48, 0xdda030, 0, 1.62, 0.05, true);
     // Snout
     box(group, 0.26, 0.2, 0.22, 0xeec060, 0, 1.48, 0.28);
     box(group, 0.12, 0.08, 0.06, 0x996620, 0, 1.53, 0.4); // nose
@@ -198,15 +210,15 @@ export function buildPlayerModel(animalId, scene) {
     muscles.bicepR = box(group, 0.18, 0.4, 0.18, 0xdda030, 0.52, 0.85, 0, true);
     arms.push(muscles.bicepL, muscles.bicepR);
     // Hands
-    box(group, 0.15, 0.12, 0.15, 0xc89020, -0.52, 0.6, 0.05);
-    box(group, 0.15, 0.12, 0.15, 0xc89020, 0.52, 0.6, 0.05);
+    hands.push(box(group, 0.15, 0.12, 0.15, 0xc89020, -0.52, 0.6, 0.05));
+    hands.push(box(group, 0.15, 0.12, 0.15, 0xc89020, 0.52, 0.6, 0.05));
     // Legs
     muscles.thighL = box(group, 0.22, 0.48, 0.22, 0xc89020, -0.2, 0.25, 0, true);
     muscles.thighR = box(group, 0.22, 0.48, 0.22, 0xc89020, 0.2, 0.25, 0, true);
     legs.push(muscles.thighL, muscles.thighR);
     // Feet
-    box(group, 0.24, 0.08, 0.27, 0xc89020, -0.2, 0.02, 0.03);
-    box(group, 0.24, 0.08, 0.27, 0xc89020, 0.2, 0.02, 0.03);
+    feet.push(box(group, 0.24, 0.08, 0.27, 0xc89020, -0.2, 0.02, 0.03));
+    feet.push(box(group, 0.24, 0.08, 0.27, 0xc89020, 0.2, 0.02, 0.03));
     // Tail with tuft
     tail = box(group, 0.08, 0.08, 0.25, 0xdda030, 0, 0.6, -0.32);
     box(group, 0.06, 0.06, 0.2, 0xdda030, 0, 0.55, -0.52);
@@ -219,9 +231,11 @@ export function buildPlayerModel(animalId, scene) {
     // Belly
     box(group, 0.55, 0.2, 0.38, 0x88cc88, 0, 0.6, 0.05);
     // Back ridges along spine
+    const ridges = [];
     for (let i = 0; i < 5; i++) {
-      box(group, 0.12, 0.1, 0.12, 0x338833, 0, 1.18 - i * 0.12, -0.22);
+      ridges.push(box(group, 0.12, 0.1, 0.12, 0x338833, 0, 1.18 - i * 0.12, -0.22));
     }
+    features.ridges = ridges;
     // Scale texture on sides
     [[-0.3, 0.9, 0.12], [0.3, 0.88, -0.08], [-0.28, 0.78, 0.1]].forEach(p => {
       box(group, 0.1, 0.08, 0.1, 0x3a9a3a, p[0], p[1], p[2]);
@@ -232,7 +246,7 @@ export function buildPlayerModel(animalId, scene) {
     // Neck
     box(group, 0.32, 0.22, 0.25, 0x44aa44, 0, 1.2, 0);
     // Head (with snout extending forward)
-    box(group, 0.4, 0.3, 0.35, 0x44aa44, 0, 1.42, 0.05, true);
+    head = box(group, 0.4, 0.3, 0.35, 0x44aa44, 0, 1.42, 0.05, true);
     // Upper jaw (long snout)
     box(group, 0.3, 0.15, 0.45, 0x3a9a3a, 0, 1.38, 0.35);
     box(group, 0.25, 0.1, 0.4, 0x44aa44, 0, 1.42, 0.35);
@@ -257,8 +271,8 @@ export function buildPlayerModel(animalId, scene) {
     muscles.bicepR = box(group, 0.17, 0.35, 0.17, 0x338833, 0.48, 0.82, 0, true);
     arms.push(muscles.bicepL, muscles.bicepR);
     // Clawed hands
-    box(group, 0.14, 0.1, 0.14, 0x2d772d, -0.48, 0.6, 0.05);
-    box(group, 0.14, 0.1, 0.14, 0x2d772d, 0.48, 0.6, 0.05);
+    hands.push(box(group, 0.14, 0.1, 0.14, 0x2d772d, -0.48, 0.6, 0.05));
+    hands.push(box(group, 0.14, 0.1, 0.14, 0x2d772d, 0.48, 0.6, 0.05));
     // Claws on hands
     for (const sx of [-0.48, 0.48]) {
       for (let c = -1; c <= 1; c++) {
@@ -270,8 +284,8 @@ export function buildPlayerModel(animalId, scene) {
     muscles.thighR = box(group, 0.2, 0.42, 0.22, 0x338833, 0.18, 0.22, 0, true);
     legs.push(muscles.thighL, muscles.thighR);
     // Feet
-    box(group, 0.24, 0.06, 0.28, 0x2d772d, -0.18, 0.02, 0.03);
-    box(group, 0.24, 0.06, 0.28, 0x2d772d, 0.18, 0.02, 0.03);
+    feet.push(box(group, 0.24, 0.06, 0.28, 0x2d772d, -0.18, 0.02, 0.03));
+    feet.push(box(group, 0.24, 0.06, 0.28, 0x2d772d, 0.18, 0.02, 0.03));
     // Foot claws
     for (const fx of [-0.18, 0.18]) {
       for (let c = -1; c <= 1; c++) {
@@ -329,6 +343,10 @@ export function buildPlayerModel(animalId, scene) {
     arms,
     tail,
     muscles,
+    head,
+    hands,
+    feet,
+    features,
     wingGroup,
     wingMeshes: { wingL1, wingL2, wingL3, wingR1, wingR2, wingR3 },
   };
@@ -448,43 +466,75 @@ export function animatePlayer(model, st, clock, len, mx, mz) {
 }
 
 /**
- * Update muscle growth visual scaling based on player level using tiered non-uniform growth.
+ * Update muscle growth visual scaling based on player level using 5-tier system.
  *
- * Three growth tiers with different rates and caps:
- * - **Limbs** (arms + legs arrays): secondary growth, proportional scaling.
- *   Rate: +0.03/level, cap: 1.5x. Applied first.
- * - **Muscles** (chest, shoulders, biceps, thighs): primary growth, emphasizes width
- *   over height (X/Z scale at full rate, Y at 75%). Rate: +0.05/level, cap: 1.8x.
- *   Applied second to override shared bicep/thigh meshes with the larger muscle scale.
- * - **Tail**: minimal cosmetic growth. Rate: +0.015/level, cap: 1.3x.
+ * Five growth tiers prevent the "blobby" look by scaling all body parts proportionally:
+ * - **Tier 1: Core muscles** (chest, shoulders) — widest growth, non-uniform (wider > taller).
+ *   Rate: +0.05/level, cap: 1.8x. Only scales parts NOT parented under arm/leg groups
+ *   to avoid double-scaling biceps/thighs.
+ * - **Tier 2: Full limb groups** (arms, legs) — moderate proportional growth.
+ *   Rate: +0.035/level, cap: 1.5x. Applied to arm/leg group roots (biceps + thighs).
+ * - **Tier 3: Extremities** (hands, feet) — subtle growth to keep proportions.
+ *   Rate: +0.025/level, cap: 1.4x.
+ * - **Tier 4: Head** — minimal growth to maintain face readability.
+ *   Rate: +0.015/level, cap: 1.25x.
+ * - **Tier 5: Cosmetic** (tail, features) — very subtle for flavor.
+ *   Rate: +0.01/level, cap: 1.2x.
  *
  * @param {PlayerModel} model - The player model object returned by buildPlayerModel.
  * @param {number} level - Current player level (1-based).
  */
 export function updateMuscleGrowth(model, level) {
-  const limbGrowth = Math.min(1.5, 1 + (level - 1) * 0.03);
-  const muscleGrowth = Math.min(1.8, 1 + (level - 1) * 0.05);
+  const t = level - 1;
 
-  // Limbs first (arms + legs arrays — includes some muscle parts like biceps/thighs)
+  // Tier 1: Core muscles (chest, shoulders) — widest growth, non-uniform (wider > taller)
+  // Only scale muscles that are NOT children of arm/leg groups (chest, shoulderL, shoulderR)
+  // bicepL/R and thighL/R ARE the arm/leg array entries — skip them here to avoid double-scaling
+  const mS = Math.min(1.8, 1 + t * 0.05);
+  if (model.muscles) {
+    for (const key of ['chest', 'shoulderL', 'shoulderR']) {
+      if (model.muscles[key]) model.muscles[key].scale.set(mS, mS * 0.7, mS);
+    }
+  }
+
+  // Tier 2: Full limb groups (arms, legs) — moderate proportional growth
+  const lS = Math.min(1.5, 1 + t * 0.035);
   if (model.arms) {
     for (const arm of model.arms) {
-      if (arm) arm.scale.set(limbGrowth, limbGrowth, limbGrowth);
+      if (arm) arm.scale.set(lS, lS, lS);
     }
   }
   if (model.legs) {
     for (const leg of model.legs) {
-      if (leg) leg.scale.set(limbGrowth, limbGrowth, limbGrowth);
+      if (leg) leg.scale.set(lS, lS, lS);
     }
   }
-  // Muscles override shared parts (biceps, thighs) with bigger, non-uniform growth
-  for (const key in model.muscles) {
-    if (model.muscles[key]) {
-      model.muscles[key].scale.set(muscleGrowth, muscleGrowth * 0.75, muscleGrowth);
+
+  // Tier 3: Extremities (hands, feet) — subtle growth
+  const eS = Math.min(1.4, 1 + t * 0.025);
+  for (const arr of [model.hands, model.feet]) {
+    if (arr) for (const part of arr) {
+      if (part) part.scale.set(eS, eS, eS);
     }
   }
-  // Tail: minimal cosmetic growth
-  if (model.tail) {
-    const tailGrowth = Math.min(1.3, 1 + (level - 1) * 0.015);
-    model.tail.scale.set(tailGrowth, tailGrowth, tailGrowth);
+
+  // Tier 4: Head — minimal growth to maintain proportions
+  const hS = Math.min(1.25, 1 + t * 0.015);
+  if (model.head) model.head.scale.set(hS, hS, hS);
+
+  // Tier 5: Cosmetic (tail, features) — very subtle
+  const fS = Math.min(1.2, 1 + t * 0.01);
+  if (model.tail) model.tail.scale.set(fS, fS, fS);
+  if (model.features) {
+    for (const k in model.features) {
+      const feat = model.features[k];
+      if (!feat) continue;
+      // Features can be single meshes or arrays of meshes
+      if (Array.isArray(feat)) {
+        for (const m of feat) { if (m) m.scale.set(fS, fS, fS); }
+      } else {
+        feat.scale.set(fS, fS, fS);
+      }
+    }
   }
 }

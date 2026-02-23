@@ -58,17 +58,17 @@ export function smoothNoise(x, z, scale) {
 }
 
 /**
- * Compute the terrain height at a world position using multi-octave noise.
- * Combines 3 octaves at scales 12, 6, and 3 for varied terrain with large hills and fine detail.
+ * Compute the terrain height at a world position.
+ * Returns 0 for flat terrain (BD-73: hills/curvature removed).
  *
  * This is a PURE function with no closure or state dependencies.
  *
  * @param {number} x - World X coordinate.
  * @param {number} z - World Z coordinate.
- * @returns {number} Terrain height in world Y units (typically 0-3.3 range).
+ * @returns {number} Terrain height (always 0 for flat terrain).
  */
 export function terrainHeight(x, z) {
-  return smoothNoise(x, z, 12) * 2 + smoothNoise(x, z, 6) * 1 + smoothNoise(x, z, 3) * 0.3;
+  return 0;
 }
 
 // === BIOME SYSTEM ===
@@ -464,14 +464,17 @@ export function generateChunk(cx, cz, scene, ts) {
   const geo = new THREE.PlaneGeometry(CHUNK_SIZE, CHUNK_SIZE, 8, 8);
   const posAttr = geo.attributes.position;
 
-  // Forest biome ground colors
-  const colors = BIOME_COLORS.forest;
-  const color = colors[Math.floor(noise2D(cx, cz) * colors.length)];
+  // Uniform forest green ground color (BD-73: no per-chunk color variation)
+  const color = 0x4a8c3f;
 
+  // Vertex displacement loop: local coords range [-CHUNK_SIZE/2, +CHUNK_SIZE/2],
+  // mesh center is offset by CHUNK_SIZE/2, so world = (ox + CHUNK_SIZE/2) + local
+  const centerX = ox + CHUNK_SIZE / 2;
+  const centerZ = oz + CHUNK_SIZE / 2;
   for (let i = 0; i < posAttr.count; i++) {
     const lx = posAttr.getX(i);
     const lz = posAttr.getY(i); // plane is XY before rotation
-    const wx = ox + lx, wz = oz + lz;
+    const wx = centerX + lx, wz = centerZ + lz;
     const h = terrainHeight(wx, wz);
     posAttr.setZ(i, h);
   }
@@ -480,7 +483,8 @@ export function generateChunk(cx, cz, scene, ts) {
   const mat = new THREE.MeshLambertMaterial({ color });
   const mesh = new THREE.Mesh(geo, mat);
   mesh.rotation.x = -Math.PI / 2;
-  mesh.position.set(ox, 0, oz);
+  // BD-73: Position at chunk center so plane covers [ox, ox+CHUNK_SIZE] with no seam gaps
+  mesh.position.set(centerX, 0, centerZ);
   mesh.receiveShadow = true;
   scene.add(mesh);
   ts.chunkMeshes[key] = mesh;

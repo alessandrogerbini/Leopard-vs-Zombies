@@ -355,7 +355,7 @@ export const CHARGE_SHRINE_UPGRADES = {
 export const CHARGE_SHRINE_WEIGHTS = { common: 50, uncommon: 28, rare: 16, legendary: 6 };
 
 /** Number of charge shrines to pre-place at game start */
-export const CHARGE_SHRINE_COUNT = 12;
+export const CHARGE_SHRINE_COUNT = 22;
 
 /** Charge time in seconds to activate a shrine */
 export const CHARGE_SHRINE_TIME = 4;
