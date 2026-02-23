@@ -4103,6 +4103,27 @@ export function launch3DGame(options) {
           // Clamp enemies to map boundaries
           e.group.position.x = Math.max(-MAP_HALF + 0.5, Math.min(MAP_HALF - 0.5, e.group.position.x));
           e.group.position.z = Math.max(-MAP_HALF + 0.5, Math.min(MAP_HALF - 0.5, e.group.position.z));
+
+          // === ENEMY-TERRAIN COLLISION (BD-103) ===
+          if (terrainState && terrainState.colliders) {
+            const ER = 0.4; // enemy radius (slightly smaller than player)
+            const ex = e.group.position.x;
+            const ez = e.group.position.z;
+            for (const c of terrainState.colliders) {
+              const cdx = ex - c.x;
+              const cdz = ez - c.z;
+              // Quick pre-check: skip colliders far away (>5 units)
+              if (cdx > 5 || cdx < -5 || cdz > 5 || cdz < -5) continue;
+              const cDist = Math.sqrt(cdx * cdx + cdz * cdz);
+              const minDist = ER + c.radius;
+              if (cDist < minDist && cDist > 0.001) {
+                const pushDist = minDist - cDist;
+                e.group.position.x += (cdx / cDist) * pushDist;
+                e.group.position.z += (cdz / cDist) * pushDist;
+              }
+            }
+          }
+
           e.group.rotation.y = Math.atan2(nx, nz);
         }
 
