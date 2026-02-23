@@ -11,7 +11,7 @@
  * desert, plains). Enemies follow a 10-tier zombie merge system where same-tier zombies
  * collide and combine into stronger variants. The player has an auto-attack system,
  * a hold-to-charge power attack, up to 4 weapon slots with 6 weapon types, passive scrolls,
- * shrine augments, difficulty totems, 18 temporary powerups, and 11 permanent items.
+ * shrine augments, difficulty totems, 18 temporary powerups, and 25 permanent items (4 rarity tiers).
  *
  * Dependencies: Three.js (global, loaded via CDN in index.html), 3d/constants.js (game constants),
  *               3d/terrain.js (procedural terrain generation and chunk management),
@@ -31,7 +31,7 @@
 
 import {
   ARENA_SIZE, SHRINE_COUNT, CHUNK_SIZE, GRAVITY_3D, JUMP_FORCE, GROUND_Y, MAP_HALF,
-  ANIMAL_PALETTES, WEAPON_TYPES, SCROLL_TYPES, POWERUPS_3D, ITEMS_3D,
+  ANIMAL_PALETTES, WEAPON_TYPES, SCROLL_TYPES, POWERUPS_3D, ITEMS_3D, ITEM_RARITIES,
   SHRINE_AUGMENTS, TOTEM_EFFECT, ZOMBIE_TIERS, ANIMAL_WEAPONS,
 } from './3d/constants.js';
 
@@ -306,9 +306,23 @@ export function launch3DGame(options) {
     gManeuver: false,
     gManeuverPitch: 0,
     // Items (permanent)
-    items: { armor: null, glasses: false, boots: null, ring: false, charm: false, vest: false, pendant: false, bracelet: false, gloves: false },
+    // Non-stackable slots: null/false = unequipped, id/true = equipped
+    // Stackable counts: 0 = none, N = number of stacks
+    items: {
+      armor: null, glasses: false, boots: null, ring: false, charm: false,
+      vest: false, pendant: false, bracelet: false, gloves: false,
+      // New non-stackable slots
+      cushion: false, turboshoes: false, goldenbone: false, crown: false, zombiemagnet: false, scarf: false,
+      // Stackable item counts
+      rubberDucky: 0, thickFur: 0, sillyStraw: 0, bandana: 0,
+      hotSauce: 0, bouncyBall: 0, luckyPenny: 0, alarmClock: 0,
+    },
     shieldBraceletTimer: 0,
     shieldBraceletReady: true,
+    // Silly Straw kill counter (heals 1 HP per 10 kills)
+    sillyStrawKills: 0,
+    // Turbo Sneakers dodge state
+    dodgeChance: 0,
     // UI
     gameOver: false,
     paused: false,
@@ -1141,8 +1155,11 @@ export function launch3DGame(options) {
    * @see ITEMS_3D
    */
   function createItemPickup(x, z) {
-    // Pick a random item that player doesn't already have (or higher tier)
+    // Pick a random available item using rarity-weighted selection.
+    // Stackable items are always available; non-stackable items are only available if slot is free.
     const available = ITEMS_3D.filter(it => {
+      // Stackable items are always available
+      if (it.stackable) return true;
       if (it.slot === 'armor') {
         if (st.items.armor === 'chainmail') return false;
         if (st.items.armor === 'leather' && it.tier <= 1) return false;
@@ -1150,21 +1167,36 @@ export function launch3DGame(options) {
       }
       if (it.slot === 'glasses') return !st.items.glasses;
       if (it.slot === 'boots') return st.items.boots !== it.id;
-      // Boolean-slot items: ring, charm, vest, pendant, bracelet, gloves
+      // Boolean-slot items: ring, charm, vest, pendant, bracelet, gloves, cushion, turboshoes, goldenbone, crown, zombiemagnet, scarf
       if (st.items[it.slot] !== undefined && typeof st.items[it.slot] === 'boolean') return !st.items[it.slot];
       return true;
     });
     if (available.length === 0) return null;
 
-    const itype = available[Math.floor(Math.random() * available.length)];
+    // Rarity-weighted random selection
+    // Build weighted pool: each item contributes its rarity's weight
+    let totalWeight = 0;
+    for (const it of available) {
+      totalWeight += (ITEM_RARITIES[it.rarity] || ITEM_RARITIES.common).weight;
+    }
+    let roll = Math.random() * totalWeight;
+    let itype = available[0]; // fallback
+    for (const it of available) {
+      roll -= (ITEM_RARITIES[it.rarity] || ITEM_RARITIES.common).weight;
+      if (roll <= 0) { itype = it; break; }
+    }
+
     // Place on nearest platform if one exists nearby
     const plat = findNearbyPlatform(x, z, 20);
     const px = plat ? plat.x : x;
     const pz = plat ? plat.z : z;
     const h = plat ? plat.y + 0.2 : terrainHeight(px, pz);
+    // Color the pickup mesh based on rarity tier
+    const rarityData = ITEM_RARITIES[itype.rarity] || ITEM_RARITIES.common;
+    const meshColor = rarityData.colorHex;
     const mesh = new THREE.Mesh(
       new THREE.BoxGeometry(0.4, 0.4, 0.4),
-      new THREE.MeshLambertMaterial({ color: itype.colorHex, emissive: itype.colorHex, emissiveIntensity: 0.4 })
+      new THREE.MeshLambertMaterial({ color: meshColor, emissive: meshColor, emissiveIntensity: 0.4 })
     );
     mesh.position.set(px, h + 0.8, pz);
     scene.add(mesh);
@@ -1233,7 +1265,10 @@ export function launch3DGame(options) {
    * @returns {number} Combined damage multiplier.
    */
   function getPlayerDmgMult() {
-    return (1 + (st.level - 1) * 0.12) * st.dmgBoost * st.augmentDmgMult;
+    let mult = (1 + (st.level - 1) * 0.12) * st.dmgBoost * st.augmentDmgMult;
+    if (st.items.bandana > 0) mult *= (1 + st.items.bandana * 0.05); // Bandana: +5% per stack
+    if (st.items.goldenbone) mult *= 1.30; // Golden Bone: +30% all weapon damage
+    return mult;
   }
 
   // === AMBIENT SPAWNING (constant trickle) ===
@@ -1297,16 +1332,18 @@ export function launch3DGame(options) {
 
   // === SCROLL MULTIPLIER HELPERS ===
 
-  /** @returns {number} Damage multiplier from Power Scrolls (+15% per stack). */
-  function getScrollDmgMult() { return 1 + st.scrolls.power * 0.15; }
-  /** @returns {number} Cooldown multiplier from Haste Scrolls (-15% per stack, floor 0.3). */
-  function getScrollCdMult() { return Math.max(0.3, 1 - st.scrolls.haste * 0.15); }
-  /** @returns {number} Range multiplier from Range Scrolls (+20% per stack). */
-  function getScrollRangeMult() { return 1 + st.scrolls.range * 0.2; }
-  /** @returns {number} Bonus projectile count from Arcane Scrolls (+1 per stack). */
-  function getScrollBonusProj() { return st.scrolls.arcane; }
-  /** @returns {number} XP multiplier from Fortune Scrolls (+30% per stack). */
-  function getScrollXpMult() { return 1 + st.scrolls.fortune * 0.3; }
+  /** @returns {number} Scroll effect strength multiplier (1.0 base, 1.5 with Rainbow Scarf). */
+  function getScrollStrength() { return st.items.scarf ? 1.5 : 1.0; }
+  /** @returns {number} Damage multiplier from Power Scrolls (+15% per stack, boosted by Rainbow Scarf). */
+  function getScrollDmgMult() { return 1 + st.scrolls.power * 0.15 * getScrollStrength(); }
+  /** @returns {number} Cooldown multiplier from Haste Scrolls (-15% per stack, floor 0.3, boosted by Rainbow Scarf). */
+  function getScrollCdMult() { return Math.max(0.3, 1 - st.scrolls.haste * 0.15 * getScrollStrength()); }
+  /** @returns {number} Range multiplier from Range Scrolls (+20% per stack, boosted by Rainbow Scarf). */
+  function getScrollRangeMult() { return 1 + st.scrolls.range * 0.2 * getScrollStrength(); }
+  /** @returns {number} Bonus projectile count from Arcane Scrolls (+1 per stack, boosted by Rainbow Scarf). */
+  function getScrollBonusProj() { return Math.floor(st.scrolls.arcane * getScrollStrength()); }
+  /** @returns {number} XP multiplier from Fortune Scrolls (+30% per stack, boosted by Rainbow Scarf). */
+  function getScrollXpMult() { return 1 + st.scrolls.fortune * 0.3 * getScrollStrength(); }
 
   // === WEAPON FUNCTIONS ===
 
@@ -1327,7 +1364,10 @@ export function launch3DGame(options) {
     else if (w.typeId === 'lightningBolt') dmg *= 1 + (w.level - 1) * 0.18;
     else if (w.typeId === 'fireball') dmg *= 1 + (w.level - 1) * 0.22;
     else if (w.typeId === 'boomerang') dmg *= 1 + (w.level - 1) * 0.2;
-    return dmg * getScrollDmgMult() * st.augmentDmgMult;
+    dmg *= getScrollDmgMult() * st.augmentDmgMult;
+    if (st.items.bandana > 0) dmg *= (1 + st.items.bandana * 0.05); // Bandana: +5% per stack
+    if (st.items.goldenbone) dmg *= 1.30; // Golden Bone: +30% all weapon damage
+    return dmg;
   }
 
   /**
@@ -1341,7 +1381,9 @@ export function launch3DGame(options) {
     const def = WEAPON_TYPES[w.typeId];
     let cd = def.baseCooldown;
     if (w.level >= 4) cd *= 0.82;
-    return cd * getScrollCdMult();
+    cd *= getScrollCdMult();
+    if (st.items.alarmClock > 0) cd *= Math.pow(0.92, st.items.alarmClock); // Alarm Clock: -8% per stack
+    return cd;
   }
 
   /**
@@ -1427,16 +1469,34 @@ export function launch3DGame(options) {
   function killEnemy(e) {
     const pts = Math.floor((10 + st.wave * 2) * (e.tier || 1) * st.scoreMult * (st.totemScoreMult || 1));
     st.score += pts;
-    st.xpGems.push(createXpGem(e.group.position.x, e.group.position.z));
-    for (let g = 1; g < (e.tier || 1); g++) {
-      st.xpGems.push(createXpGem(e.group.position.x + (Math.random() - 0.5), e.group.position.z + (Math.random() - 0.5)));
+    // Zombie Magnet: 2x XP gem drops
+    const gemMult = st.items.zombiemagnet ? 2 : 1;
+    for (let m = 0; m < gemMult; m++) {
+      st.xpGems.push(createXpGem(e.group.position.x + (m > 0 ? (Math.random() - 0.5) * 0.5 : 0), e.group.position.z + (m > 0 ? (Math.random() - 0.5) * 0.5 : 0)));
+      for (let g = 1; g < (e.tier || 1); g++) {
+        st.xpGems.push(createXpGem(e.group.position.x + (Math.random() - 0.5), e.group.position.z + (Math.random() - 0.5)));
+      }
     }
     st.totalKills++;
     st.killsByTier[(e.tier || 1) - 1]++;
+    // Silly Straw: heal 1 HP per 10 kills
+    if (st.items.sillyStraw > 0) {
+      st.sillyStrawKills++;
+      if (st.sillyStrawKills >= 10) {
+        st.sillyStrawKills = 0;
+        st.hp = Math.min(st.hp + st.items.sillyStraw, st.maxHp); // heals 1 HP per stack
+      }
+    }
+    // Whoopee Cushion: 20% chance enemies explode on death (AoE)
+    if (st.items.cushion && Math.random() < 0.20) {
+      spawnExplosion(e.group.position.x, e.group.position.z, 2.5, 15 * getPlayerDmgMult());
+      st.floatingTexts3d.push({ text: 'BOOM!', color: '#ff88cc', x: e.group.position.x, y: e.group.position.y + 2, z: e.group.position.z, life: 1 });
+    }
     // Loot drop roll — higher tier zombies drop more often
-    // Lucky Charm: +50% chance to drop
+    // Lucky Charm: +50% chance to drop, Lucky Penny: +8% per stack
     let dropChance = [0.03, 0.06, 0.10, 0.15, 0.15, 0.20, 0.20, 0.30, 0.30, 0.50][(e.tier || 1) - 1];
     if (st.items.charm) dropChance *= 1.5;
+    if (st.items.luckyPenny > 0) dropChance *= (1 + st.items.luckyPenny * 0.08);
     if (Math.random() < dropChance) {
       const dropX = e.group.position.x;
       const dropZ = e.group.position.z;
@@ -1469,6 +1529,12 @@ export function launch3DGame(options) {
     if (st.items.gloves && Math.random() < 0.15) dmg *= 2;
     e.hp -= dmg;
     e.hurtTimer = 0.15;
+    // Hot Sauce: 15% chance to ignite enemies (DoT: 3 damage/s for 3s)
+    if (st.items.hotSauce > 0 && !e.ignited && Math.random() < 0.15) {
+      e.ignited = true;
+      e.igniteTimer = 3;
+      e.igniteDps = 3 * st.items.hotSauce; // scales with stacks
+    }
     if (e.hp <= 0 && e.alive) killEnemy(e);
   }
 
@@ -1542,7 +1608,7 @@ export function launch3DGame(options) {
         boneGroup.add(crossBot);
         boneGroup.position.set(st.playerX, st.playerY + 0.8, st.playerZ);
         scene.add(boneGroup);
-        st.weaponProjectiles.push({ mesh: boneGroup, vx, vz, dmg, life: 2, pierce: false, type: 'bone' });
+        st.weaponProjectiles.push({ mesh: boneGroup, vx, vz, dmg, life: 2, pierce: false, type: 'bone', ricochetsLeft: st.items.bouncyBall });
       }
     } else if (w.typeId === 'poisonCloud') {
       // POISON CLOUD: AoE DoT — places a swirling green particle cloud at the target enemy's position.
@@ -1656,7 +1722,8 @@ export function launch3DGame(options) {
         st.weaponProjectiles.push({
           mesh: fbGroup, vx: (dx / d) * 10, vz: (dz / d) * 10, dmg,
           life: 2, pierce: false, type: 'fireball',
-          explosionRadius: explosionR, explosionDmg: dmg * (w.level >= 5 ? 1.5 : 1)
+          explosionRadius: explosionR, explosionDmg: dmg * (w.level >= 5 ? 1.5 : 1),
+          ricochetsLeft: st.items.bouncyBall
         });
       }
     } else if (w.typeId === 'boomerang') {
@@ -1751,6 +1818,31 @@ export function launch3DGame(options) {
         if (dx * dx + dz * dz < 1.2) {
           damageEnemy(e, p.dmg);
           if (!p.pierce) {
+            // Bouncy Ball ricochet: redirect projectile to nearest other enemy
+            const ricochets = p.ricochetsLeft || 0;
+            if (ricochets > 0) {
+              p.ricochetsLeft--;
+              // Find nearest alive enemy that isn't the one we just hit
+              let ricoTarget = null, ricoDistSq = Infinity;
+              for (const re of st.enemies) {
+                if (!re.alive || re === e) continue;
+                const rdx = p.mesh.position.x - re.group.position.x;
+                const rdz = p.mesh.position.z - re.group.position.z;
+                const rDistSq = rdx * rdx + rdz * rdz;
+                if (rDistSq < 100 && rDistSq < ricoDistSq) { // within 10 units
+                  ricoTarget = re;
+                  ricoDistSq = rDistSq;
+                }
+              }
+              if (ricoTarget) {
+                const rdist = Math.sqrt(ricoDistSq) || 1;
+                const speed = Math.sqrt(p.vx * p.vx + p.vz * p.vz);
+                p.vx = ((ricoTarget.group.position.x - p.mesh.position.x) / rdist) * speed;
+                p.vz = ((ricoTarget.group.position.z - p.mesh.position.z) / rdist) * speed;
+                p.life = Math.max(p.life, 0.5); // ensure it lives long enough to reach
+                break; // don't remove projectile, let it continue
+              }
+            }
             // Fireball explosion on hit
             if (p.type === 'fireball' && p.explosionRadius) {
               spawnExplosion(p.mesh.position.x, p.mesh.position.z, p.explosionRadius, p.explosionDmg);
@@ -2082,6 +2174,8 @@ export function launch3DGame(options) {
       // Apply speed bonuses
       let speed = st.playerSpeed * st.speedBoost;
       if (st.items.boots === 'soccerCleats') speed *= 1.15;
+      if (st.items.rubberDucky > 0) speed *= (1 + st.items.rubberDucky * 0.10); // Rubber Ducky: +10% per stack
+      if (st.items.turboshoes) speed *= 1.25; // Turbo Sneakers: +25% move speed
 
       st.playerX += mx * speed * dt;
       st.playerZ += mz * speed * dt;
@@ -2120,6 +2214,8 @@ export function launch3DGame(options) {
             // Speed boost during maneuver
             let maneuverSpeed = st.playerSpeed * st.speedBoost * 1.5;
             if (st.items.boots === 'soccerCleats') maneuverSpeed *= 1.15;
+            if (st.items.rubberDucky > 0) maneuverSpeed *= (1 + st.items.rubberDucky * 0.10);
+            if (st.items.turboshoes) maneuverSpeed *= 1.25;
             // Move in the direction the player is facing through the loop
             const facingAngle = playerGroup.rotation.y;
             const pitchAngle = st.gManeuverPitch;
@@ -2683,22 +2779,28 @@ export function launch3DGame(options) {
         const dy = Math.abs(st.playerY - e.group.position.y);
         const tierData = ZOMBIE_TIERS[(e.tier || 1) - 1];
         if (dist < 1.0 * (tierData.scale || 1) && dy < 1.5 && st.invincible <= 0) {
-          let dmg = 15 * tierData.dmgMult * st.zombieDmgMult * dt;
-          if (st.items.armor === 'leather') dmg *= 0.75;
-          else if (st.items.armor === 'chainmail') dmg *= 0.6;
-          dmg *= (1 - st.augmentArmor);
-          if (st.berserkVulnerable) dmg *= 1.25; // Berserker Rage: +25% damage taken
-          // Shield Bracelet: absorb one hit every 30s
-          if (st.items.bracelet && st.shieldBraceletReady) {
-            dmg = 0;
-            st.shieldBraceletReady = false;
-            st.shieldBraceletTimer = 30;
-            st.floatingTexts3d.push({ text: 'BLOCKED!', color: '#4488ff', x: st.playerX, y: st.playerY + 2, z: st.playerZ, life: 1.5 });
+          // Turbo Sneakers: 10% dodge chance
+          if (st.dodgeChance > 0 && Math.random() < st.dodgeChance) {
+            st.floatingTexts3d.push({ text: 'DODGE!', color: '#00ffaa', x: st.playerX, y: st.playerY + 2, z: st.playerZ, life: 0.8 });
+            st.invincible = 0.2;
+          } else {
+            let dmg = 15 * tierData.dmgMult * st.zombieDmgMult * dt;
+            if (st.items.armor === 'leather') dmg *= 0.75;
+            else if (st.items.armor === 'chainmail') dmg *= 0.6;
+            dmg *= (1 - st.augmentArmor);
+            if (st.berserkVulnerable) dmg *= 1.25; // Berserker Rage: +25% damage taken
+            // Shield Bracelet: absorb one hit every 30s
+            if (st.items.bracelet && st.shieldBraceletReady) {
+              dmg = 0;
+              st.shieldBraceletReady = false;
+              st.shieldBraceletTimer = 30;
+              st.floatingTexts3d.push({ text: 'BLOCKED!', color: '#4488ff', x: st.playerX, y: st.playerY + 2, z: st.playerZ, life: 1.5 });
+            }
+            st.hp -= dmg;
+            // Thorned Vest: reflect 20% damage back
+            if (st.items.vest && dmg > 0) { e.hp -= dmg * 0.2; e.hurtTimer = 0.1; }
+            st.invincible = 0.2;
           }
-          st.hp -= dmg;
-          // Thorned Vest: reflect 20% damage back
-          if (st.items.vest && dmg > 0) { e.hp -= dmg * 0.2; e.hurtTimer = 0.1; }
-          st.invincible = 0.2;
         }
         // Hurt flash (white flash like 2D)
         if (e.hurtTimer > 0) {
@@ -2711,6 +2813,18 @@ export function launch3DGame(options) {
             e.body.material.color.setHex(e.bodyColor);
             e.head.material.color.setHex(e.headColor);
           }
+        }
+        // Hot Sauce ignite DoT: 3 damage/s per stack for 3s
+        if (e.ignited) {
+          e.igniteTimer -= dt;
+          e.hp -= e.igniteDps * dt;
+          // Orange tint while burning
+          if (e.body) e.body.material.color.setHex(0xff6600);
+          if (e.igniteTimer <= 0) {
+            e.ignited = false;
+            if (e.body) e.body.material.color.setHex(e.bodyColor);
+          }
+          if (e.hp <= 0 && e.alive) killEnemy(e);
         }
         // Kill enemies that fall too far behind
         if (dist > 60) { disposeEnemy(e); }
@@ -2808,6 +2922,31 @@ export function launch3DGame(options) {
           }
 
           if (nearest.hp <= 0 && nearest.alive) killEnemy(nearest);
+
+          // Crown of Claws: hit 1 additional target
+          if (st.items.crown) {
+            let second = null, secondDistSq = Infinity;
+            for (const e of st.enemies) {
+              if (!e.alive || e === nearest) continue;
+              const dx2 = st.playerX - e.group.position.x;
+              const dz2 = st.playerZ - e.group.position.z;
+              const distSq2 = dx2 * dx2 + dz2 * dz2;
+              if (distSq2 < rangeSqAA && distSq2 < secondDistSq) {
+                second = e;
+                secondDistSq = distSq2;
+              }
+            }
+            if (second) {
+              let dmg2 = st.attackDamage * getPlayerDmgMult();
+              if (st.items.gloves && Math.random() < 0.15) dmg2 *= 2;
+              second.hp -= dmg2;
+              second.hurtTimer = 0.15;
+              const ey2 = second.group.position.y + 0.8;
+              st.attackLines.push(createAttackLine(st.playerX, py, st.playerZ, second.group.position.x, ey2, second.group.position.z));
+              if (second.hp <= 0 && second.alive) killEnemy(second);
+            }
+          }
+
           st.autoAttackTimer = 1 / (st.attackSpeed * st.atkSpeedBoost);
         }
       }
@@ -3018,7 +3157,12 @@ export function launch3DGame(options) {
         if (distSq < 2.25 && idy < 2.0) { // 1.5*1.5
           // Equip item
           const it = item.itype;
-          if (it.slot === 'armor') st.items.armor = it.id;
+          if (it.stackable) {
+            // Stackable items: increment count and apply per-stack effects
+            st.items[it.id]++;
+            // Thick Fur: +15 max HP per stack (immediate)
+            if (it.id === 'thickFur') { st.maxHp += 15; st.hp = Math.min(st.hp + 15, st.maxHp); }
+          } else if (it.slot === 'armor') st.items.armor = it.id;
           else if (it.slot === 'glasses') st.items.glasses = true;
           else if (it.slot === 'boots') st.items.boots = it.id;
           else if (it.slot === 'ring') { st.items.ring = true; st.collectRadius *= 1.5; }
@@ -3027,8 +3171,16 @@ export function launch3DGame(options) {
           else if (it.slot === 'pendant') { st.items.pendant = true; st.augmentRegen += 1; }
           else if (it.slot === 'bracelet') st.items.bracelet = true;
           else if (it.slot === 'gloves') st.items.gloves = true;
-          // Floating text for item pickup
-          st.floatingTexts3d.push({ text: it.name, color: it.color, x: item.x, y: st.playerY + 2.5, z: item.z, life: 2 });
+          // New non-stackable slots
+          else if (it.slot === 'cushion') st.items.cushion = true;
+          else if (it.slot === 'turboshoes') { st.items.turboshoes = true; st.dodgeChance += 0.10; }
+          else if (it.slot === 'goldenbone') st.items.goldenbone = true;
+          else if (it.slot === 'crown') st.items.crown = true;
+          else if (it.slot === 'zombiemagnet') st.items.zombiemagnet = true;
+          else if (it.slot === 'scarf') st.items.scarf = true;
+          // Floating text for item pickup (color by rarity)
+          const rarityColor = (ITEM_RARITIES[it.rarity] || ITEM_RARITIES.common).color;
+          st.floatingTexts3d.push({ text: it.name, color: rarityColor, x: item.x, y: st.playerY + 2.5, z: item.z, life: 2 });
           st.floatingTexts3d.push({ text: it.desc, color: '#ffffff', x: item.x, y: st.playerY + 2, z: item.z, life: 2 });
           item.alive = false;
           scene.remove(item.mesh);

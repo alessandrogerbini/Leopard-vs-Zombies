@@ -158,34 +158,93 @@ export const POWERUPS_3D = [
 ];
 
 /**
+ * Item rarity tier definitions for the 4-tier rarity system.
+ * Each tier has a display name, color for HUD text, hex color for meshes, and a drop weight
+ * that determines how likely items of that rarity are to be selected during spawning.
+ *
+ * Drop weight distribution: Common 50%, Uncommon 28%, Rare 16%, Legendary 6%.
+ *
+ * @constant {Object.<string, {name: string, color: string, colorHex: number, weight: number}>}
+ */
+export const ITEM_RARITIES = {
+  common:    { name: 'Stuff',             color: '#ffffff', colorHex: 0xffffff, weight: 50 },
+  uncommon:  { name: 'Good Stuff',        color: '#44ff44', colorHex: 0x44ff44, weight: 28 },
+  rare:      { name: 'Shiny Stuff',       color: '#4488ff', colorHex: 0x4488ff, weight: 16 },
+  legendary: { name: 'REALLY Cool Stuff', color: '#ff8800', colorHex: 0xff8800, weight: 6 },
+};
+
+/**
  * Permanent item definitions for 3D mode. Found as floating pickups on the map.
  * Items occupy named equipment slots; only one item per slot (armor allows tier upgrade).
+ * Stackable items (`stackable: true`) bypass slot restrictions and accumulate freely.
  *
- * 11 items across 9 slots:
- * - leather/chainmail (armor slot, tier 1/2): -25%/-40% damage taken
+ * 25 items across 4 rarity tiers:
+ *
+ * **Common (Stuff) - 8 items:**
+ * - leather (armor slot, tier 1): -25% damage taken
+ * - soccerCleats (boots slot): +15% move speed
  * - glasses (glasses slot): Reveals crate/pickup contents through HUD labels
- * - cowboyBoots/soccerCleats (boots slot): +20% attack range / +15% move speed
- * - magnetRing (ring slot): +50% pickup radius (permanent)
- * - luckyCharm (charm slot): +50% zombie loot drop rate
- * - thornedVest (vest slot): Reflects 20% of contact damage back to attacker
- * - healthPendant (pendant slot): +1 HP/s passive regeneration
- * - shieldBracelet (bracelet slot): Blocks 1 hit every 30 seconds
- * - critGloves (gloves slot): 15% chance for 2x damage on attacks
+ * - magnetRing (ring slot): +50% pickup radius
+ * - rubberDucky (stackable): +10% move speed per stack
+ * - thickFur (stackable): +15 max HP per stack
+ * - sillyStraw (stackable): Heal 1 HP per 10 kills
+ * - bandana (stackable): +5% all damage per stack
  *
- * @constant {Array.<{id: string, name: string, color: string, colorHex: number, desc: string, slot: string, tier?: number}>}
+ * **Uncommon (Good Stuff) - 7 items:**
+ * - cowboyBoots (boots slot): +20% attack range
+ * - luckyCharm (charm slot): +50% zombie loot drop rate
+ * - healthPendant (pendant slot): +1 HP/s passive regeneration
+ * - critGloves (gloves slot): 15% chance for 2x damage on attacks
+ * - hotSauce (stackable): 15% chance to ignite enemies (DoT)
+ * - bouncyBall (stackable): Projectiles gain 1 ricochet per stack
+ * - luckyPenny (stackable): +8% powerup drop chance per stack
+ *
+ * **Rare (Shiny Stuff) - 6 items:**
+ * - chainmail (armor slot, tier 2): -40% damage taken
+ * - thornedVest (vest slot): Reflects 20% of contact damage back to attacker
+ * - shieldBracelet (bracelet slot): Blocks 1 hit every 30 seconds
+ * - alarmClock (stackable): -8% weapon cooldowns per stack
+ * - whoopeeCushion (cushion slot): 20% chance enemies explode on death (AoE)
+ * - turboSneakers (turboshoes slot): +25% move speed, +10% dodge chance
+ *
+ * **Legendary (REALLY Cool Stuff) - 4 items:**
+ * - goldenBone (goldenbone slot): +30% all weapon damage
+ * - crownOfClaws (crown slot): Auto-attacks hit 1 additional target
+ * - zombieMagnet (zombiemagnet slot): Enemies drop 2x XP gems
+ * - rainbowScarf (scarf slot): All scroll effects +50% stronger
+ *
+ * @constant {Array.<{id: string, name: string, color: string, colorHex: number, desc: string, slot: string, rarity: string, tier?: number, stackable?: boolean}>}
  */
 export const ITEMS_3D = [
-  { id: 'leather', name: 'LEATHER ARMOR', color: '#b08040', colorHex: 0xb08040, desc: '-25% Damage Taken', slot: 'armor', tier: 1 },
-  { id: 'chainmail', name: 'CHAINMAIL', color: '#aaaacc', colorHex: 0xaaaacc, desc: '-40% Damage Taken', slot: 'armor', tier: 2 },
-  { id: 'glasses', name: 'AVIATOR GLASSES', color: '#ffaa00', colorHex: 0xffaa00, desc: 'See Crate Contents', slot: 'glasses' },
-  { id: 'cowboyBoots', name: 'COWBOY BOOTS', color: '#8B4513', colorHex: 0x8B4513, desc: '+20% Attack Range', slot: 'boots' },
-  { id: 'soccerCleats', name: 'SOCCER CLEATS', color: '#00cc44', colorHex: 0x00cc44, desc: '+15% Move Speed', slot: 'boots' },
-  { id: 'magnetRing', name: 'MAGNET RING', color: '#cccccc', colorHex: 0xcccccc, desc: '+50% Pickup Radius', slot: 'ring' },
-  { id: 'luckyCharm', name: 'LUCKY CHARM', color: '#ffdd44', colorHex: 0xffdd44, desc: '+50% Drop Rate', slot: 'charm' },
-  { id: 'thornedVest', name: 'THORNED VEST', color: '#cc4422', colorHex: 0xcc4422, desc: 'Reflect 20% Damage', slot: 'vest' },
-  { id: 'healthPendant', name: 'HEALTH PENDANT', color: '#44ff88', colorHex: 0x44ff88, desc: '+1 HP/s Regen', slot: 'pendant' },
-  { id: 'shieldBracelet', name: 'SHIELD BRACELET', color: '#4488ff', colorHex: 0x4488ff, desc: 'Block 1 Hit / 30s', slot: 'bracelet' },
-  { id: 'critGloves', name: 'CRIT GLOVES', color: '#ff4488', colorHex: 0xff4488, desc: '15% Chance 2x Damage', slot: 'gloves' },
+  // === COMMON (Stuff) ===
+  { id: 'leather', name: 'LEATHER ARMOR', color: '#b08040', colorHex: 0xb08040, desc: '-25% Damage Taken', slot: 'armor', tier: 1, rarity: 'common' },
+  { id: 'soccerCleats', name: 'SOCCER CLEATS', color: '#00cc44', colorHex: 0x00cc44, desc: '+15% Move Speed', slot: 'boots', rarity: 'common' },
+  { id: 'glasses', name: 'AVIATOR GLASSES', color: '#ffaa00', colorHex: 0xffaa00, desc: 'See Crate Contents', slot: 'glasses', rarity: 'common' },
+  { id: 'magnetRing', name: 'MAGNET RING', color: '#cccccc', colorHex: 0xcccccc, desc: '+50% Pickup Radius', slot: 'ring', rarity: 'common' },
+  { id: 'rubberDucky', name: 'RUBBER DUCKY', color: '#ffffff', colorHex: 0xffff44, desc: '+10% Move Speed', slot: 'duck', rarity: 'common', stackable: true },
+  { id: 'thickFur', name: 'THICK FUR', color: '#ffffff', colorHex: 0xbb8855, desc: '+15 Max HP', slot: 'fur', rarity: 'common', stackable: true },
+  { id: 'sillyStraw', name: 'SILLY STRAW', color: '#ffffff', colorHex: 0xff66aa, desc: 'Heal 1 HP / 10 Kills', slot: 'straw', rarity: 'common', stackable: true },
+  { id: 'bandana', name: 'BANDANA', color: '#ffffff', colorHex: 0xcc2222, desc: '+5% All Damage', slot: 'bandana', rarity: 'common', stackable: true },
+  // === UNCOMMON (Good Stuff) ===
+  { id: 'cowboyBoots', name: 'COWBOY BOOTS', color: '#44ff44', colorHex: 0x8B4513, desc: '+20% Attack Range', slot: 'boots', rarity: 'uncommon' },
+  { id: 'luckyCharm', name: 'LUCKY CHARM', color: '#44ff44', colorHex: 0xffdd44, desc: '+50% Drop Rate', slot: 'charm', rarity: 'uncommon' },
+  { id: 'healthPendant', name: 'HEALTH PENDANT', color: '#44ff44', colorHex: 0x44ff88, desc: '+1 HP/s Regen', slot: 'pendant', rarity: 'uncommon' },
+  { id: 'critGloves', name: 'CRIT GLOVES', color: '#44ff44', colorHex: 0xff4488, desc: '15% Chance 2x Damage', slot: 'gloves', rarity: 'uncommon' },
+  { id: 'hotSauce', name: 'HOT SAUCE BOTTLE', color: '#44ff44', colorHex: 0xff4400, desc: '15% Ignite Chance', slot: 'hotsauce', rarity: 'uncommon', stackable: true },
+  { id: 'bouncyBall', name: 'BOUNCY BALL', color: '#44ff44', colorHex: 0x44ccff, desc: '+1 Ricochet', slot: 'ball', rarity: 'uncommon', stackable: true },
+  { id: 'luckyPenny', name: 'LUCKY PENNY', color: '#44ff44', colorHex: 0xddaa44, desc: '+8% Powerup Drop Chance', slot: 'penny', rarity: 'uncommon', stackable: true },
+  // === RARE (Shiny Stuff) ===
+  { id: 'chainmail', name: 'CHAINMAIL', color: '#4488ff', colorHex: 0xaaaacc, desc: '-40% Damage Taken', slot: 'armor', tier: 2, rarity: 'rare' },
+  { id: 'thornedVest', name: 'THORNED VEST', color: '#4488ff', colorHex: 0xcc4422, desc: 'Reflect 20% Damage', slot: 'vest', rarity: 'rare' },
+  { id: 'shieldBracelet', name: 'SHIELD BRACELET', color: '#4488ff', colorHex: 0x4488ff, desc: 'Block 1 Hit / 30s', slot: 'bracelet', rarity: 'rare' },
+  { id: 'alarmClock', name: 'ALARM CLOCK', color: '#4488ff', colorHex: 0x88ccff, desc: '-8% Weapon Cooldowns', slot: 'clock', rarity: 'rare', stackable: true },
+  { id: 'whoopeeCushion', name: 'WHOOPEE CUSHION', color: '#4488ff', colorHex: 0xff88cc, desc: '20% Explode on Death', slot: 'cushion', rarity: 'rare' },
+  { id: 'turboSneakers', name: 'TURBO SNEAKERS', color: '#4488ff', colorHex: 0x00ffaa, desc: '+25% Speed, +10% Dodge', slot: 'turboshoes', rarity: 'rare' },
+  // === LEGENDARY (REALLY Cool Stuff) ===
+  { id: 'goldenBone', name: 'GOLDEN BONE', color: '#ff8800', colorHex: 0xffcc00, desc: '+30% All Weapon Damage', slot: 'goldenbone', rarity: 'legendary' },
+  { id: 'crownOfClaws', name: 'CROWN OF CLAWS', color: '#ff8800', colorHex: 0xffaa00, desc: '+1 Auto-Attack Target', slot: 'crown', rarity: 'legendary' },
+  { id: 'zombieMagnet', name: 'ZOMBIE MAGNET', color: '#ff8800', colorHex: 0x88ff88, desc: '2x XP Gem Drops', slot: 'zombiemagnet', rarity: 'legendary' },
+  { id: 'rainbowScarf', name: 'RAINBOW SCARF', color: '#ff8800', colorHex: 0xff44ff, desc: 'Scroll Effects +50%', slot: 'scarf', rarity: 'legendary' },
 ];
 
 /**
