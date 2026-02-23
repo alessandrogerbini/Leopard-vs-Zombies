@@ -262,12 +262,12 @@ function update() {
   // Each state handles its own input and either returns early or falls through
   // to the gameplay subsections below.
   if (state.gameState === 'title') {
-    // Skip mode selection - go directly to 3D Survivor mode setup
+    // Skip mode selection + difficulty — go directly to animal select
     if (keys['Enter'] && !state._enterHeld) {
       state._enterHeld = true;
       state.selectedMode = 1; // 3D Survivor mode
-      state.selectedDifficulty = 0;
-      state.gameState = 'difficulty';
+      state.selectedAnimal = 0;
+      state.gameState = 'select';
     }
     if (!keys['Enter']) state._enterHeld = false;
     return;
@@ -341,8 +341,9 @@ function update() {
     if (keys['Enter'] && !state._enterHeld) {
       state._enterHeld = true;
       const animal = ANIMAL_TYPES[state.selectedAnimal];
-      const diff = DIFFICULTY_SETTINGS[state.difficulty];
       if (state.selectedMode === 1) {
+        // Fixed baseline — wave escalation + difficulty totems are the sole difficulty drivers
+        const diff = { hpMult: 1.0, scoreMult: 1.0, enemySpeedMult: 1.0, powerupFreqMult: 1.0 };
         // ── 3D Mode Launch Integration ──────────────────────────────
         // When the player selects 3D Survivor mode:
         // 1. The 2D RAF loop is stopped via stopGameLoop().
@@ -366,6 +367,7 @@ function update() {
         });
       } else {
         // 2D Classic mode
+        const diff = DIFFICULTY_SETTINGS[state.difficulty];
         player.animal = animal.id;
         player.baseSpeed = 2.8125 * animal.speed;
         player.speed = player.baseSpeed;

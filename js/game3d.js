@@ -266,7 +266,7 @@ export function launch3DGame(options) {
     scoreMult: diffData.scoreMult,
     enemySpeedMult: diffData.enemySpeedMult || 1.0,
     powerupFreqMult: diffData.powerupFreqMult || 1.0,
-    zombieDmgMult: diffData.hpMult >= 1.0 ? 2 : diffData.hpMult >= 0.5 ? 3 : 4,
+    zombieDmgMult: 2,
     score: 0,
     wave: 1,
     ambientSpawnTimer: 3,
@@ -386,9 +386,8 @@ export function launch3DGame(options) {
     feedbackSaved: false,
   };
 
-  // Load 3D leaderboard
-  const diffKey = diffData.scoreMult >= 1.5 ? 'hard' : diffData.scoreMult >= 1 ? 'normal' : diffData.scoreMult >= 0.75 ? 'easy' : 'chill';
-  st.leaderboard3d = JSON.parse(localStorage.getItem(`avz3d-leaderboard-${diffKey}`) || '[]');
+  // Load 3D leaderboard (single unified key — no per-difficulty split)
+  st.leaderboard3d = JSON.parse(localStorage.getItem('avz3d-leaderboard') || '[]');
 
   // === AUDIO INIT ===
   initAudio('sound-pack-alpha/');
@@ -411,7 +410,7 @@ export function launch3DGame(options) {
     });
     st.leaderboard3d.sort((a, b) => b.score - a.score);
     st.leaderboard3d = st.leaderboard3d.slice(0, 10);
-    localStorage.setItem(`avz3d-leaderboard-${diffKey}`, JSON.stringify(st.leaderboard3d));
+    localStorage.setItem('avz3d-leaderboard', JSON.stringify(st.leaderboard3d));
   }
 
   // Animal-specific starting weapon (ANIMAL_WEAPONS imported from 3d/constants.js)
@@ -1515,6 +1514,9 @@ export function launch3DGame(options) {
       st.enemies.push(createEnemy(sx, sz, waveHp, tier));
     }
     st.wave++;
+    // Wave-driven difficulty escalation
+    st.zombieDmgMult += 0.15;   // +15% zombie contact damage per wave
+    st.enemySpeedMult += 0.03;  // +3% zombie speed per wave
 
     // Spawn crate with wave
     const crateAngle = Math.random() * Math.PI * 2;
@@ -2842,7 +2844,7 @@ export function launch3DGame(options) {
 
       // === GROUND + PLATFORM COLLISION ===
       // Ground collision (offset keeps model above terrain surface)
-      const GROUND_OFFSET = 0.55;
+      const GROUND_OFFSET = 0.75;
       const groundH = getGroundAt(st.playerX, st.playerZ) + GROUND_OFFSET;
       if (!st.flying && st.playerY <= groundH) {
         st.playerY = groundH;
@@ -2891,6 +2893,7 @@ export function launch3DGame(options) {
       if (st.activePowerup) {
         st.activePowerup.timer -= dt;
         if (st.activePowerup.timer <= 0) {
+          if (st.activePowerup.def.name && st.activePowerup.def.name.includes('Wings')) playSound('sfx_powerup_wings_expire');
           st.activePowerup.def.remove(st);
           st.activePowerup = null;
         }
@@ -3380,21 +3383,21 @@ export function launch3DGame(options) {
                 e.group.position.z > p.z - halfD && e.group.position.z < p.z + halfD) {
               const platTop = p.y + 0.2;
               if (e.jumpVY <= 0 && e.group.position.y >= platTop - 0.5 && e.group.position.y <= platTop + 1.0) {
-                e.group.position.y = platTop + 0.45;
+                e.group.position.y = platTop + 0.65;
                 e.jumpVY = 0;
                 e.onPlatform = true;
               }
             }
           }
 
-          const groundH = getGroundAt(e.group.position.x, e.group.position.z) + 0.45;
+          const groundH = getGroundAt(e.group.position.x, e.group.position.z) + 0.65;
           if (e.group.position.y <= groundH) {
             e.group.position.y = groundH;
             e.jumpVY = 0;
             e.onPlatform = false;
           }
         } else {
-          const eh = getGroundAt(e.group.position.x, e.group.position.z) + 0.45;
+          const eh = getGroundAt(e.group.position.x, e.group.position.z) + 0.65;
           e.group.position.y = eh;
         }
         // Walking animation: arm swing + leg shuffle
@@ -3529,7 +3532,7 @@ export function launch3DGame(options) {
                 const upgraded = createEnemy(mx, mz, baseHp, newTier);
                 upgraded.mergeBounce = 0.4; // 0.4s bounce animation
                 newEnemies.push(upgraded);
-                playSound('sfx_zombie_merge');
+                playSound(newTier <= 2 ? 'sfx_zombie_merge_low' : newTier <= 4 ? 'sfx_zombie_merge_mid' : 'sfx_zombie_merge_high');
                 // Floating text announcement
                 const tierName = ZOMBIE_TIERS[newTier - 1].name;
                 st.floatingTexts3d.push({
