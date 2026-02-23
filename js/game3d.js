@@ -1588,6 +1588,13 @@ export function launch3DGame(options) {
       walkPhase: Math.random() * Math.PI * 2,
       mergeCount: 0,       // Tracks absorbed same-tier zombies toward next tier
       mergeBounce: 0,      // Visual bounce timer after successful tier-up merge
+      // BD-84: Special attack state for Titan (tier 9) and Overlord (tier 10)
+      specialAttackTimer: (tier >= 9) ? 3 + Math.random() * 2 : 0,
+      specialAttackState: 'idle', // 'idle', 'telegraph', 'fire'
+      specialAttackTelegraphTimer: 0,
+      specialAttackTargetX: 0,
+      specialAttackTargetZ: 0,
+      specialAttackMesh: null,
     };
   }
 
@@ -1598,6 +1605,13 @@ export function launch3DGame(options) {
    */
   function disposeEnemy(e) {
     e.alive = false;
+    // BD-84: Clean up special attack telegraph mesh (added to scene, not e.group)
+    if (e.specialAttackMesh) {
+      scene.remove(e.specialAttackMesh);
+      if (e.specialAttackMesh.geometry) e.specialAttackMesh.geometry.dispose();
+      if (e.specialAttackMesh.material) e.specialAttackMesh.material.dispose();
+      e.specialAttackMesh = null;
+    }
     scene.remove(e.group);
     e.group.traverse(c => { if (c.geometry) c.geometry.dispose(); if (c.material) c.material.dispose(); });
   }
@@ -2559,6 +2573,37 @@ export function launch3DGame(options) {
     for (let i = st.weaponProjectiles.length - 1; i >= 0; i--) {
       const p = st.weaponProjectiles[i];
       p.life -= dt;
+
+      // BD-84: Death Bolt enemy projectile — moves in a straight line, damages player on proximity
+      if (p.type === 'deathBolt' && p.isEnemyProjectile) {
+        p.x += p.vx * dt;
+        p.z += p.vz * dt;
+        p.mesh.position.set(p.x, p.y, p.z);
+
+        // Check hit on player
+        const dbdx = st.playerX - p.x;
+        const dbdz = st.playerZ - p.z;
+        if (dbdx * dbdx + dbdz * dbdz < p.range * p.range) {
+          let boltDmg = p.damage * (1 - (st.augmentArmor || 0));
+          if (st.items.armor === 'leather') boltDmg *= 0.75;
+          else if (st.items.armor === 'chainmail') boltDmg *= 0.6;
+          boltDmg = Math.max(1, boltDmg);
+          st.hp -= boltDmg;
+          if (st.hp < 0) st.hp = 0;
+          st.floatingTexts3d.push({ text: '-' + Math.round(boltDmg), color: '#ff0044', x: st.playerX, y: st.playerY + 2, z: st.playerZ, life: 1 });
+          disposeSceneObject(p.mesh);
+          st.weaponProjectiles.splice(i, 1);
+          playSound('sfx_explosion');
+          continue;
+        }
+
+        // Expire if lifetime is up
+        if (p.life <= 0) {
+          disposeSceneObject(p.mesh);
+          st.weaponProjectiles.splice(i, 1);
+        }
+        continue; // Skip normal projectile logic (enemy projectiles don't hit enemies)
+      }
 
       if (p.type === 'turdMine') {
         // TURD MINE: Stationary mine — check if any enemy walks within detonation range.
@@ -3869,6 +3914,117 @@ export function launch3DGame(options) {
             if (!e.alive) continue;
           }
         }
+        // === ELITE ZOMBIE SPECIAL ATTACKS (BD-84) ===
+        // Titan (tier 9): Shockwave Slam — telegraphed AoE ground pound
+        // Overlord (tier 10): Death Bolt — telegraphed ranged projectile
+        if (e.tier >= 9 && e.specialAttackTimer !== undefined) {
+          e.specialAttackTimer -= dt;
+
+          if (e.specialAttackState === 'idle' && e.specialAttackTimer <= 0) {
+            // Start telegraph phase
+            e.specialAttackState = 'telegraph';
+            e.specialAttackTargetX = st.playerX;
+            e.specialAttackTargetZ = st.playerZ;
+
+            if (e.tier >= 10) {
+              // Overlord: Death Bolt telegraph — red line from zombie to target
+              e.specialAttackTelegraphTimer = 1.0;
+              const lineGeo = new THREE.BufferGeometry().setFromPoints([
+                new THREE.Vector3(e.group.position.x, 1.5, e.group.position.z),
+                new THREE.Vector3(st.playerX, 1.5, st.playerZ)
+              ]);
+              const lineMat = new THREE.LineBasicMaterial({ color: 0xff0000, transparent: true, opacity: 0.6 });
+              const line = new THREE.Line(lineGeo, lineMat);
+              scene.add(line);
+              e.specialAttackMesh = line;
+            } else {
+              // Titan: Shockwave telegraph — expanding red ring on ground
+              e.specialAttackTelegraphTimer = 1.5;
+              const ringGeo = new THREE.RingGeometry(0.5, 1.0, 24);
+              ringGeo.rotateX(-Math.PI / 2);
+              const ringMat = new THREE.MeshBasicMaterial({ color: 0xff2200, transparent: true, opacity: 0.5, side: THREE.DoubleSide });
+              const ring = new THREE.Mesh(ringGeo, ringMat);
+              ring.position.set(e.group.position.x, 0.1, e.group.position.z);
+              scene.add(ring);
+              e.specialAttackMesh = ring;
+            }
+            playSound('sfx_player_growl');
+          }
+
+          if (e.specialAttackState === 'telegraph') {
+            e.specialAttackTelegraphTimer -= dt;
+
+            // Animate telegraph visuals
+            if (e.specialAttackMesh) {
+              if (e.tier >= 10) {
+                // Pulse the death bolt line opacity
+                e.specialAttackMesh.material.opacity = 0.3 + 0.4 * Math.sin(performance.now() * 0.01);
+              } else {
+                // Expand the shockwave ring outward
+                const progress = 1 - (e.specialAttackTelegraphTimer / 1.5);
+                const ringScale = 1 + progress * 7; // expand to radius ~8
+                e.specialAttackMesh.scale.set(ringScale, 1, ringScale);
+                e.specialAttackMesh.material.opacity = 0.5 * (1 - progress * 0.5);
+              }
+            }
+
+            if (e.specialAttackTelegraphTimer <= 0) {
+              // Telegraph finished — fire the attack
+              if (e.tier >= 10) {
+                // Overlord: Fire death bolt projectile toward saved target position
+                const boltGeo = new THREE.SphereGeometry(0.4, 6, 6);
+                const boltMat = new THREE.MeshBasicMaterial({ color: 0xff0044 });
+                const bolt = new THREE.Mesh(boltGeo, boltMat);
+                bolt.position.set(e.group.position.x, 1.5, e.group.position.z);
+                scene.add(bolt);
+                const bdx = e.specialAttackTargetX - e.group.position.x;
+                const bdz = e.specialAttackTargetZ - e.group.position.z;
+                const bDist = Math.sqrt(bdx * bdx + bdz * bdz) || 1;
+                st.weaponProjectiles.push({
+                  mesh: bolt,
+                  x: e.group.position.x, y: 1.5, z: e.group.position.z,
+                  vx: (bdx / bDist) * 15, vy: 0, vz: (bdz / bDist) * 15,
+                  damage: 30,
+                  range: 1.2,
+                  life: 3,
+                  type: 'deathBolt',
+                  isEnemyProjectile: true,
+                });
+              } else {
+                // Titan: Shockwave damage check — hits player if within 8 units
+                const sdx = st.playerX - e.group.position.x;
+                const sdz = st.playerZ - e.group.position.z;
+                const distSq = sdx * sdx + sdz * sdz;
+                if (distSq < 64) { // 8^2 = 64
+                  let shockDmg = 20 * (1 - (st.augmentArmor || 0));
+                  if (st.items.armor === 'leather') shockDmg *= 0.75;
+                  else if (st.items.armor === 'chainmail') shockDmg *= 0.6;
+                  shockDmg = Math.max(1, shockDmg);
+                  st.hp -= shockDmg;
+                  if (st.hp < 0) st.hp = 0;
+                  st.floatingTexts3d.push({ text: '-' + Math.round(shockDmg), color: '#ff2200', x: st.playerX, y: st.playerY + 2, z: st.playerZ, life: 1 });
+                }
+                playSound('sfx_explosion');
+              }
+
+              // Remove telegraph mesh
+              if (e.specialAttackMesh) {
+                scene.remove(e.specialAttackMesh);
+                if (e.specialAttackMesh.geometry) e.specialAttackMesh.geometry.dispose();
+                if (e.specialAttackMesh.material) e.specialAttackMesh.material.dispose();
+                e.specialAttackMesh = null;
+              }
+
+              // Reset timer and return to idle
+              e.specialAttackTimer = e.tier >= 10 ? 4 : 5;
+              e.specialAttackState = 'idle';
+            } else {
+              // Still telegraphing — skip normal movement (enemy stands still)
+              continue;
+            }
+          }
+        }
+
         // Lazy-init jump state fields
         if (e.jumpVY === undefined) { e.jumpVY = 0; e.jumpCooldown = 0; e.onPlatform = false; }
         const dx = st.playerX - e.group.position.x;
