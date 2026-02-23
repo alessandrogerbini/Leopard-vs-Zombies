@@ -1224,12 +1224,15 @@ let animFrameId = null;
  * Single iteration of the main game loop. Calls update() then draw(),
  * and schedules the next frame via requestAnimationFrame.
  */
+/** @type {boolean} Set to true by stopGameLoop(), checked after update()/draw(). */
+let loopStopped = false;
+
 function gameLoop() {
   update();
   draw();
-  // Only reschedule if the loop hasn't been stopped during this frame
-  // (e.g. stopGameLoop() called from update() when entering 3D mode)
-  if (animFrameId !== null) {
+  // Only reschedule if stopGameLoop() wasn't called during this frame
+  // (e.g. when entering 3D mode from update())
+  if (!loopStopped) {
     animFrameId = requestAnimationFrame(gameLoop);
   }
 }
@@ -1239,6 +1242,7 @@ function gameLoop() {
  * Safe to call when already stopped (no-op).
  */
 function stopGameLoop() {
+  loopStopped = true;
   if (animFrameId !== null) {
     cancelAnimationFrame(animFrameId);
     animFrameId = null;
@@ -1250,6 +1254,7 @@ function stopGameLoop() {
  * Calls gameLoop() which self-schedules via requestAnimationFrame.
  */
 function startGameLoop() {
+  loopStopped = false;
   if (animFrameId === null) {
     gameLoop();
   }
