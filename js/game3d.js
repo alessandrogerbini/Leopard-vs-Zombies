@@ -36,6 +36,7 @@ import {
   MAP_GEMS_PER_CHUNK, GEM_XP_MIN, GEM_XP_MAX, GEM_COLLECT_RADIUS,
   CHARGE_SHRINE_UPGRADES, CHARGE_SHRINE_WEIGHTS, CHARGE_SHRINE_COUNT,
   CHARGE_SHRINE_TIME, CHARGE_SHRINE_RADIUS,
+  CHALLENGE_SHRINE_COUNT, CHALLENGE_SHRINE_RADIUS, BOSS_HP_MULT, BOSS_DMG_MULT, BOSS_SPEED_MULT, BOSS_SCALE,
 } from './3d/constants.js';
 
 import {
@@ -375,6 +376,9 @@ export function launch3DGame(options) {
     chargeShrineMenu: false,    // true = showing upgrade choice overlay
     chargeShrineChoices: [],    // 3 upgrade options rolled on charge complete
     selectedChargeShrineUpgrade: 0, // cursor index in choice menu
+    // Challenge shrines (BD-77)
+    challengeShrines: [],
+    activeBosses: [],
     // Difficulty totems
     totems: [],
     totemCount: 0,
@@ -1316,6 +1320,51 @@ export function launch3DGame(options) {
     st.chargeShrines.push(cs);
   }
 
+  // === GENERATE CHALLENGE SHRINES (BD-77) ===
+  for (let i = 0; i < CHALLENGE_SHRINE_COUNT; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const dist = 40 + Math.random() * 120;
+    const cx = Math.cos(angle) * dist;
+    const cz = Math.sin(angle) * dist;
+
+    // Visual: dark red glowing shrine
+    const shrineGroup = new THREE.Group();
+    // Base pillar
+    const pillarGeo = new THREE.BoxGeometry(2, 4, 2);
+    const pillarMat = new THREE.MeshLambertMaterial({ color: 0x8b0000 });
+    const pillar = new THREE.Mesh(pillarGeo, pillarMat);
+    pillar.position.y = 2;
+    pillar.castShadow = true;
+    shrineGroup.add(pillar);
+    // Skull on top
+    const skullGeo = new THREE.BoxGeometry(1.5, 1.5, 1.5);
+    const skullMat = new THREE.MeshLambertMaterial({ color: 0xcccccc });
+    const skull = new THREE.Mesh(skullGeo, skullMat);
+    skull.position.y = 4.5;
+    skull.castShadow = true;
+    shrineGroup.add(skull);
+    // Eye glow
+    const eyeGeo = new THREE.BoxGeometry(0.3, 0.3, 0.3);
+    const eyeMat = new THREE.MeshBasicMaterial({ color: 0xff0000 });
+    const eyeL = new THREE.Mesh(eyeGeo, eyeMat);
+    eyeL.position.set(-0.35, 4.6, 0.76);
+    shrineGroup.add(eyeL);
+    const eyeR = new THREE.Mesh(eyeGeo, eyeMat);
+    eyeR.position.set(0.35, 4.6, 0.76);
+    shrineGroup.add(eyeR);
+
+    const ch = terrainHeight(cx, cz);
+    shrineGroup.position.set(cx, ch, cz);
+    scene.add(shrineGroup);
+
+    st.challengeShrines.push({
+      x: cx, z: cz, group: shrineGroup,
+      activated: false,
+      bossDefeated: false,
+      rewardClaimed: false,
+    });
+  }
+
   // === PLAYER MODEL (built via 3d/player-model.js) ===
   const playerModel = buildPlayerModel(animalId, scene);
   const playerGroup = playerModel.group;
@@ -1625,10 +1674,31 @@ export function launch3DGame(options) {
    *
    * @param {number} x - World X position (may be adjusted to nearest platform).
    * @param {number} z - World Z position (may be adjusted to nearest platform).
+   * @param {string} [forcedItemId] - Optional item ID to force (bypasses rarity roll). Used by boss rewards (BD-77).
    * @returns {{mesh: THREE.Mesh, itype: Object, x: number, z: number, bobPhase: number, alive: boolean}|null} Item pickup object, or null if all items owned.
    * @see ITEMS_3D
    */
-  function createItemPickup(x, z) {
+  function createItemPickup(x, z, forcedItemId) {
+    // If a forced item ID is provided, use that item directly (BD-77 boss rewards)
+    if (forcedItemId) {
+      const forcedItem = ITEMS_3D.find(it => it.id === forcedItemId);
+      if (forcedItem) {
+        const plat = findNearbyPlatform(x, z, 20);
+        const px = plat ? plat.x : x;
+        const pz = plat ? plat.z : z;
+        const h = plat ? plat.y + 0.2 : terrainHeight(px, pz);
+        const rarityData = ITEM_RARITIES[forcedItem.rarity] || ITEM_RARITIES.common;
+        const meshColor = rarityData.colorHex;
+        const mesh = new THREE.Mesh(
+          new THREE.BoxGeometry(0.4, 0.4, 0.4),
+          new THREE.MeshLambertMaterial({ color: meshColor, emissive: meshColor, emissiveIntensity: 0.4 })
+        );
+        mesh.position.set(px, h + 0.8, pz);
+        scene.add(mesh);
+        return { mesh, itype: forcedItem, x: px, z: pz, bobPhase: Math.random() * Math.PI * 2, alive: true };
+      }
+    }
+
     // Pick a random available item using rarity-weighted selection.
     // Stackable items are always available; non-stackable items are only available if slot is free.
     const available = ITEMS_3D.filter(it => {
@@ -1949,6 +2019,28 @@ export function launch3DGame(options) {
    * @see disposeEnemy
    */
   function killEnemy(e) {
+    // Boss death reward (BD-77)
+    if (e.isBoss && e.bossShrine) {
+      e.bossShrine.bossDefeated = true;
+      // Drop a guaranteed legendary item
+      const legendaryItems = ITEMS_3D.filter(it => it.rarity === 'legendary');
+      if (legendaryItems.length > 0) {
+        const itemId = legendaryItems[Math.floor(Math.random() * legendaryItems.length)].id;
+        const pickup = createItemPickup(e.group.position.x, e.group.position.z, itemId);
+        if (pickup) st.itemPickups.push(pickup);
+      }
+      // Remove from active bosses
+      const bi = st.activeBosses.indexOf(e);
+      if (bi >= 0) st.activeBosses.splice(bi, 1);
+      playSound('sfx_explosion');
+      // Dim the shrine
+      e.bossShrine.group.children.forEach(c => {
+        if (c.material && c.material.emissive !== undefined) c.material.emissive.set(0x000000);
+        if (c.material) c.material.color.set(0x444444);
+      });
+      st.floatingTexts3d.push({ text: 'BOSS DEFEATED!', color: '#ffcc00', x: e.group.position.x, y: e.group.position.y + 3, z: e.group.position.z, life: 3 });
+    }
+
     playSound((e.tier || 1) >= 5 ? 'sfx_zombie_death_high' : 'sfx_zombie_death_low');
     const pts = Math.floor((10 + st.wave * 2) * (e.tier || 1) * st.scoreMult * (st.totemScoreMult || 1));
     st.score += pts;
@@ -3705,15 +3797,16 @@ export function launch3DGame(options) {
         // Merge bounce effect: brief scale-up then back to normal on tier upgrade
         if (e.mergeBounce > 0) {
           e.mergeBounce -= dt;
+          const baseScale = e.isBoss ? BOSS_SCALE : 1; // BD-77: preserve boss scale
           const bouncePhase = e.mergeBounce / 0.4; // 0->1 normalized (1 at start)
-          const bounceScale = 1 + Math.sin(bouncePhase * Math.PI) * 0.35;
+          const bounceScale = baseScale * (1 + Math.sin(bouncePhase * Math.PI) * 0.35);
           e.group.scale.set(bounceScale, bounceScale, bounceScale);
           // Flash bright on the body
           if (e.body && bouncePhase > 0.5) {
             e.body.material.color.setHex(0xffaa00);
           }
           if (e.mergeBounce <= 0) {
-            e.group.scale.set(1, 1, 1);
+            e.group.scale.set(baseScale, baseScale, baseScale);
             if (e.body) e.body.material.color.setHex(e.bodyColor);
           }
         }
@@ -3726,7 +3819,7 @@ export function launch3DGame(options) {
             st.floatingTexts3d.push({ text: 'DODGE!', color: '#00ffaa', x: st.playerX, y: st.playerY + 2, z: st.playerZ, life: 0.8 });
             st.invincible = 0.2;
           } else {
-            let dmg = 15 * tierData.dmgMult * st.zombieDmgMult * dt;
+            let dmg = 15 * tierData.dmgMult * st.zombieDmgMult * (e.bossDmgMult || 1) * dt;
             if (st.items.armor === 'leather') dmg *= 0.75;
             else if (st.items.armor === 'chainmail') dmg *= 0.6;
             dmg *= (1 - st.augmentArmor);
@@ -4368,6 +4461,34 @@ export function launch3DGame(options) {
         }
       }
 
+      // === CHALLENGE SHRINE ACTIVATION (BD-77) ===
+      for (const cs of st.challengeShrines) {
+        if (cs.activated || cs.bossDefeated) continue;
+        const dx = st.playerX - cs.x;
+        const dz = st.playerZ - cs.z;
+        if (Math.sqrt(dx * dx + dz * dz) < CHALLENGE_SHRINE_RADIUS + 1) {
+          cs.activated = true;
+          // Spawn boss zombie
+          const bossHp = (8 + Math.floor((st.gameTime / 60) * 2.5)) * BOSS_HP_MULT;
+          const bossTier = Math.min(st.wave + 2, 8);
+          const boss = createEnemy(cs.x + 5, cs.z + 5, bossHp, bossTier);
+          boss.isBoss = true;
+          boss.bossShrine = cs;
+          boss.speed = (boss.speed || 2) * BOSS_SPEED_MULT;
+          boss.bossDmgMult = BOSS_DMG_MULT;
+          // Scale up the boss model
+          if (boss.group) boss.group.scale.setScalar(BOSS_SCALE);
+          st.enemies.push(boss);
+          st.activeBosses.push(boss);
+          playSound('sfx_player_growl');
+          // Flash shrine
+          cs.group.children.forEach(c => {
+            if (c.material && c.material.emissive !== undefined) c.material.emissive = new THREE.Color(0xff0000);
+          });
+          st.floatingTexts3d.push({ text: 'BOSS SPAWNED!', color: '#ff0000', x: cs.x, y: terrainHeight(cs.x, cs.z) + 6, z: cs.z, life: 3 });
+        }
+      }
+
       // === FLOATING TEXTS 3D ===
       for (let i = st.floatingTexts3d.length - 1; i >= 0; i--) {
         st.floatingTexts3d[i].y += dt * 1.5;
@@ -4479,6 +4600,18 @@ export function launch3DGame(options) {
     if (st.chargeGlow) disposeSceneObject(st.chargeGlow);
     // Dispose charge shrine meshes
     st.chargeShrines.forEach(cs => {
+      if (cs.group) {
+        scene.remove(cs.group);
+        cs.group.traverse(child => {
+          if (child.isMesh) {
+            if (child.geometry) child.geometry.dispose();
+            if (child.material) child.material.dispose();
+          }
+        });
+      }
+    });
+    // Dispose challenge shrine meshes (BD-77)
+    st.challengeShrines.forEach(cs => {
       if (cs.group) {
         scene.remove(cs.group);
         cs.group.traverse(child => {
