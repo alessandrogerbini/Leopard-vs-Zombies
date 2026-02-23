@@ -77,8 +77,8 @@ import { initAudio, playSound, toggleMute, isMuted, getVolume, disposeAudio } fr
  * @property {number} zombieDmgMult  - Difficulty-based zombie contact damage multiplier (2/3/4).
  * @property {number} score          - Accumulated score.
  * @property {number} wave           - Current wave number (increments on wave event).
- * @property {number} ambientSpawnTimer  - Countdown to next ambient zombie spawn (resets to 3s).
- * @property {number} waveEventTimer     - Countdown to next wave event (resets to 240s).
+ * @property {number} ambientSpawnTimer  - Countdown to next ambient zombie spawn (resets to 2s).
+ * @property {number} waveEventTimer     - Countdown to next wave event (resets to 180s).
  * @property {number} waveWarning        - Seconds remaining in wave warning countdown (0 = none).
  * @property {boolean} waveActive        - Whether a wave event is currently active.
  * @property {number} ambientCrateTimer  - Countdown to next ambient crate spawn (resets to 30s).
@@ -269,11 +269,12 @@ export function launch3DGame(options) {
     zombieDmgMult: 2,
     score: 0,
     wave: 1,
-    ambientSpawnTimer: 3,
-    waveEventTimer: 240,  // 4 minutes until first wave event
+    ambientSpawnTimer: 2,
+    waveEventTimer: 150,  // 2.5 minutes until first wave event
     waveWarning: 0,       // countdown seconds (0 = no warning)
     waveActive: false,
     ambientCrateTimer: 30 / (diffData.powerupFreqMult || 1.0),
+    ambientItemTimer: 20,   // first item at 20s, then 45-60s cycle
     gameTime: 0,          // total elapsed game time in seconds
     xp: 0, xpToNext: 10, level: 1,
     enemies: [],
@@ -1475,12 +1476,12 @@ export function launch3DGame(options) {
 
   /**
    * Spawn a small group of tier-1 zombies around the player.
-   * Called every 3 seconds. Count increases with game time (1-4 zombies),
+   * Called every 2 seconds. Count increases with game time (2-6 zombies),
    * and base HP scales with elapsed minutes. Zombies spawn 25-35 units away in a random direction.
    */
   function spawnAmbient() {
     const elapsedMin = st.gameTime / 60;
-    const count = Math.min(4, 1 + Math.floor(elapsedMin / 3));
+    const count = Math.min(6, 2 + Math.floor(elapsedMin / 2));
     const baseHp = 8 + Math.floor(elapsedMin * 2.5);
     for (let i = 0; i < count; i++) {
       const angle = Math.random() * Math.PI * 2;
@@ -1491,20 +1492,20 @@ export function launch3DGame(options) {
     }
   }
 
-  // === WAVE EVENT SPAWNING (every 4 minutes, big burst) ===
+  // === WAVE EVENT SPAWNING (every 3 minutes, big burst) ===
 
   /**
    * Spawn a large wave event burst of zombies in a ring around the player.
-   * Wave events occur every 4 minutes with a 10-second warning countdown.
-   * Higher waves spawn more zombies (12 + wave * 6) with scaled HP and
+   * Wave events occur every 3 minutes with a 10-second warning countdown.
+   * Higher waves spawn more zombies (18 + wave * 8) with scaled HP and
    * a chance for higher-tier zombies. Also spawns a powerup crate and
-   * an item pickup every 2 waves.
+   * an item pickup with every wave.
    */
   function spawnWaveEvent() {
     const elapsedMin = st.gameTime / 60;
     const baseHp = 8 + Math.floor(elapsedMin * 2.5);
     const waveHp = Math.floor(baseHp * (1 + st.wave * 0.15));
-    const count = 12 + st.wave * 6;
+    const count = 18 + st.wave * 8;
     for (let i = 0; i < count; i++) {
       const angle = (i / count) * Math.PI * 2 + Math.random() * 0.3;
       const dist = 20 + Math.random() * 15;
@@ -1524,10 +1525,11 @@ export function launch3DGame(options) {
     const cz = Math.max(-MAP_HALF + 2, Math.min(MAP_HALF - 2, st.playerZ + Math.sin(crateAngle) * 15));
     st.powerupCrates.push(createPowerupCrate(cx, cz));
 
-    // Spawn item every 2 waves
-    if (st.wave % 2 === 0) {
-      const ix = Math.max(-MAP_HALF + 2, Math.min(MAP_HALF - 2, st.playerX + Math.cos(Math.random() * Math.PI * 2) * 12));
-      const iz = Math.max(-MAP_HALF + 2, Math.min(MAP_HALF - 2, st.playerZ + Math.sin(Math.random() * Math.PI * 2) * 12));
+    // Spawn item with every wave
+    {
+      const ia = Math.random() * Math.PI * 2;
+      const ix = Math.max(-MAP_HALF + 2, Math.min(MAP_HALF - 2, st.playerX + Math.cos(ia) * 12));
+      const iz = Math.max(-MAP_HALF + 2, Math.min(MAP_HALF - 2, st.playerZ + Math.sin(ia) * 12));
       const pickup = createItemPickup(ix, iz);
       if (pickup) st.itemPickups.push(pickup);
     }
@@ -3260,7 +3262,7 @@ export function launch3DGame(options) {
       st.ambientSpawnTimer -= dt;
       if (st.ambientSpawnTimer <= 0) {
         spawnAmbient();
-        st.ambientSpawnTimer = 3;
+        st.ambientSpawnTimer = 2;
       }
 
       // === AMBIENT CRATE SPAWN (every 30s) ===
@@ -3273,7 +3275,18 @@ export function launch3DGame(options) {
         st.powerupCrates.push(createPowerupCrate(cx, cz));
       }
 
-      // === WAVE EVENTS (every 4 minutes) ===
+      // === AMBIENT ITEM SPAWN (every 45-60s) ===
+      st.ambientItemTimer -= dt;
+      if (st.ambientItemTimer <= 0) {
+        st.ambientItemTimer = 45 + Math.random() * 15;
+        const ia = Math.random() * Math.PI * 2;
+        const ix = st.playerX + Math.cos(ia) * 18;
+        const iz = st.playerZ + Math.sin(ia) * 18;
+        const pickup = createItemPickup(ix, iz);
+        if (pickup) st.itemPickups.push(pickup);
+      }
+
+      // === WAVE EVENTS (every 3 minutes) ===
       st.waveEventTimer -= dt;
       if (st.waveEventTimer <= 10 && st.waveWarning === 0) {
         st.waveWarning = 10; // Start 10-second countdown
@@ -3283,7 +3296,7 @@ export function launch3DGame(options) {
         if (st.waveWarning <= 0) {
           st.waveWarning = 0;
           spawnWaveEvent();
-          st.waveEventTimer = 240; // Reset for next wave in 4 min
+          st.waveEventTimer = 180; // Reset for next wave in 3 min
         }
       }
 

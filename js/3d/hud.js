@@ -64,80 +64,72 @@ export function drawHUD(ctx, s, deps) {
 
   // --- Normal Gameplay HUD ---
   if (!s.gameOver && !s.upgradeMenu) {
+    // Enable text shadow for all HUD text
+    ctx.shadowColor = 'rgba(0,0,0,0.8)';
+    ctx.shadowBlur = 2;
+    ctx.shadowOffsetX = 1;
+    ctx.shadowOffsetY = 1;
+
     // --- HP Bar (top-left) ---
-    ctx.fillStyle = '#222'; ctx.fillRect(20, 20, 200, 20);
+    ctx.fillStyle = '#222'; ctx.fillRect(20, 20, 200, 24);
     const hpRatio = Math.max(0, s.hp / s.maxHp);
     ctx.fillStyle = hpRatio > 0.5 ? '#44ff44' : hpRatio > 0.25 ? '#ffaa00' : '#ff4444';
-    ctx.fillRect(20, 20, 200 * hpRatio, 20);
-    ctx.strokeStyle = '#fff'; ctx.lineWidth = 1; ctx.strokeRect(20, 20, 200, 20);
-    ctx.fillStyle = '#fff'; ctx.font = 'bold 14px "Courier New"'; ctx.textAlign = 'left';
-    ctx.fillText(`HP: ${Math.ceil(s.hp)}/${s.maxHp}`, 25, 35);
+    ctx.fillRect(20, 20, 200 * hpRatio, 24);
+    ctx.strokeStyle = '#fff'; ctx.lineWidth = 1; ctx.strokeRect(20, 20, 200, 24);
+    ctx.fillStyle = '#fff'; ctx.font = 'bold 16px "Courier New"'; ctx.textAlign = 'left';
+    ctx.fillText(`HP: ${Math.ceil(s.hp)}/${s.maxHp}`, 25, 37);
 
     // --- XP Bar (below HP) ---
-    ctx.fillStyle = '#222'; ctx.fillRect(20, 46, 200, 14);
+    ctx.fillStyle = '#222'; ctx.fillRect(20, 50, 200, 18);
     const xpRatio = s.xp / s.xpToNext;
     ctx.fillStyle = '#44aaff';
-    ctx.fillRect(20, 46, 200 * xpRatio, 14);
-    ctx.strokeStyle = '#fff'; ctx.strokeRect(20, 46, 200, 14);
+    ctx.fillRect(20, 50, 200 * xpRatio, 18);
+    ctx.strokeStyle = '#fff'; ctx.strokeRect(20, 50, 200, 18);
     ctx.fillStyle = '#fff'; ctx.font = 'bold 14px "Courier New"';
-    ctx.fillText(`XP: ${s.xp}/${s.xpToNext}`, 25, 57);
+    ctx.fillText(`XP: ${s.xp}/${s.xpToNext}`, 25, 63);
 
     // --- Level + Animal Name ---
-    ctx.fillStyle = '#ffcc00'; ctx.font = 'bold 16px "Courier New"';
-    ctx.fillText(`LVL ${s.level}`, 20, 80);
-    ctx.fillStyle = animalData.color; ctx.font = 'bold 14px "Courier New"';
-    ctx.fillText(animalData.name, 20, 96);
+    ctx.fillStyle = '#ffcc00'; ctx.font = 'bold 20px "Courier New"';
+    ctx.fillText(`LVL ${s.level}`, 20, 88);
+    ctx.fillStyle = animalData.color; ctx.font = 'bold 16px "Courier New"';
+    ctx.fillText(animalData.name, 20, 106);
 
     // --- Weapon Slot Bars (left side, below level) ---
-    let wy = 115;
+    let wy = 125;
     for (let wi = 0; wi < s.weapons.length; wi++) {
       const w = s.weapons[wi];
       const def = WEAPON_TYPES[w.typeId];
       const cdRatio = Math.max(0, w.cooldownTimer / getWeaponCooldown(w));
       // Background
-      ctx.fillStyle = '#222'; ctx.fillRect(20, wy, 140, 18);
+      ctx.fillStyle = '#222'; ctx.fillRect(20, wy, 140, 20);
       // Cooldown fill
-      ctx.fillStyle = def.color + '88'; ctx.fillRect(20, wy, 140 * (1 - cdRatio), 18);
-      ctx.strokeStyle = '#555'; ctx.lineWidth = 1; ctx.strokeRect(20, wy, 140, 18);
+      ctx.fillStyle = def.color + '88'; ctx.fillRect(20, wy, 140 * (1 - cdRatio), 20);
+      ctx.strokeStyle = '#555'; ctx.lineWidth = 1; ctx.strokeRect(20, wy, 140, 20);
       // Name
       ctx.fillStyle = def.color; ctx.font = 'bold 14px "Courier New"'; ctx.textAlign = 'left';
-      ctx.fillText(`${def.name} Lv${w.level}`, 24, wy + 13);
-      wy += 22;
+      ctx.fillText(`${def.name} Lv${w.level}`, 24, wy + 14);
+      wy += 24;
     }
     // Empty slots
     for (let wi = s.weapons.length; wi < s.maxWeaponSlots; wi++) {
-      ctx.fillStyle = '#1a1a1a'; ctx.fillRect(20, wy, 140, 18);
-      ctx.strokeStyle = '#333'; ctx.lineWidth = 1; ctx.strokeRect(20, wy, 140, 18);
+      ctx.fillStyle = '#1a1a1a'; ctx.fillRect(20, wy, 140, 20);
+      ctx.strokeStyle = '#333'; ctx.lineWidth = 1; ctx.strokeRect(20, wy, 140, 20);
       ctx.fillStyle = '#444'; ctx.font = '14px "Courier New"'; ctx.textAlign = 'left';
-      ctx.fillText('[EMPTY SLOT]', 24, wy + 13);
-      wy += 22;
+      ctx.fillText('[EMPTY SLOT]', 24, wy + 14);
+      wy += 24;
     }
-
-    // --- Howl Display (right side below timer) ---
-    ctx.textAlign = 'right';
-    let ty = 92;
-    const howlEntries = Object.entries(s.howls).filter(([, v]) => v > 0);
-    if (howlEntries.length > 0) {
-      for (const [tid, count] of howlEntries) {
-        const def = HOWL_TYPES[tid];
-        ctx.fillStyle = def.color; ctx.font = '14px "Courier New"';
-        ctx.fillText(`${def.name} x${count}`, W - 20, ty);
-        ty += 16;
-      }
-    }
-    ctx.textAlign = 'left';
 
     // --- Wave + Score + Timer (top-right) ---
     ctx.textAlign = 'right';
-    ctx.fillStyle = '#ff6644'; ctx.font = 'bold 18px "Courier New"';
+    ctx.fillStyle = '#ff6644'; ctx.font = 'bold 22px "Courier New"';
     ctx.fillText(`WAVE ${s.wave}`, W - 20, 35);
-    ctx.fillStyle = '#ffcc00'; ctx.font = 'bold 16px "Courier New"';
+    ctx.fillStyle = '#ffcc00'; ctx.font = 'bold 18px "Courier New"';
     ctx.fillText(`SCORE: ${s.score}`, W - 20, 55);
     // Timer
     const mins = Math.floor(s.gameTime / 60);
     const secs = Math.floor(s.gameTime % 60);
     const timeStr = `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
-    ctx.fillStyle = '#ffffff'; ctx.font = 'bold 14px "Courier New"';
+    ctx.fillStyle = '#ffffff'; ctx.font = 'bold 16px "Courier New"';
     ctx.fillText(timeStr, W - 20, 75);
 
     // --- Wave Warning Countdown (center overlay) ---
@@ -174,23 +166,23 @@ export function drawHUD(ctx, s, deps) {
       const armorDef = ITEMS_3D.find(i => i.id === s.items.armor);
       if (armorDef) {
         const rarityColor = (ITEM_RARITIES[armorDef.rarity] || ITEM_RARITIES.common).color;
-        ctx.fillStyle = rarityColor; ctx.font = '14px "Courier New"';
+        ctx.fillStyle = rarityColor; ctx.font = '15px "Courier New"';
         ctx.fillText(`[${armorDef.name}]`, 20, iy);
-        iy -= 16;
+        iy -= 18;
       }
     }
     if (s.items.glasses) {
-      ctx.fillStyle = ITEM_RARITIES.common.color; ctx.font = '14px "Courier New"';
+      ctx.fillStyle = ITEM_RARITIES.common.color; ctx.font = '15px "Courier New"';
       ctx.fillText('[AVIATOR GLASSES]', 20, iy);
-      iy -= 16;
+      iy -= 18;
     }
     if (s.items.boots) {
       const bootDef = ITEMS_3D.find(i => i.id === s.items.boots);
       if (bootDef) {
         const rarityColor = (ITEM_RARITIES[bootDef.rarity] || ITEM_RARITIES.common).color;
-        ctx.fillStyle = rarityColor; ctx.font = '14px "Courier New"';
+        ctx.fillStyle = rarityColor; ctx.font = '15px "Courier New"';
         ctx.fillText(`[${bootDef.name}]`, 20, iy);
-        iy -= 16;
+        iy -= 18;
       }
     }
     // Boolean-slot items (non-stackable)
@@ -200,9 +192,9 @@ export function drawHUD(ctx, s, deps) {
         const itemDef = ITEMS_3D.find(i => i.slot === slot);
         if (itemDef) {
           const rarityColor = (ITEM_RARITIES[itemDef.rarity] || ITEM_RARITIES.common).color;
-          ctx.fillStyle = rarityColor; ctx.font = '14px "Courier New"';
+          ctx.fillStyle = rarityColor; ctx.font = '15px "Courier New"';
           ctx.fillText(`[${itemDef.name}]`, 20, iy);
-          iy -= 16;
+          iy -= 18;
         }
       }
     }
@@ -213,17 +205,17 @@ export function drawHUD(ctx, s, deps) {
         const itemDef = ITEMS_3D.find(i => i.id === id);
         if (itemDef) {
           const rarityColor = (ITEM_RARITIES[itemDef.rarity] || ITEM_RARITIES.common).color;
-          ctx.fillStyle = rarityColor; ctx.font = '14px "Courier New"';
+          ctx.fillStyle = rarityColor; ctx.font = '15px "Courier New"';
           ctx.fillText(`[${itemDef.name} x${s.items[id]}]`, 20, iy);
-          iy -= 16;
+          iy -= 18;
         }
       }
     }
     // Shield bracelet cooldown indicator
     if (s.items.bracelet && !s.shieldBraceletReady) {
-      ctx.fillStyle = '#4488ff'; ctx.font = '14px "Courier New"';
+      ctx.fillStyle = '#4488ff'; ctx.font = '15px "Courier New"';
       ctx.fillText(`Shield: ${Math.ceil(s.shieldBraceletTimer)}s`, 20, iy);
-      iy -= 16;
+      iy -= 18;
     }
 
     // --- Floating 3D Texts (projected to screen space) ---
@@ -240,30 +232,47 @@ export function drawHUD(ctx, s, deps) {
       }
     }
 
-    // --- Augment + Totem Display (right side) ---
-    const augKeys = Object.keys(s.augments);
-    if (augKeys.length > 0 || s.totemCount > 0) {
+    // --- Right-side info (below timer): Howls → Augments → Skulls ---
+    // Uses a flowing Y cursor so sections never overlap regardless of content.
+    {
       ctx.textAlign = 'right';
-      let ay = 80;
+      let ry = 98; // starts below timer (which ends at Y=75) with gap
+
+      // Howls
+      const howlEntries = Object.entries(s.howls).filter(([, v]) => v > 0);
+      if (howlEntries.length > 0) {
+        for (const [tid, count] of howlEntries) {
+          const def = HOWL_TYPES[tid];
+          ctx.fillStyle = def.color; ctx.font = '16px "Courier New"';
+          ctx.fillText(`${def.name} x${count}`, W - 20, ry);
+          ry += 18;
+        }
+        ry += 8; // gap before next section
+      }
+
+      // Augments
+      const augKeys = Object.keys(s.augments);
       if (augKeys.length > 0) {
-        ctx.fillStyle = '#88ffaa'; ctx.font = 'bold 14px "Courier New"';
-        ctx.fillText('AUGMENTS', W - 20, ay);
-        ay += 16;
+        ctx.fillStyle = '#88ffaa'; ctx.font = 'bold 16px "Courier New"';
+        ctx.fillText('AUGMENTS', W - 20, ry);
+        ry += 18;
         for (const aKey of augKeys) {
           const aug = SHRINE_AUGMENTS.find(a => a.id === aKey);
           if (aug) {
-            ctx.fillStyle = aug.color; ctx.font = '14px "Courier New"';
-            ctx.fillText(`${aug.name} x${s.augments[aKey]}`, W - 20, ay);
-            ay += 16;
+            ctx.fillStyle = aug.color; ctx.font = '16px "Courier New"';
+            ctx.fillText(`${aug.name} x${s.augments[aKey]}`, W - 20, ry);
+            ry += 18;
           }
         }
+        ry += 8; // gap before next section
       }
+
+      // Skulls (totems)
       if (s.totemCount > 0) {
-        ay += 4;
-        ctx.fillStyle = '#ff2222'; ctx.font = 'bold 14px "Courier New"';
-        ctx.fillText(`SKULLS: ${s.totemCount}`, W - 20, ay);
-        ay += 14;
+        ctx.fillStyle = '#ff2222'; ctx.font = 'bold 16px "Courier New"';
+        ctx.fillText(`SKULLS: ${s.totemCount}`, W - 20, ry);
       }
+
       ctx.textAlign = 'left';
     }
 
@@ -312,6 +321,9 @@ export function drawHUD(ctx, s, deps) {
     ctx.textAlign = 'center';
     ctx.fillStyle = 'rgba(255,255,255,0.3)'; ctx.font = '14px "Courier New"';
     ctx.fillText('WASD: Move | SPACE: Jump | HOLD B: Power Attack | ESC: Pause', W / 2, H - 10);
+
+    // Reset text shadow before charge bar
+    ctx.shadowColor = 'transparent'; ctx.shadowBlur = 0; ctx.shadowOffsetX = 0; ctx.shadowOffsetY = 0;
 
     // --- Power Attack Charge Bar (big, segmented, color-coded) ---
     // Visible while charging or briefly when fully charged (chargeTime >= 2)
@@ -404,6 +416,7 @@ export function drawHUD(ctx, s, deps) {
 
   // --- Pause Menu Overlay ---
   if (s.pauseMenu && !s.gameOver && !s.upgradeMenu) {
+    ctx.shadowColor = 'transparent'; ctx.shadowBlur = 0; ctx.shadowOffsetX = 0; ctx.shadowOffsetY = 0;
     ctx.fillStyle = 'rgba(0,0,0,0.65)'; ctx.fillRect(0, 0, W, H);
     ctx.textAlign = 'center';
     ctx.fillStyle = '#ffffff'; ctx.font = 'bold 40px "Courier New"';
@@ -448,6 +461,7 @@ export function drawHUD(ctx, s, deps) {
 
   // --- Upgrade Menu Overlay (weapons / upgrades / howls) ---
   if (s.upgradeMenu && !s.gameOver) {
+    ctx.shadowColor = 'transparent'; ctx.shadowBlur = 0; ctx.shadowOffsetX = 0; ctx.shadowOffsetY = 0;
     ctx.fillStyle = 'rgba(0,0,0,0.7)'; ctx.fillRect(0, 0, W, H);
     ctx.textAlign = 'center';
     ctx.fillStyle = '#ffcc00'; ctx.font = 'bold 32px "Courier New"';
@@ -534,6 +548,7 @@ export function drawHUD(ctx, s, deps) {
 
   // --- Game Over Screen (stats + feedback + name entry + leaderboard) ---
   if (s.gameOver) {
+    ctx.shadowColor = 'transparent'; ctx.shadowBlur = 0; ctx.shadowOffsetX = 0; ctx.shadowOffsetY = 0;
     ctx.fillStyle = 'rgba(0,0,0,0.85)'; ctx.fillRect(0, 0, W, H);
     ctx.textAlign = 'center';
 
