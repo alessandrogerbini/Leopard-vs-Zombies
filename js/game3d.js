@@ -377,6 +377,12 @@ export function launch3DGame(options) {
     totalKills: 0,
     // Game timer
     gameTime: 0,
+    // Randomized weapon/howl pools (6 of 10 each per run)
+    availableWeapons: [],
+    availableHowls: [],
+    // Feedback state (game-over screen)
+    feedbackSelection: 0, // 0=Yes, 1=Maybe, 2=No
+    feedbackSaved: false,
   };
 
   // Load 3D leaderboard
@@ -406,6 +412,37 @@ export function launch3DGame(options) {
   // Animal-specific starting weapon (ANIMAL_WEAPONS imported from 3d/constants.js)
   const startWeapon = ANIMAL_WEAPONS[animalId] || 'clawSwipe';
   st.weapons.push({ typeId: startWeapon, level: 1, cooldownTimer: 0 });
+
+  // === RANDOMIZED WEAPON + HOWL POOLS ===
+  // Each run randomly selects 6 of 10 weapons and 6 of 10 howls.
+  // The starting weapon is always guaranteed in the pool.
+  /**
+   * Fisher-Yates shuffle — returns a new shuffled copy of the array.
+   * @param {Array} arr - The array to shuffle.
+   * @returns {Array} A new shuffled array.
+   */
+  function shuffle(arr) {
+    const a = [...arr];
+    for (let i = a.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [a[i], a[j]] = [a[j], a[i]];
+    }
+    return a;
+  }
+
+  // Pick 6 random weapons, ensuring the starting weapon is included
+  const allWeaponIds = Object.keys(WEAPON_TYPES);
+  const shuffledWeapons = shuffle(allWeaponIds);
+  st.availableWeapons = shuffledWeapons.slice(0, 6);
+  if (!st.availableWeapons.includes(startWeapon)) {
+    // Swap out a random non-starting weapon for the starting weapon
+    const swapIdx = Math.floor(Math.random() * st.availableWeapons.length);
+    st.availableWeapons[swapIdx] = startWeapon;
+  }
+
+  // Pick 6 random howls
+  const allHowlIds = Object.keys(HOWL_TYPES);
+  st.availableHowls = shuffle(allHowlIds).slice(0, 6);
 
   // === INPUT ===
   /** @type {Object.<string, boolean>} Tracks which keys are currently pressed by `e.code`. */
@@ -437,9 +474,24 @@ export function launch3DGame(options) {
         } else if (e.key.length === 1 && st.nameEntry.length < 10) {
           st.nameEntry += e.key.toUpperCase();
         }
-      } else if (e.code === 'Enter') {
-        cleanup();
-        onReturn();
+      } else {
+        // Feedback "Would you play again?" navigation (arrow keys cycle Y/M/N)
+        if (e.code === 'ArrowLeft' || e.code === 'KeyA') {
+          st.feedbackSelection = (st.feedbackSelection - 1 + 3) % 3;
+        }
+        if (e.code === 'ArrowRight' || e.code === 'KeyD') {
+          st.feedbackSelection = (st.feedbackSelection + 1) % 3;
+        }
+        // Save feedback to localStorage whenever changed
+        if (e.code === 'ArrowLeft' || e.code === 'KeyA' || e.code === 'ArrowRight' || e.code === 'KeyD') {
+          const answers = ['Yes', 'Maybe', 'No'];
+          localStorage.setItem('avz-feedback', answers[st.feedbackSelection]);
+          st.feedbackSaved = true;
+        }
+        if (e.code === 'Enter') {
+          cleanup();
+          onReturn();
+        }
       }
     } else if (st.upgradeMenu && !st.gameOver) {
       if (e.code === 'ArrowLeft' || e.code === 'KeyA') st.selectedUpgrade = (st.selectedUpgrade - 1 + st.upgradeChoices.length) % st.upgradeChoices.length;
@@ -2503,10 +2555,10 @@ export function launch3DGame(options) {
 
     const pool = [];
 
-    // New weapons (if slots available)
+    // New weapons (if slots available, filtered to this run's available pool)
     if (st.weapons.length < st.maxWeaponSlots) {
       const ownedIds = new Set(st.weapons.map(w => w.typeId));
-      for (const id in WEAPON_TYPES) {
+      for (const id of st.availableWeapons) {
         if (!ownedIds.has(id)) {
           const def = WEAPON_TYPES[id];
           pool.push({
@@ -2537,8 +2589,8 @@ export function launch3DGame(options) {
       }
     }
 
-    // Howls (below max)
-    for (const id in HOWL_TYPES) {
+    // Howls (below max, filtered to this run's available pool)
+    for (const id of st.availableHowls) {
       const def = HOWL_TYPES[id];
       if (st.howls[id] < def.maxLevel) {
         pool.push({
