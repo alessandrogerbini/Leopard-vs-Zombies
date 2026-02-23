@@ -2871,6 +2871,34 @@ export function launch3DGame(options) {
         }
       }
 
+      // === PLATEAU HORIZONTAL COLLISION (BD-85) ===
+      // Prevent walking through plateaus from the side. Only applies when player
+      // is below the platform surface (not standing on top of it).
+      if (!st.flying) {
+        for (const p of platforms) {
+          const platTop = p.y + 0.2;
+          // Only collide horizontally if player is below the platform top
+          if (st.playerY < platTop - 0.3) {
+            const halfW = p.w / 2 + 0.5; // 0.5 = player radius buffer
+            const halfD = p.d / 2 + 0.5;
+            const dx = st.playerX - p.x;
+            const dz = st.playerZ - p.z;
+
+            if (Math.abs(dx) < halfW && Math.abs(dz) < halfD) {
+              // Push out along the shortest overlap axis
+              const overlapX = halfW - Math.abs(dx);
+              const overlapZ = halfD - Math.abs(dz);
+
+              if (overlapX < overlapZ) {
+                st.playerX += (dx > 0 ? overlapX : -overlapX);
+              } else {
+                st.playerZ += (dz > 0 ? overlapZ : -overlapZ);
+              }
+            }
+          }
+        }
+      }
+
       // Min height clamp
       const groundH2 = getGroundAt(st.playerX, st.playerZ) + GROUND_OFFSET;
       if (st.playerY < groundH2) {
