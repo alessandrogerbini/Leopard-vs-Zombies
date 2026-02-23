@@ -356,17 +356,17 @@ export function drawHUD(ctx, s, deps) {
     ctx.fillStyle = 'rgba(255,255,255,0.3)'; ctx.font = '14px "Courier New"';
     ctx.fillText('WASD: Move | SPACE: Jump | HOLD B: Power Attack | ESC: Pause', W / 2, H - 10);
 
-    // === MINIMAP (BD-76) ===
+    // === MINIMAP (BD-76 + BD-97 fog-of-war) ===
     {
       const mmSize = s.showFullMap ? Math.min(W * 0.6, H * 0.6) : 120;
       const mmX = s.showFullMap ? (W - mmSize) / 2 : W - mmSize - 10;
       const mmY = s.showFullMap ? (H - mmSize) / 2 : H - mmSize - 10;
       const mmRange = s.showFullMap ? 200 : 60; // world units visible
 
-      // Background
+      // Black background (unexplored = black)
       ctx.save();
-      ctx.globalAlpha = s.showFullMap ? 0.85 : 0.7;
-      ctx.fillStyle = '#1a2a1a';
+      ctx.globalAlpha = s.showFullMap ? 0.9 : 0.8;
+      ctx.fillStyle = '#000000';
       ctx.fillRect(mmX, mmY, mmSize, mmSize);
       ctx.globalAlpha = 1;
       ctx.strokeStyle = '#4a6a4a';
@@ -382,20 +382,61 @@ export function drawHUD(ctx, s, deps) {
       const cy = mmY + mmSize / 2;
       const scale = mmSize / (mmRange * 2);
 
-      // Draw fog of war (explored area is lighter)
-      // Simple approach: draw a gradient circle around player showing visible area
-      const fogGrad = ctx.createRadialGradient(cx, cy, 0, cx, cy, mmSize * 0.5);
-      fogGrad.addColorStop(0, 'rgba(40,70,40,0.3)');
-      fogGrad.addColorStop(0.7, 'rgba(40,70,40,0.0)');
-      fogGrad.addColorStop(1, 'rgba(0,0,0,0.5)');
-      ctx.fillStyle = fogGrad;
-      ctx.fillRect(mmX, mmY, mmSize, mmSize);
+      // BD-97: Draw revealed fog-of-war cells
+      const fogCell = 4; // must match game3d.js fog cell size
+      const fogLosRadius = 30; // current LOS radius in world units
+      if (s.fogRevealed && s.fogRevealed.size > 0) {
+        const cellPx = fogCell * scale;
+        // Only iterate cells that could be visible on the minimap
+        const cellsInView = Math.ceil(mmRange / fogCell) + 1;
+        const playerCellX = Math.floor(s.playerX / fogCell);
+        const playerCellZ = Math.floor(s.playerZ / fogCell);
 
-      // Draw enemies as red dots
+        for (let dcx = -cellsInView; dcx <= cellsInView; dcx++) {
+          for (let dcz = -cellsInView; dcz <= cellsInView; dcz++) {
+            const gx = playerCellX + dcx;
+            const gz = playerCellZ + dcz;
+            const key = gx + ',' + gz;
+            if (!s.fogRevealed.has(key)) continue;
+
+            // World position of this cell's center
+            const worldX = (gx + 0.5) * fogCell;
+            const worldZ = (gz + 0.5) * fogCell;
+
+            // Screen position on minimap
+            const sx = cx + (worldX - s.playerX) * scale;
+            const sz = cy + (worldZ - s.playerZ) * scale;
+
+            // Skip if outside minimap bounds
+            if (sx + cellPx < mmX || sx - cellPx > mmX + mmSize ||
+                sz + cellPx < mmY || sz - cellPx > mmY + mmSize) continue;
+
+            // Brightness: current LOS area is brighter, explored-but-distant is dimmer
+            const distToPlayer = Math.sqrt(
+              (worldX - s.playerX) ** 2 + (worldZ - s.playerZ) ** 2
+            );
+            if (distToPlayer < fogLosRadius) {
+              ctx.fillStyle = '#2a4a2a'; // bright — currently visible
+            } else {
+              ctx.fillStyle = '#152015'; // dim — explored but not in LOS
+            }
+            ctx.fillRect(sx - cellPx / 2, sz - cellPx / 2, cellPx, cellPx);
+          }
+        }
+      }
+
+      // Helper: check if a world position is in a revealed fog cell
+      const isRevealed = (wx, wz) => {
+        if (!s.fogRevealed) return true; // no fog data = show everything
+        return s.fogRevealed.has(Math.floor(wx / fogCell) + ',' + Math.floor(wz / fogCell));
+      };
+
+      // Draw enemies as red dots (only in revealed areas)
       if (s.enemies) {
         ctx.fillStyle = '#ff4444';
         for (const e of s.enemies) {
           if (!e.alive) continue;
+          if (!isRevealed(e.x, e.z)) continue;
           const ex = cx + (e.x - s.playerX) * scale;
           const ez = cy + (e.z - s.playerZ) * scale;
           if (ex >= mmX && ex <= mmX + mmSize && ez >= mmY && ez <= mmY + mmSize) {
@@ -407,10 +448,11 @@ export function drawHUD(ctx, s, deps) {
         }
       }
 
-      // Draw shrines as purple diamonds
+      // Draw shrines as purple diamonds (only in revealed areas)
       if (s.chargeShrines) {
         ctx.fillStyle = '#bb66ff';
         for (const sh of s.chargeShrines) {
+          if (!isRevealed(sh.x, sh.z)) continue;
           const sx = cx + (sh.x - s.playerX) * scale;
           const sz = cy + (sh.z - s.playerZ) * scale;
           if (sx >= mmX && sx <= mmX + mmSize && sz >= mmY && sz <= mmY + mmSize) {
@@ -423,10 +465,11 @@ export function drawHUD(ctx, s, deps) {
         }
       }
 
-      // Draw item pickups as yellow dots
+      // Draw item pickups as yellow dots (only in revealed areas)
       if (s.itemPickups) {
         ctx.fillStyle = '#ffdd44';
         for (const ip of s.itemPickups) {
+          if (!isRevealed(ip.x, ip.z)) continue;
           const ix = cx + (ip.x - s.playerX) * scale;
           const iz = cy + (ip.z - s.playerZ) * scale;
           if (ix >= mmX && ix <= mmX + mmSize && iz >= mmY && iz <= mmY + mmSize) {
@@ -437,10 +480,11 @@ export function drawHUD(ctx, s, deps) {
         }
       }
 
-      // Draw powerup crates as blue squares
+      // Draw powerup crates as blue squares (only in revealed areas)
       if (s.powerupCrates) {
         ctx.fillStyle = '#44aaff';
         for (const pc of s.powerupCrates) {
+          if (!isRevealed(pc.x, pc.z)) continue;
           const px = cx + (pc.x - s.playerX) * scale;
           const pz = cy + (pc.z - s.playerZ) * scale;
           if (px >= mmX && px <= mmX + mmSize && pz >= mmY && pz <= mmY + mmSize) {

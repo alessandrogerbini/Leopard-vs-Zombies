@@ -351,6 +351,7 @@ export function launch3DGame(options) {
     pauseMenu: false,
     selectedPauseOption: 0,
     showFullMap: false,
+    fogRevealed: new Set(), // BD-97: fog-of-war grid cells revealed by player
     // Auto-attack + power attack
     autoAttackTimer: 0,
     charging: false,
@@ -3400,6 +3401,21 @@ export function launch3DGame(options) {
       // Clamp player to map boundaries
       st.playerX = Math.max(-MAP_HALF + 1, Math.min(MAP_HALF - 1, st.playerX));
       st.playerZ = Math.max(-MAP_HALF + 1, Math.min(MAP_HALF - 1, st.playerZ));
+
+      // BD-97: Reveal fog-of-war cells near player (4-unit grid, 30-unit radius)
+      {
+        const fogCell = 4, fogRadius = 30;
+        const fogCells = Math.ceil(fogRadius / fogCell);
+        const pcx = Math.floor(st.playerX / fogCell);
+        const pcz = Math.floor(st.playerZ / fogCell);
+        for (let dx = -fogCells; dx <= fogCells; dx++) {
+          for (let dz = -fogCells; dz <= fogCells; dz++) {
+            if (dx * dx + dz * dz <= fogCells * fogCells) {
+              st.fogRevealed.add((pcx + dx) + ',' + (pcz + dz));
+            }
+          }
+        }
+      }
 
       // === OBJECT COLLISION (BD-69) ===
       if (terrainState && terrainState.colliders) {
