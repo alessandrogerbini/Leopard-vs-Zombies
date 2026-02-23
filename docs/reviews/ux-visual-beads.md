@@ -33,6 +33,22 @@ Focus: HUD readability, kid-friendliness, art asset needs for agentic art genera
 | BD-60 | Double wave event zombie count for impactful waves | Gameplay / Balance | P1-High | Small | BD-53 |
 | BD-61 | Increase zombie merge collision radius by 20% | Gameplay / Balance | P1-High | Small | -- |
 | BD-62 | Add charge shrines with tiered stat upgrade choices | Gameplay / Content | P1-High | Large | -- |
+| BD-63 | Fix arms disappearing at high levels — full-body proportional scaling | Bug Fix / Visual | P0-Critical | Medium | BD-57 |
+| BD-64 | Increase charge shrine count to 20-25 for denser exploration | Gameplay / Balance | P1-High | Small | BD-62 |
+| BD-65 | Increase base zombie spawn rate by 15% | Gameplay / Balance | P1-High | Small | BD-59 |
+| BD-66 | Halve starting HP for all animals (reduce tankiness) | Gameplay / Balance | P1-High | Small | -- |
+| BD-67 | Progressive high-tier zombie spawning by wave (primary difficulty driver) | Gameplay / Balance | P1-High | Medium | -- |
+| BD-68 | Audio spontaneously stops at ~6min mark and never recovers | Bug Fix | P0-Critical | Medium | -- |
+| BD-69 | Add collision for in-game objects (trees, rocks, shrines, decorations) | Gameplay / Physics | P1-High | Medium | BD-50 |
+| BD-70 | Equipped items must visually display on character model | Visual / Gameplay | P0-Critical | Large | BD-56 |
+| BD-71 | New weapon: Exploding Turd Mines (drop behind, AoE on proximity) | Gameplay / Content | P1-High | Medium | BD-72 |
+| BD-72 | Reclassify weapons into 3 classes: AoE melee, projectiles, mines | Game Design / Architecture | P1-High | Large | -- |
+| BD-73 | Flatten terrain completely — remove curvature, fix seam gaps | Visual / Bug Fix | P0-Critical | Medium | -- |
+| BD-74 | Enter key resets level during upgrade/selection menus instead of confirming | Bug Fix | P0-Critical | Small | -- |
+| BD-75 | Add item drops to zombie loot table (tier-scaled chance) | Gameplay / Balance | P1-High | Small | -- |
+| BD-76 | Add HUD minimap with fog of war + full map on M key | UX / Gameplay | P1-High | Large | -- |
+| BD-77 | Add challenge shrines that spawn scaled mini-boss zombies with guaranteed loot | Gameplay / Content | P1-High | Large | -- |
+| BD-78 | Improve tree models with rounded canopy (multi-box foliage) | Visual / Polish | P2-Medium | Small | -- |
 
 ---
 
@@ -1216,6 +1232,1040 @@ selectedChargeUpgrade: 0,  // cursor index in choice menu
 - [ ] Charged shrines cannot be charged again (one-time use)
 
 **Estimated Scope:** Large (200+ lines — constants, shrine mesh, charge logic, HUD progress bar, upgrade choice menu, state tracking)
+**Dependencies:** None
+
+---
+
+### BD-63: Fix arms disappearing at high levels — full-body proportional scaling
+**Category:** Bug Fix / Visual
+**Priority:** P0-Critical
+**File(s):** `js/3d/player-model.js` (`updateMuscleGrowth` ~line 464, `buildPlayerModel` ~lines 60-334)
+**Description:**
+BD-57 introduced 3-tier scaling (muscles/limbs/tail), but playtesting at level 7+ shows **arms still become invisible** and the model looks "fat not strong." Per our 7-year-old creative director: the model must look **"jacked"**, not bloated.
+
+**Root Cause Analysis:**
+The `buildPlayerModel()` function returns:
+```javascript
+{ group, legs, arms, tail, muscles, wingGroup, wingMeshes }
+```
+Where `muscles = { chest, bicepL, bicepR, shoulderL, shoulderR, thighL, thighR }` and `arms = [leftArm, rightArm]`.
+
+The problem is that **arms are groups containing multiple sub-meshes** (bicep box, forearm box, hand/paw box), but `updateMuscleGrowth()` scales the arm group AND separately scales the bicep muscle mesh. When `muscles.bicepL.scale.set(muscleGrowth, ...)` runs AFTER `arm.scale.set(limbGrowth, ...)`, the bicep — which is a child of the arm group — gets **double-scaled** (group scale * mesh scale). Meanwhile, parts NOT tracked in any array (forearms, hands/paws, head, ears, snout, spots, mane) **never scale at all**, disappearing into the growing torso.
+
+**What's Missing from Scaling:**
+- **Head** (including ears, snout, muzzle, eye sockets) — never scaled
+- **Forearms / lower arms** — only biceps scale, forearms stay original size
+- **Hands / paws** — never scaled, become invisible stubs
+- **Feet / lower legs** — only thighs scale via muscles, lower legs stay original
+- **Animal-specific features** — spots (leopard), mane (lion), crest (gator) — never scaled
+- **Neck** — never scaled
+
+**Proposed Fix:**
+1. **Track ALL body parts** in `buildPlayerModel()` — extend the return object:
+   ```javascript
+   return {
+     group, legs, arms, tail, muscles,
+     head,           // head group (head box + ears + snout + eyes)
+     forearms,       // [leftForearm, rightForearm]
+     hands,          // [leftHand, rightHand]
+     lowerLegs,      // [leftShin, rightShin]
+     feet,           // [leftFoot, rightFoot]
+     features,       // { spots, mane, crest, etc. } — animal-specific
+   };
+   ```
+
+2. **Rewrite `updateMuscleGrowth()` with 5 tiers:**
+   ```javascript
+   export function updateMuscleGrowth(model, level) {
+     const t = level - 1;
+     // Tier 1: Core muscles — widest growth, non-uniform (wider > taller)
+     const mS = Math.min(1.8, 1 + t * 0.05);
+     for (const k in model.muscles) {
+       if (model.muscles[k]) model.muscles[k].scale.set(mS, mS * 0.7, mS);
+     }
+     // Tier 2: Limbs (full arm/leg groups) — proportional, moderate
+     const lS = Math.min(1.5, 1 + t * 0.035);
+     for (const arr of [model.arms, model.legs]) {
+       if (arr) for (const part of arr) {
+         if (part) part.scale.set(lS, lS, lS);
+       }
+     }
+     // DO NOT separately scale biceps/thighs — they're children of arm/leg groups
+     // Tier 3: Extremities (hands, feet, forearms, lower legs) — subtle
+     const eS = Math.min(1.4, 1 + t * 0.025);
+     for (const arr of [model.forearms, model.hands, model.lowerLegs, model.feet]) {
+       if (arr) for (const part of arr) {
+         if (part) part.scale.set(eS, eS, eS);
+       }
+     }
+     // Tier 4: Head — minimal growth to maintain proportions
+     const hS = Math.min(1.25, 1 + t * 0.015);
+     if (model.head) model.head.scale.set(hS, hS, hS);
+     // Tier 5: Cosmetic (tail, features) — very subtle
+     const fS = Math.min(1.2, 1 + t * 0.01);
+     if (model.tail) model.tail.scale.set(fS, fS, fS);
+     if (model.features) {
+       for (const k in model.features) {
+         if (model.features[k]) model.features[k].scale.set(fS, fS, fS);
+       }
+     }
+   }
+   ```
+
+3. **Remove double-scaling** — don't scale muscle parts individually if they're children of arm/leg groups. The group scaling handles them.
+
+4. **Test at levels 1, 5, 10, 15, 20** — the model should look progressively more jacked without losing recognizable features.
+
+**Acceptance Criteria:**
+- [ ] At level 10+, arms and legs are visibly larger — not invisible stubs
+- [ ] Hands/paws remain visible at all levels
+- [ ] Head, ears, and facial features remain proportional and recognizable
+- [ ] The model reads as "jacked" / muscular, not fat or blobby
+- [ ] All 4 animal types scale correctly (leopard, redPanda, lion, gator)
+- [ ] Animal-specific features (spots, mane, crest) scale subtly with the body
+- [ ] Walk/attack animations still look correct at high muscle scale
+- [ ] No body parts clip through each other at max growth
+
+**Estimated Scope:** Medium (~100-150 lines — refactor buildPlayerModel return + rewrite updateMuscleGrowth)
+**Dependencies:** BD-57 (current broken fix to improve upon)
+
+---
+
+### BD-64: Increase charge shrine count to 20-25 for denser exploration
+**Category:** Gameplay / Balance
+**Priority:** P1-High
+**File(s):** `js/3d/constants.js` (`CHARGE_SHRINE_COUNT` line 359)
+**Description:**
+Playtesting revealed there aren't enough "NOT HARD ENOUGH" totems (charge shrines) on the map. Currently `CHARGE_SHRINE_COUNT = 12`, which spreads them too thin across the 256×256 arena. Players don't encounter shrines frequently enough to make charging a core loop.
+
+**Proposed Change:**
+```javascript
+export const CHARGE_SHRINE_COUNT = 22;  // was 12
+```
+
+With 22 shrines across 65,536 sq units, average density is ~1 per 2,979 sq units (~55 unit spacing). This means a player exploring in any direction should find a shrine within ~25-30 units of travel — frequent enough to be a regular decision point.
+
+**Acceptance Criteria:**
+- [ ] 20-25 charge shrines visible across the map at game start
+- [ ] Player encounters a shrine within the first 30 seconds of exploration
+- [ ] Shrines feel like a constant choice ("do I stop to charge this one?") not a rare discovery
+- [ ] Minimum spacing between shrines still prevents clustering (existing 20-unit minimum)
+- [ ] Rarity distribution still holds (mostly common, some uncommon, few rare, very rare legendary)
+
+**Estimated Scope:** Small (<10 lines — constant change)
+**Dependencies:** BD-62 (charge shrine system must exist)
+
+---
+
+### BD-65: Increase base zombie spawn rate by 15%
+**Category:** Gameplay / Balance
+**Priority:** P1-High
+**File(s):** `js/game3d.js` (`spawnAmbient` ~line 1747)
+**Description:**
+After BD-53 and BD-59 tuned ambient spawns to `Math.min(8, 3 + Math.floor(elapsedMin / 2))`, the base rate still feels too low. A 15% increase to the spawn count formula provides more constant pressure.
+
+**Current formula:**
+```javascript
+const count = Math.min(8, 3 + Math.floor(elapsedMin / 2));
+// Min 0: 3, Min 2: 4, Min 4: 5, Min 6: 6, Min 8: 7, Min 10+: 8
+```
+
+**Proposed formula (+15%, rounded to clean numbers):**
+```javascript
+const count = Math.min(9, 4 + Math.floor(elapsedMin / 2));
+// Min 0: 4, Min 2: 5, Min 4: 6, Min 6: 7, Min 8: 8, Min 10+: 9
+```
+
+This raises the floor from 3→4 zombies per spawn tick and the cap from 8→9. With a 2s spawn timer, that's 2/sec at game start (vs 1.5) and 4.5/sec at cap (vs 4).
+
+**Acceptance Criteria:**
+- [ ] Noticeable increase in zombie density from game start
+- [ ] 3-4 zombies visible within 5 seconds of spawning
+- [ ] By minute 5, constant stream of enemies without any "empty" moments
+- [ ] Game still launches without lag at higher spawn rates
+
+**Estimated Scope:** Small (<10 lines — formula tweak)
+**Dependencies:** BD-59 (current values to modify)
+
+---
+
+### BD-66: Halve starting HP for all animals (reduce tankiness)
+**Category:** Gameplay / Balance
+**Priority:** P1-High
+**File(s):** `js/state.js` (animal definitions ~lines 153-156), `js/game3d.js` (HP init ~line 257)
+**Description:**
+Playtesting shows the player is too tanky — surviving for extended periods without feeling threatened by zombie damage. The current animal base HP values are:
+
+| Animal | Current HP | Proposed HP |
+|--------|-----------|-------------|
+| Leopard | 100 | 50 |
+| Red Panda | 80 | 40 |
+| Lion | 120 | 60 |
+| Gator | 150 | 75 |
+
+**Alternative approach (if halving HP is inelegant):**
+Instead of halving HP, double the zombie base damage multiplier from `zombieDmgMult: 2` to `zombieDmgMult: 4` in `game3d.js` line 274. This achieves the same effective tankiness reduction without touching base HP values that might be referenced elsewhere (item healing, charge shrine HP upgrades, max HP scaling).
+
+**Recommended approach:** Halve the HP in `state.js`. It's the cleaner change — HP values are only used at game init and the numbers are more intuitive for future balancing. All HP-related upgrades (charge shrine +HP, items, regen) remain proportionally meaningful.
+
+```javascript
+// state.js animal definitions:
+{ id: 'leopard', name: 'LEOPARD', hp: 50, ... },   // was 100
+{ id: 'redPanda', name: 'RED PANDA', hp: 40, ... }, // was 80
+{ id: 'lion', name: 'LION', hp: 60, ... },           // was 120
+{ id: 'gator', name: 'GATOR', hp: 75, ... },         // was 150
+```
+
+**Acceptance Criteria:**
+- [ ] All animals start with half their previous HP
+- [ ] Player feels genuinely threatened by groups of 3+ zombies
+- [ ] Death occurs within 2-3 minutes for new/unskilled players (not 8-10 minutes)
+- [ ] HP upgrades from shrines and items feel impactful (adding 5-12 HP to a 50HP pool is meaningful)
+- [ ] HP bar in HUD still renders correctly at lower values
+- [ ] Regen and healing items are proportionally valuable
+
+**Estimated Scope:** Small (<10 lines — value changes in state.js)
+**Dependencies:** None
+
+---
+
+### BD-67: Progressive high-tier zombie spawning by wave (primary difficulty driver)
+**Category:** Gameplay / Balance
+**Priority:** P1-High
+**File(s):** `js/game3d.js` (`spawnAmbient` ~line 1747, `spawnWaveEvent` ~line 1769)
+**Description:**
+Currently ambient spawns are **always tier 1** and wave spawns use `Math.random() < 0.1 * wave ? min(wave, 3) : 1` for higher tiers. This means the only source of higher-tier zombies is wave events + merging. The game lacks a predictable difficulty curve where **the composition of the zombie population shifts from small to large over time**.
+
+**Design Intent:**
+High-tier zombie spawning should be a **primary driver of difficulty and game feel**. As the game progresses:
+- Wave 0: 100% tier 1 (pure fodder)
+- Wave 1: 97% tier 1, 3% tier 2
+- Wave 2: 94% tier 1, 5% tier 2, 1% tier 3
+- Wave 3: 88% tier 1, 8% tier 2, 3% tier 3, 1% tier 4
+- Wave 4: 82% tier 1, 10% tier 2, 5% tier 3, 2% tier 4, 1% tier 5
+- Wave 5+: Continues scaling — small zombies never fully disappear but their percentage falls predictably
+
+**This applies to BOTH ambient AND wave spawns.** Currently ambient is always tier 1, which means the "feel" of the game doesn't change between waves — the constant stream of tier 1 fodder dominates the experience.
+
+**Proposed Implementation:**
+
+```javascript
+// Tier selection function used by both ambient and wave spawns:
+function rollZombieTier() {
+  const w = st.wave;
+  if (w === 0) return 1;
+  // Each wave adds probability for higher tiers
+  const roll = Math.random() * 100;
+  // Tier 5+: 0% at wave 1, +1% per wave from wave 4
+  if (w >= 4 && roll < (w - 3) * 1) return Math.min(w, 5);
+  // Tier 4: 0% at wave 1, +1% per wave from wave 3
+  if (w >= 3 && roll < (w - 2) * 1.5) return 4;
+  // Tier 3: 0% at wave 1, +1.5% per wave from wave 2
+  if (w >= 2 && roll < (w - 1) * 2) return 3;
+  // Tier 2: 3% at wave 1, +3% per wave
+  if (roll < w * 3) return 2;
+  // Default: tier 1
+  return 1;
+}
+```
+
+**Apply to ambient spawns** (currently hardcoded `createEnemy(sx, sz, baseHp, 1)`):
+```javascript
+const tier = rollZombieTier();
+st.enemies.push(createEnemy(sx, sz, baseHp * tier, tier));
+```
+
+**Apply to wave spawns** (replace existing tier logic):
+```javascript
+const tier = rollZombieTier();
+st.enemies.push(createEnemy(sx, sz, waveHp * tier, tier));
+```
+
+**Scaling HP with tier:** Higher-tier zombies should have proportionally more HP. Using `baseHp * tier` gives tier 3 zombies 3x the HP of tier 1, making them genuinely threatening.
+
+**Acceptance Criteria:**
+- [ ] Wave 0 spawns are 100% tier 1 — clean start
+- [ ] By wave 2, occasional tier 2 "Lurchers" appear in ambient spawns (visible larger zombies)
+- [ ] By wave 4, tier 3 "Bruisers" appear regularly, tier 4 "Hulks" occasionally
+- [ ] At wave 5+, the zombie population visually shifts — a mix of sizes on screen at once
+- [ ] Small tier 1 zombies NEVER fully disappear — they remain the majority even at wave 8+
+- [ ] The difficulty curve feels predictable: "each wave, things get a little scarier"
+- [ ] Higher-tier zombies have proportionally more HP (not just visual size)
+- [ ] Merge system still functions — pre-spawned tier 2s can still merge into tier 3s
+
+**Estimated Scope:** Medium (~50-80 lines — new tier selection function, integration into both spawn paths)
+**Dependencies:** None
+
+---
+
+### BD-68: Audio spontaneously stops at ~6min mark and never recovers
+**Category:** Bug Fix
+**Priority:** P0-Critical
+**File(s):** `js/3d/audio.js` (`playSound` ~line 221, `audioCache`, `activeSounds`)
+**Description:**
+During playtesting, around the 6-minute mark (approximately wave 4-5), all game audio spontaneously stopped and never recovered for the remainder of the session. No error was thrown — the game continued silently.
+
+**Likely Root Causes (investigate all):**
+
+1. **`activeSounds` array pollution:** The `activeSounds` array tracks currently-playing sounds and evicts the oldest when `>= MAX_CONCURRENT` (8). However, ended sounds are **never removed** from the array — they're only evicted when the array is full. Over 6 minutes with dozens of sound events per second, the array grows unbounded. Each eviction calls `.pause()` on an `HTMLAudioElement` that may already be in an error state, potentially causing a cascade of silent failures.
+
+2. **HTMLAudioElement reuse corruption:** The `audioCache` stores one `HTMLAudioElement` per sound file. `playSound()` resets `currentTime = 0` and calls `.play()` on the same element. If a previous `.play()` promise hasn't resolved (e.g., browser throttled it), calling `.play()` again can put the element into a broken state where subsequent plays silently fail. The `.catch(() => {})` swallows the error with no recovery.
+
+3. **Browser AudioContext suspension:** Many browsers suspend the AudioContext after a period of heavy audio use or when the page loses focus momentarily. `HTMLAudioElement.play()` returns a rejected promise (caught silently), and the AudioContext never resumes.
+
+4. **MAX_CONCURRENT starvation:** With 8 max concurrent sounds and 4 weapons firing every 1-2 seconds + ambient sounds + XP pickups, the pool is constantly full. The oldest-eviction strategy pauses sounds that might still be playing, and the rapid churn could exhaust browser audio resources.
+
+**Proposed Fix:**
+
+1. **Clean up finished sounds** — remove ended sounds from `activeSounds`:
+   ```javascript
+   // At the start of playSound():
+   activeSounds = activeSounds.filter(a => !a.paused && !a.ended);
+   ```
+
+2. **Clone audio elements** instead of reusing the cached original:
+   ```javascript
+   const clone = audio.cloneNode();
+   clone.volume = masterVolume;
+   clone.play().catch(() => {});
+   clone.addEventListener('ended', () => {
+     const idx = activeSounds.indexOf(clone);
+     if (idx >= 0) activeSounds.splice(idx, 1);
+   });
+   activeSounds.push(clone);
+   ```
+
+3. **Add per-event cooldown** to prevent rapid-fire stutter (same sound spammed 10x/sec):
+   ```javascript
+   const lastPlayed = {};
+   // In playSound():
+   const now = performance.now();
+   if (lastPlayed[eventId] && now - lastPlayed[eventId] < 100) return; // 100ms min interval
+   lastPlayed[eventId] = now;
+   ```
+
+4. **Add AudioContext recovery** — periodically check if audio is working and attempt to resume:
+   ```javascript
+   // Every 5 seconds in game loop:
+   if (typeof AudioContext !== 'undefined') {
+     const ctx = new AudioContext();
+     if (ctx.state === 'suspended') ctx.resume();
+   }
+   ```
+
+**Acceptance Criteria:**
+- [ ] Audio continues playing beyond the 6-minute mark through wave 5+
+- [ ] No silent failures — if audio breaks, it recovers automatically
+- [ ] `activeSounds` array is cleaned up (doesn't grow unbounded)
+- [ ] Rapid-fire events (weapon fire, XP pickup) don't starve other sounds
+- [ ] Audio works after browser tab loses and regains focus
+- [ ] Console shows no uncaught audio errors
+
+**Estimated Scope:** Medium (~60-100 lines — activeSounds cleanup, clone strategy, cooldown, recovery)
+**Dependencies:** None
+
+---
+
+### BD-69: Add collision for in-game objects (trees, rocks, shrines, decorations)
+**Category:** Gameplay / Physics
+**Priority:** P1-High
+**File(s):** `js/game3d.js` (player movement ~line 3100-3130, enemy AI movement), `js/3d/terrain.js` (decoration generation ~lines 433+)
+**Description:**
+Players can walk through the sides of all in-game objects — trees, rocks, fallen logs, mushroom clusters, stumps, shrines, and charge shrines. Only the exterior boundary walls (hard coordinate clamp at ±126) block movement. The user notes: "whatever we are doing to prevent models escaping the boundaries we should think about applying to in-game objects."
+
+**Current boundary system:**
+```javascript
+// Hard clamp — no physics, just coordinate limits
+st.playerX = Math.max(-MAP_HALF + 2, Math.min(MAP_HALF - 2, st.playerX));
+st.playerZ = Math.max(-MAP_HALF + 2, Math.min(MAP_HALF - 2, st.playerZ));
+```
+
+**Proposed approach — radius-based push-out (matching boundary style):**
+
+1. **Track collidable positions** — during chunk generation, store decoration positions + radii:
+   ```javascript
+   // Per-chunk collision data:
+   const collisionsByChunk = {};
+   // During decoration generation:
+   collisionsByChunk[key].push({ x: wx, z: wz, radius: r });
+   // Radii: tree=1.0, rock=0.8, stump=0.5, fallenLog=1.5, shrines=1.5
+   ```
+
+2. **Player push-out** — after movement update, check nearby colliders and push player out of overlap:
+   ```javascript
+   const PLAYER_RADIUS = 0.5;
+   for (const col of nearbyColliders) {
+     const dx = st.playerX - col.x;
+     const dz = st.playerZ - col.z;
+     const dist = Math.sqrt(dx * dx + dz * dz);
+     const minDist = col.radius + PLAYER_RADIUS;
+     if (dist < minDist && dist > 0.001) {
+       const push = minDist - dist;
+       st.playerX += (dx / dist) * push;
+       st.playerZ += (dz / dist) * push;
+     }
+   }
+   ```
+
+3. **Enemy push-out** — same logic applied to zombie movement. Zombies should path around obstacles.
+
+4. **Performance** — only check colliders in player's chunk + 8 adjacent chunks (9 chunks max). With ~5-10 decorations per chunk, that's 45-90 collision checks per frame — trivial.
+
+5. **Small decorations passthrough** — mushroom clusters (radius 0.3) can be walked over. Only objects with radius >= 0.5 block movement.
+
+**Acceptance Criteria:**
+- [ ] Player cannot walk through trees, rocks, fallen logs, or stumps
+- [ ] Player cannot walk through shrines (regular + charge shrines)
+- [ ] Zombies navigate around obstacles (push-out, not pathfinding)
+- [ ] Small decorations (mushroom clusters) remain passthrough
+- [ ] No characters get permanently stuck on objects
+- [ ] Collision feels responsive — no jittering or rubber-banding
+- [ ] Performance: no frame rate impact with 100+ loaded decorations
+
+**Estimated Scope:** Medium (~100-150 lines — collision data tracking, push-out in player + enemy update loops)
+**Dependencies:** Supersedes BD-50 (same problem, more comprehensive)
+
+---
+
+### BD-70: Equipped items must visually display on character model (CRITICAL)
+**Category:** Visual / Gameplay
+**Priority:** P0-Critical
+**File(s):** `js/3d/player-model.js` (new `updateItemVisuals()` function, item visual registry), `js/game3d.js` (call site on item equip)
+**Description:**
+**THIS IS A CRITICAL FAILING.** Equipped items such as armor, fur, magnet rings, and other gear are completely invisible on the character model. When a player collects Chainmail, Cowboy Boots, Aviator Glasses, and a Crown, their animal looks exactly the same as a naked level 1 character. There is zero visual feedback for gear collection.
+
+**Adornment of the animals is a key driver of fun and "cute" in this game.** Kids need to SEE their animal wearing cool stuff. This is the #1 motivator for item hunting and exploration. Without visible equipment, the entire item system feels abstract and invisible.
+
+This bead supersedes BD-56 (same feature, escalated from P2 to P0-Critical based on playtest feedback).
+
+**Implementation approach:**
+See BD-56 for the full design spec including:
+- Attachment point system (head, face, torso, hands, feet, waist, neck)
+- Per-item voxel box specifications
+- Animal-specific offset table
+- Phase 1 must-haves: armor, boots, glasses, crown, gloves, bandana
+- Stackable item visual scaling
+
+**Key additions beyond BD-56:**
+- Items should be immediately visible the moment they're picked up — no delay
+- Item visuals must work with muscle growth scaling (items scale with the body)
+- Items should have subtle glow or color that matches their rarity tier border
+- When an item slot is replaced (leather → chainmail), the old visual disappears instantly
+
+**Phase 1 — Ship-blocking (must implement):**
+| Item | Slot | Visual |
+|------|------|--------|
+| Leather Armor | Torso | Brown chest plate boxes |
+| Chainmail | Torso | Gray plate boxes with shoulder pads |
+| Thick Fur | Torso | Shaggy overlay (scales with stacks) |
+| Aviator Glasses | Face | Two dark lens boxes + bridge |
+| Crown of Claws | Head | Golden spike ring on head |
+| Cowboy Boots | Feet | Tall brown boot boxes |
+| Soccer Cleats | Feet | Green-tinted feet with spike nubs |
+| Turbo Sneakers | Feet | Cyan shoes with wing boxes |
+| Crit Gloves | Hands | Red oversized hand boxes |
+| Bandana | Head | Red flat box around forehead |
+| Rubber Ducky | Belt | Tiny yellow box at hip |
+| Magnet Ring | Hand | Silver ring box on one hand |
+
+**Phase 2 — Post-ship enhancement:**
+All remaining items (Health Pendant, Lucky Charm, Thorned Vest, etc.)
+
+**Acceptance Criteria:**
+- [ ] All Phase 1 items are visibly displayed on the character model when equipped
+- [ ] Items appear instantly on pickup — no animation delay
+- [ ] Items persist through walk/attack animations (children of model group)
+- [ ] Items scale proportionally with muscle growth (attached to scaling groups)
+- [ ] Replacing an item removes the old visual immediately
+- [ ] Items work for all 4 animal types with appropriate offsets
+- [ ] Stackable items show visual progression (e.g., thicker fur per stack)
+- [ ] Item visuals have subtle rarity glow (white/green/blue/gold outline or tint)
+- [ ] Performance: <5 boxes per item, no frame rate impact
+
+**Estimated Scope:** Large (200+ lines — visual registry, attachment system, per-animal offsets, 12 items phase 1)
+**Dependencies:** Supersedes BD-56
+
+---
+
+### BD-71: New weapon — Exploding Turd Mines (drop behind, AoE on proximity)
+**Category:** Gameplay / Content
+**Priority:** P1-High
+**File(s):** `js/3d/constants.js` (add to `WEAPON_TYPES`), `js/game3d.js` (mine placement, detonation, AoE logic)
+**Description:**
+Add a new weapon that drops turd-shaped mines behind the player as they move. Mines persist on the ground and explode when a zombie walks over them, dealing AoE damage to all enemies in the blast radius. This is the first "mine" class weapon (see BD-72 for weapon class system).
+
+**Design:**
+- **Visual:** Small brown lumpy box (turd shape — 2-3 stacked brown boxes of decreasing size). Sits on the ground where the player was standing.
+- **Placement:** Auto-drops a mine every X seconds (based on attack speed). Mine appears at the player's current position at time of drop.
+- **Arming:** Mines arm after 0.5 seconds (brief delay so player can move away). Visual indicator: unarmed mines are darker, armed mines pulse slightly.
+- **Detonation:** When any zombie enters the mine's trigger radius (1.5 units), the mine explodes after a 0.1s delay.
+- **Explosion:** AoE damage in a 3-unit radius. Brown/green particle burst. Damages all enemies in range. Mine is destroyed.
+- **Max mines:** Cap at 15 active mines. Oldest mine despawns when cap is reached.
+- **Mine lifetime:** Mines persist for 30 seconds, then fizzle out (small poof animation).
+
+**Weapon Stats:**
+```javascript
+turdMine: {
+  id: 'turdMine', name: 'TURD MINE', type: 'mine', color: '#8B4513',
+  desc: 'Drops exploding surprises', baseDamage: 25, baseCooldown: 2.0, baseRange: 3, maxLevel: 5,
+  levelDescs: ['+30% Damage', '+1 Mine per Drop', '+40% Blast Radius', '-25% Cooldown', 'Mines Leave Poison Cloud'],
+},
+```
+
+**Level-up progression:**
+- Level 2: +30% base damage (32.5)
+- Level 3: Drops 2 mines per placement (slight spread pattern)
+- Level 4: Blast radius 3→4.2 units
+- Level 5: Cooldown 2.0→1.5s
+- Level 6: Detonated mines leave a 2-second poison cloud (DoT)
+
+**Acceptance Criteria:**
+- [ ] Turd mines appear in the weapon pool (can be offered at level-up)
+- [ ] Mines drop behind the player automatically at cooldown intervals
+- [ ] Mines are visible on the ground (brown lumps, armed mines pulse)
+- [ ] Zombies stepping on mines trigger AoE explosion
+- [ ] Explosion damages all enemies in blast radius
+- [ ] Max 15 mines active, oldest replaced when cap reached
+- [ ] Mines despawn after 30 seconds if not triggered
+- [ ] Level-up upgrades work (damage, multi-drop, radius, cooldown, poison)
+- [ ] Sound effect on detonation (if available) or visual-only explosion
+- [ ] Kid-appropriate humor — turds are funny, not gross
+
+**Estimated Scope:** Medium (~120-180 lines — weapon definition, mine placement loop, trigger detection, AoE explosion, visual/lifetime management)
+**Dependencies:** BD-72 (weapon class system — mine class must exist)
+
+---
+
+### BD-72: Reclassify weapons into 3 classes: AoE melee, projectiles, mines
+**Category:** Game Design / Architecture
+**Priority:** P1-High
+**File(s):** `js/3d/constants.js` (`WEAPON_TYPES`), `js/game3d.js` (weapon firing logic, upgrade menu descriptions)
+**Description:**
+The current 10 weapon types use ad-hoc `type` strings (`melee`, `projectile`, `projectile_aoe`, `chain`, `boomerang`, `summon`, `orbit`, `trail`, `aoe`) with no consistent scaling framework. Each weapon scales differently based on hardcoded level-up logic. This makes it impossible to balance weapons or communicate their scaling to players.
+
+**Proposed 3-class system:**
+
+### Class 1: AoE Melee
+Hit enemies in a predictable arc, cone, or line. Damage is dealt in melee range.
+
+**Scales with:**
+- Damage (primary)
+- Attack speed (primary)
+- Size / arc width (primary) — larger arc = more enemies hit
+- Projectile count (adds additional slash effects for visual feedback)
+
+**Does NOT scale with:** Range, bounces
+
+**Current weapons → AoE Melee:**
+- `clawSwipe` (melee arc)
+- `poisonCloud` (AoE at location → reclassify as melee AoE ground effect)
+- `stinkLine` (trail behind player → reclassify as melee zone)
+
+### Class 2: Projectiles
+Fire objects that travel outward and hit enemies at range.
+
+**Scales with:**
+- Damage (primary)
+- Attack speed (primary)
+- Projectile count (primary) — more bullets per volley
+- Range (secondary) — projectiles travel further
+- Bounces (secondary) — projectiles ricochet between targets
+
+**Does NOT scale with:** Size / AoE width
+
+**Current weapons → Projectiles:**
+- `boneToss` (straight projectile)
+- `lightningBolt` (chain → reclassify as bouncing projectile)
+- `fireball` (exploding projectile — explosion is a bonus, not the class)
+- `boomerang` (returning projectile)
+- `mudBomb` (arcing projectile)
+- `beehiveLauncher` (summon → reclassify as homing projectile swarm)
+- `snowballTurret` (orbiting projectile source)
+
+### Class 3: Mines
+Leave artifacts behind that later explode when enemies trigger them. AoE damage.
+
+**Scales with:**
+- Damage (primary)
+- Attack speed (primary) — drop rate
+- Projectile count (primary) — mines per drop
+- AoE radius (secondary) — blast size
+
+**Does NOT scale with:** Range, bounces
+
+**Current weapons → Mines:**
+- `turdMine` (new, BD-71)
+- Future mine weapons: bear traps, caltrops, banana peels, etc.
+
+**Implementation:**
+
+1. **Add `weaponClass` field to all WEAPON_TYPES:**
+   ```javascript
+   clawSwipe: { ..., weaponClass: 'melee' },
+   boneToss: { ..., weaponClass: 'projectile' },
+   turdMine: { ..., weaponClass: 'mine' },
+   ```
+
+2. **Add class-level scaling rules:**
+   ```javascript
+   export const WEAPON_CLASS_SCALING = {
+     melee: { damage: true, attackSpeed: true, size: true, projectileCount: true, range: false, bounces: false },
+     projectile: { damage: true, attackSpeed: true, projectileCount: true, range: true, bounces: true, size: false },
+     mine: { damage: true, attackSpeed: true, projectileCount: true, aoeRadius: true, range: false, bounces: false },
+   };
+   ```
+
+3. **Update HUD to show weapon class** — players should understand what stats affect their weapons.
+
+4. **Update upgrade menu descriptions** — when a weapon levels up, show which scaling stats improve.
+
+**Acceptance Criteria:**
+- [ ] All weapons have a `weaponClass` field ('melee', 'projectile', or 'mine')
+- [ ] Class-appropriate scaling rules are defined and documented
+- [ ] Weapon upgrade descriptions reference their class scaling
+- [ ] Existing weapons retain their current behavior (reclassification, not rewrite)
+- [ ] Mine class infrastructure exists for BD-71 turd mines
+- [ ] HUD shows weapon class icon or label (optional, nice-to-have)
+- [ ] Future weapons can be added to any class with consistent scaling
+
+**Estimated Scope:** Large (~150-200 lines — constants refactor, scaling rules, upgrade menu integration)
+**Dependencies:** None
+
+---
+
+### BD-73: Flatten terrain completely — remove curvature, fix seam gaps
+**Category:** Visual / Bug Fix
+**Priority:** P0-Critical
+**File(s):** `js/3d/terrain.js` (`terrainHeight` line 70, `generateChunk` line 433)
+**Description:**
+The terrain has two critical visual problems:
+
+1. **Visible curvature:** The `terrainHeight()` function uses 3-octave noise to displace terrain vertices, creating hills with up to ~3.3 units of height variation. This makes the ground look curved/hilly. The user wants **totally flat terrain** — no hills, no undulation.
+
+2. **Seam gaps:** There are visible gaps between chunk boundaries that look like water or sky showing through. These occur because:
+   - Each chunk is a `PlaneGeometry(16, 16, 8, 8)` positioned at `(cx*16, 0, cz*16)`, but the plane's center is at the position, meaning edges are at `±8` from center — which should align with neighbors.
+   - However, the plane is created in XY space then rotated to XZ via `mesh.rotation.x = -Math.PI / 2`. The `position.set(ox, 0, oz)` uses `ox = cx * CHUNK_SIZE` which positions the chunk's center at the chunk corner, not the chunk center. This creates a half-chunk offset causing gaps.
+   - Additionally, per-chunk Lambert materials use different forest colors (green palette), creating visible color discontinuities at chunk boundaries.
+
+**Fix for curvature — flatten terrain:**
+```javascript
+export function terrainHeight(x, z) {
+  return 0;  // Completely flat
+}
+```
+
+This single change eliminates all height variation. All models already use `terrainHeight()` for Y positioning, so they'll all sit at Y=0 (plus their ground offsets). Decorations, gems, shrines — everything uses `terrainHeight()`.
+
+**Fix for seam gaps — correct chunk positioning:**
+The `PlaneGeometry` center is at `(0,0)`, extending `±CHUNK_SIZE/2` in each axis. When positioned at `(cx * CHUNK_SIZE, 0, cz * CHUNK_SIZE)`, the chunk covers `[cx*16 - 8, cx*16 + 8]`. But the next chunk at `(cx+1)*16` covers `[(cx+1)*16 - 8, (cx+1)*16 + 8]` = `[cx*16 + 8, cx*16 + 24]`. They should be seamless at `cx*16 + 8`.
+
+Verify this is correct, and if gaps still appear, offset the position by `CHUNK_SIZE/2`:
+```javascript
+mesh.position.set(ox + CHUNK_SIZE / 2, 0, oz + CHUNK_SIZE / 2);
+```
+
+**Fix for color discontinuity — uniform ground color:**
+Use a single consistent ground color instead of per-chunk random color from the forest palette:
+```javascript
+const mat = new THREE.MeshLambertMaterial({ color: 0x4a8c3f }); // Consistent forest green
+```
+
+**Acceptance Criteria:**
+- [ ] Terrain is perfectly flat — no hills, no undulation, no curvature visible
+- [ ] No visible gaps or seams between chunk boundaries
+- [ ] No water/sky visible through floor cracks
+- [ ] Ground color is uniform — no patchwork of different greens
+- [ ] All game objects (player, zombies, decorations, shrines) sit correctly on flat ground
+- [ ] Decorations still generate and display correctly on flat terrain
+- [ ] Map boundary walls still function on flat ground
+- [ ] The arena feels like a solid, continuous floor
+
+**Estimated Scope:** Medium (~30-60 lines — terrainHeight change, chunk position fix, uniform color)
+**Dependencies:** None
+
+---
+
+### BD-74: Enter key resets level during upgrade/selection menus instead of confirming
+**Category:** Bug Fix
+**Priority:** P0-Critical
+**File(s):** `js/game3d.js` (keydown handler ~lines 485-527, power attack charge ~line 3919, game-over gate ~line 4387)
+**Description:**
+During augment, weapon, or howl selection in the upgrade menu, pressing the **primary Enter key** on the keyboard resets the level instead of confirming the selection. Space bar and the numpad Enter key work as intended. The on-screen instructions tell the player to press Enter to confirm, making this a severe UX trap — players lose progress by following the game's own instructions.
+
+**Root Cause Analysis:**
+The keydown handler at line 515 checks for `e.code === 'Enter'` in the upgrade menu block and calls `choice.apply(st)` + closes the menu. However, **the power attack charge system** at line 3919 also checks `keys3d['Enter']` continuously in the game loop:
+```javascript
+const chargeKey = keys3d['Enter'] || keys3d['NumpadEnter'] || keys3d['KeyB'];
+```
+
+The likely bug flow:
+1. Player is in upgrade menu → presses Enter
+2. Keydown handler (line 518) processes the choice and sets `st.upgradeMenu = false; st.paused = false;`
+3. **In the same frame or next frame**, the game loop resumes and sees `keys3d['Enter'] === true`
+4. This triggers the power attack charge OR (more likely) the game-over/restart gate at line 485:
+   ```javascript
+   if (st.gameOver && !st.upgradeMenu && st.enterReleasedSinceGameOver) {
+   ```
+5. If `enterReleasedSinceGameOver` is true (from a prior game-over cycle), this could trigger a restart
+
+Alternatively, the Enter keydown event may be propagating to a different handler (e.g., the `game.js` title screen handler) that interprets it as a restart/navigation action.
+
+**Proposed Fix:**
+
+1. **Add a cooldown flag** that prevents Enter from triggering any other action for 200ms after an upgrade menu selection:
+   ```javascript
+   // In the upgrade menu Enter handler:
+   if (e.code === 'Enter' || e.code === 'Space') {
+     const choice = st.upgradeChoices[st.selectedUpgrade];
+     choice.apply(st);
+     st.upgradeMenu = false;
+     st.paused = false;
+     st._enterCooldown = 0.2; // 200ms grace period
+     e.preventDefault();
+     e.stopPropagation();
+     return; // Don't let this keydown propagate
+   }
+   ```
+
+2. **Guard all Enter-triggered actions** with the cooldown:
+   ```javascript
+   // In game loop, before checking Enter for power attack, game-over, etc.:
+   if (st._enterCooldown > 0) { st._enterCooldown -= dt; return; }
+   ```
+
+3. **Ensure `enterReleasedSinceGameOver` is reset** when entering an upgrade menu:
+   ```javascript
+   // When opening upgrade menu:
+   st.enterReleasedSinceGameOver = false;
+   ```
+
+4. **Add `stopPropagation()` and `preventDefault()`** to all menu-context Enter handlers to prevent the event from reaching other listeners.
+
+**Acceptance Criteria:**
+- [ ] Pressing Enter during upgrade menu confirms the selected choice (not resets)
+- [ ] Space bar continues to work as confirm
+- [ ] Numpad Enter continues to work as confirm
+- [ ] After confirming an upgrade, Enter does not immediately trigger power attack charge or restart
+- [ ] Game-over restart requires a fresh Enter press (not carried from upgrade confirm)
+- [ ] It is impossible to accidentally reset/restart the game from any selection menu
+
+**Estimated Scope:** Small (~20-30 lines — cooldown flag, event propagation fixes, guard conditions)
+**Dependencies:** None
+
+---
+
+### BD-75: Add item drops to zombie loot table (tier-scaled chance)
+**Category:** Gameplay / Balance
+**Priority:** P1-High
+**File(s):** `js/game3d.js` (`killEnemy` ~lines 1943-1994, loot drop roll ~line 1975)
+**Description:**
+Zombie death loot currently drops powerup crates (60%), health orbs (25%), or XP bursts (15%) — but **never items**. The `createItemPickup()` function exists but is never called from the `killEnemy()` loot table. This means the only sources of items are ambient spawns (every 45-60s) and wave events. Players aren't getting enough items.
+
+**Current loot table (inside `killEnemy`):**
+```javascript
+let dropChance = [0.03, 0.06, 0.10, 0.15, 0.15, 0.20, 0.20, 0.30, 0.30, 0.50][(e.tier || 1) - 1];
+// Lucky Charm / Lucky Penny modify dropChance
+if (Math.random() < dropChance) {
+  const roll = Math.random();
+  if (roll < 0.6) { /* powerup crate */ }
+  else if (roll < 0.85) { /* health orb */ }
+  else { /* XP burst */ }
+}
+```
+
+**Proposed change — add item drops to the loot table:**
+Replace the inner roll distribution to include items. Items should be rarer than powerups but still achievable, especially from higher-tier zombies:
+
+```javascript
+if (Math.random() < dropChance) {
+  const roll = Math.random();
+  const itemChance = 0.01 + (e.tier || 1) * 0.05; // 6% tier 1, 11% tier 2, 16% tier 3, 21% tier 4...
+  if (roll < itemChance) {
+    // Item drop — rarer, scales with tier
+    const pickup = createItemPickup(dropX, dropZ);
+    if (pickup) st.itemPickups.push(pickup);
+  } else if (roll < 0.55) {
+    // Powerup crate (remaining ~49-54%)
+    st.powerupCrates.push(createPowerupCrate(dropX, dropZ));
+  } else if (roll < 0.80) {
+    // Health orb (25%)
+    st.hp = Math.min(st.hp + st.maxHp * 0.15, st.maxHp);
+    st.floatingTexts3d.push({ text: '+HEALTH', color: '#44ff44', ... });
+  } else {
+    // XP burst (20%)
+    for (let g = 0; g < 3; g++) {
+      st.xpGems.push(createXpGem(...));
+    }
+  }
+}
+```
+
+**Net effect per tier:**
+| Tier | Base Drop% | Item% of drop | Effective Item% per kill |
+|------|-----------|---------------|-------------------------|
+| 1 | 3% | 6% | 0.18% |
+| 2 | 6% | 11% | 0.66% |
+| 3 | 10% | 16% | 1.6% |
+| 4 | 15% | 21% | 3.15% |
+| 5+ | 15-50% | 26%+ | 3.9-13% |
+
+This gives a steady trickle of items from regular play, with higher-tier zombies being noticeably more rewarding.
+
+**Acceptance Criteria:**
+- [ ] Zombies occasionally drop item pickups on death
+- [ ] Higher-tier zombies drop items more frequently
+- [ ] Item drops use the existing `createItemPickup()` with rarity weighting
+- [ ] Powerup crates, health orbs, and XP bursts still drop (slightly reduced % to make room)
+- [ ] With Lucky Charm + high-tier zombies, items feel like a meaningful reward
+- [ ] Floating text shows item name/rarity on pickup (existing behavior)
+
+**Estimated Scope:** Small (~15-20 lines — modify loot table distribution in killEnemy)
+**Dependencies:** None
+
+---
+
+### BD-76: Add HUD minimap with fog of war + full map on M key
+**Category:** UX / Gameplay
+**Priority:** P1-High
+**File(s):** `js/3d/hud.js` (new minimap rendering), `js/game3d.js` (fog-of-war state, M key handler, shrine/decoration positions)
+**Description:**
+Add a minimap in the bottom-right corner of the HUD showing the player's explored area, nearby enemies, shrines, and items. Pressing M opens a full-screen map overlay. Unexplored areas show fog of war.
+
+**Design:**
+
+**HUD Minimap (always visible):**
+- Position: bottom-right corner, 150×150px
+- Shows a top-down view centered on the player
+- View radius: ~50 world units (~3 chunks in each direction)
+- Player: bright green dot (center)
+- Enemies: red dots (scaled by tier)
+- Charge shrines (unused): cyan diamonds
+- Item pickups: yellow dots
+- Powerup crates: orange dots
+- Explored terrain: dark green
+- Unexplored: black (fog of war)
+- Map boundary: white border rectangle
+- Semi-transparent background: `rgba(0, 0, 0, 0.5)`
+
+**Full Map (M key toggle):**
+- Covers ~80% of the screen, centered
+- Shows the entire arena (256×256 world units)
+- Same icons as minimap, scaled down
+- Fog of war: areas the player hasn't been within 30 units of are blacked out
+- Pause game while map is open (like pause menu)
+- ESC or M to close
+
+**Fog of War Implementation:**
+- Track explored areas using a grid (4×4 unit cells → 64×64 grid for 256×256 arena)
+- `st.exploredCells = new Set()` — add cells as the player moves through them
+- Reveal radius: 30 units (player can see ~2 chunks around them)
+- Per frame: mark cells within reveal radius as explored
+- On minimap/full map: only draw elements in explored cells
+
+**State additions:**
+```javascript
+st.exploredCells = new Set();  // "cx,cz" keys for 4x4 grid cells
+st.fullMapOpen = false;
+```
+
+**Key handler:**
+```javascript
+if (e.code === 'KeyM' && !st.upgradeMenu && !st.gameOver && !st.chargeShrineMenu) {
+  st.fullMapOpen = !st.fullMapOpen;
+  st.paused = st.fullMapOpen;
+}
+```
+
+**Acceptance Criteria:**
+- [ ] 150×150px minimap visible in bottom-right corner during gameplay
+- [ ] Player is a green dot at minimap center
+- [ ] Enemies appear as red dots, scaled by tier
+- [ ] Unused charge shrines appear as cyan diamonds
+- [ ] Fog of war covers unexplored areas (black)
+- [ ] Explored areas persist (once revealed, stays visible)
+- [ ] M key opens full-screen map overlay showing entire arena
+- [ ] Full map pauses the game while open
+- [ ] ESC or M closes the full map
+- [ ] Map shows map boundary outline
+- [ ] Performance: minimap render is lightweight (<2ms per frame)
+
+**Estimated Scope:** Large (~200-300 lines — minimap renderer, fog state, M key handler, full map overlay)
+**Dependencies:** None
+
+---
+
+### BD-77: Add challenge shrines that spawn scaled mini-boss zombies with guaranteed loot
+**Category:** Gameplay / Content
+**Priority:** P1-High
+**File(s):** `js/3d/constants.js` (new `CHALLENGE_SHRINE` constants), `js/game3d.js` (shrine generation, boss spawn, boss death loot), `js/3d/terrain.js` (or `game3d.js` — mesh construction)
+**Description:**
+Add a new world structure: **Challenge Shrines** — large stone zombie statues that the player activates by pressing E. Activating a challenge shrine spawns a scaled mini-boss zombie. The boss difficulty scales with the current wave count (bigger / more minions at higher waves). Killing the boss **always drops loot (items)**.
+
+**Design:**
+
+**Visual — Stone Zombie Statue:**
+- A large (3-4 units tall) gray stone version of a zombie model, standing on a stone platform (2×2 base)
+- Darker gray color palette (0x666666 body, 0x555555 details) to look like carved stone
+- Slight green glowing rune on the chest/head indicating it's activatable
+- Idle animation: very slow rotation (~1 rev/30s), subtle green particle effect
+- After activation: statue crumbles (scale down + despawn), boss zombie appears
+
+**Activation:**
+- Player must be within 3 units of the shrine
+- Press E to activate (shown as floating "Press E" text when in range)
+- Cannot activate during upgrade menus, pause, charge shrine, or game over
+- Shrine is one-time use — crumbles after activation
+
+**Boss Zombie Scaling by Wave:**
+| Wave | Boss Tier | Boss HP | Minion Count | Minion Tier |
+|------|-----------|---------|-------------|-------------|
+| 0-1 | 3 | 5× base | 0 | -- |
+| 2-3 | 4 | 8× base | 2 | 2 |
+| 4-5 | 5 | 12× base | 4 | 3 |
+| 6-7 | 6 | 18× base | 6 | 3 |
+| 8+ | 7 | 25× base | 8 | 4 |
+
+- `base` = current `8 + floor(gameTime/60 * 2.5)` HP formula
+- Boss zombie is visually larger (1.5-2× scale of equivalent tier zombie)
+- Boss has a distinct color tint (red glow or darker shade) to distinguish from regular zombies
+- Minions spawn in a ring around the boss
+
+**Guaranteed Loot on Boss Kill:**
+When a boss zombie dies, it **always** drops:
+1. One item pickup (`createItemPickup`) — with boosted rarity (rare+ weighted)
+2. One powerup crate
+3. 5-10 bonus XP gems
+
+The item rarity is boosted for boss drops:
+```javascript
+// Boss item drop uses boosted rarity weights:
+// Normal: common 50%, uncommon 28%, rare 16%, legendary 6%
+// Boss:   common 20%, uncommon 35%, rare 30%, legendary 15%
+```
+
+**Generation:**
+- 6-10 challenge shrines placed at game start
+- Spread across the arena, minimum 30 units apart from each other and from charge shrines
+- Positioned on flat ground (not on platforms)
+
+**State tracking:**
+```javascript
+st.challengeShrines = [];       // Array of challenge shrine objects
+st.activeBosses = [];           // Currently alive boss zombies (track for guaranteed loot)
+```
+
+**Boss zombie state:**
+```javascript
+// Boss flag on enemy object:
+e.isBoss = true;
+e.bossLootDropped = false;  // Ensure loot drops exactly once
+```
+
+**HUD indicator:**
+- When near a challenge shrine, show "PRESS E — CHALLENGE" floating text
+- During boss fight, show boss HP bar at the top of the screen (large, red, with boss name)
+
+**Acceptance Criteria:**
+- [ ] 6-10 stone zombie statues visible across the map
+- [ ] Statues are large, visually distinct, and identifiable from a distance
+- [ ] "Press E" prompt appears when within 3 units
+- [ ] E key spawns boss zombie + minions, shrine crumbles
+- [ ] Boss difficulty scales with current wave (bigger boss, more minions at higher waves)
+- [ ] Boss zombie is visually larger and distinct from regular zombies
+- [ ] Killing boss ALWAYS drops: 1 item (boosted rarity), 1 powerup crate, 5-10 XP gems
+- [ ] Boss HP bar appears at top of HUD during fight
+- [ ] Challenge shrines appear on minimap (BD-76) as distinct icon
+- [ ] Shrines are one-time use
+- [ ] Player cannot accidentally activate (E key, not Enter)
+
+**Estimated Scope:** Large (~250-350 lines — shrine mesh, boss spawn, boss tracking, guaranteed loot, HUD boss bar, E key interaction)
+**Dependencies:** None
+
+---
+
+### BD-78: Improve tree models with rounded canopy (multi-box foliage)
+**Category:** Visual / Polish
+**Priority:** P2-Medium
+**File(s):** `js/3d/terrain.js` (`createTree` lines 147-174)
+**Description:**
+Current trees are two boxes — a thin brown trunk and a single large green cube canopy. They look like Minecraft placeholder blocks. The canopy should be built from multiple smaller cubes arranged to approximate a rounded or organic shape, giving trees more visual character while staying within the voxel aesthetic.
+
+**Current tree construction:**
+```javascript
+// Trunk: single box, 0.3×sizeVar wide, 2×sizeVar tall
+const trunk = new THREE.Mesh(
+  new THREE.BoxGeometry(0.3 * sizeVar, trunkH, 0.3 * sizeVar), ...);
+// Canopy: single box, 1.8×sizeVar wide, 1.5×sizeVar tall
+const canopy = new THREE.Mesh(
+  new THREE.BoxGeometry(canopyW, canopyH, canopyW), ...);
+```
+
+**Proposed multi-box canopy:**
+Replace the single canopy cube with 5-9 overlapping boxes of varying sizes that create a rounded silhouette:
+
+```javascript
+function createTree(dx, dz, h, scene) {
+  const sizeVar = 0.8 + noise2D(dx * 7.1, dz * 3.7) * 0.4;
+  const trunkH = 2 * sizeVar;
+  const canopyBase = h + trunkH;
+  const meshes = [];
+
+  // Trunk (unchanged)
+  const trunk = new THREE.Mesh(
+    new THREE.BoxGeometry(0.3 * sizeVar, trunkH, 0.3 * sizeVar),
+    new THREE.MeshLambertMaterial({ color: 0x664422 })
+  );
+  trunk.position.set(dx, h + trunkH / 2, dz);
+  trunk.castShadow = true;
+  scene.add(trunk);
+  meshes.push(trunk);
+
+  // Canopy: multi-box rounded shape
+  const canopyColors = [0x226622, 0x1a5a1a, 0x2a7a2a, 0x1e6e1e];
+  const cc = canopyColors[Math.floor(noise2D(dx * 2.3, dz * 5.1) * canopyColors.length)];
+  const s = sizeVar;
+
+  // Core large box (slightly smaller than before)
+  const addBox = (w, bh, d, ox, oy, oz) => {
+    const m = new THREE.Mesh(
+      new THREE.BoxGeometry(w, bh, d),
+      new THREE.MeshLambertMaterial({ color: cc })
+    );
+    m.position.set(dx + ox, canopyBase + oy, dz + oz);
+    m.castShadow = true;
+    scene.add(m);
+    meshes.push(m);
+  };
+
+  // Center block (largest)
+  addBox(1.4 * s, 1.2 * s, 1.4 * s, 0, 0.6 * s, 0);
+  // Top cap (smaller, higher)
+  addBox(0.9 * s, 0.6 * s, 0.9 * s, 0, 1.3 * s, 0);
+  // 4 side lobes (medium, offset outward)
+  addBox(0.7 * s, 0.8 * s, 1.0 * s, 0.5 * s, 0.5 * s, 0);
+  addBox(0.7 * s, 0.8 * s, 1.0 * s, -0.5 * s, 0.5 * s, 0);
+  addBox(1.0 * s, 0.8 * s, 0.7 * s, 0, 0.5 * s, 0.5 * s);
+  addBox(1.0 * s, 0.8 * s, 0.7 * s, 0, 0.5 * s, -0.5 * s);
+
+  return meshes;
+}
+```
+
+This creates a 7-mesh tree (1 trunk + 6 canopy boxes) that approximates a rounded canopy. The overlapping boxes create a natural, organic silhouette from any angle. With shadow casting, the trees will look substantially more characterful.
+
+**Performance note:** With 2-5 trees per chunk and ~50 loaded chunks, this goes from 100-250 meshes to 350-875 tree meshes. Each is a simple box with no texture — well within Three.js performance limits. If needed, canopy boxes could share a single merged geometry per tree.
+
+**Acceptance Criteria:**
+- [ ] Trees have a rounded, organic canopy silhouette (not a single cube)
+- [ ] Each tree still looks voxel/blocky (not smooth — multiple cubes, not spheres)
+- [ ] Canopy color variation still works (4 green shades)
+- [ ] Size variation still works (0.8-1.2x)
+- [ ] Trees cast shadows correctly with multiple canopy boxes
+- [ ] No performance regression with 50+ loaded chunks of trees
+- [ ] Trunk is unchanged (thin brown pillar)
+- [ ] Trees look good on flat terrain (post BD-73)
+
+**Estimated Scope:** Small (~40-60 lines — rewrite createTree canopy section)
 **Dependencies:** None
 
 ---

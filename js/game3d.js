@@ -1071,6 +1071,29 @@ export function launch3DGame(options) {
   // Track which chunks have had gems generated (to avoid re-generating on re-entry).
   const mapGemsByChunk = {};
 
+  // Shared geometry and material for all map gems (purple, slightly transparent).
+  const mapGemGeo = new THREE.BoxGeometry(0.25, 0.25, 0.25);
+  const mapGemMat = new THREE.MeshBasicMaterial({ color: 0xaa44ff, transparent: true, opacity: 0.85 });
+
+  /**
+   * Create a non-respawning XP gem pickup at the given world position.
+   * Map gems are purple, bob and spin, and grant variable XP when collected.
+   * Once collected, they are tracked by chunk key + index so they don't reappear.
+   *
+   * @param {number} x - World X position.
+   * @param {number} z - World Z position.
+   * @param {number} xpValue - XP amount granted on pickup.
+   * @returns {{mesh: THREE.Mesh, x: number, z: number, xpValue: number, alive: boolean}} Map gem object.
+   */
+  function createMapGem(x, z, xpValue) {
+    const h = terrainHeight(x, z);
+    const mesh = new THREE.Mesh(mapGemGeo, mapGemMat);
+    mesh.position.set(x, h + 0.6, z);
+    mesh.rotation.y = Math.random() * Math.PI * 2;
+    scene.add(mesh);
+    return { mesh, x, z, xpValue, alive: true };
+  }
+
   /**
    * Generate non-respawning XP gems for a chunk.
    * Uses random positioning per chunk coordinates.
@@ -1531,29 +1554,7 @@ export function launch3DGame(options) {
     return { mesh, bobPhase: Math.random() * Math.PI * 2 };
   }
 
-  // === MAP GEM (non-respawning world collectibles) ===
-  // Shared geometry and material for all map gems (purple, slightly transparent).
-  const mapGemGeo = new THREE.BoxGeometry(0.25, 0.25, 0.25);
-  const mapGemMat = new THREE.MeshBasicMaterial({ color: 0xaa44ff, transparent: true, opacity: 0.85 });
-
-  /**
-   * Create a non-respawning XP gem pickup at the given world position.
-   * Map gems are purple, bob and spin, and grant variable XP when collected.
-   * Once collected, they are tracked by chunk key + index so they don't reappear.
-   *
-   * @param {number} x - World X position.
-   * @param {number} z - World Z position.
-   * @param {number} xpValue - XP amount granted on pickup.
-   * @returns {{mesh: THREE.Mesh, x: number, z: number, xpValue: number, alive: boolean}} Map gem object.
-   */
-  function createMapGem(x, z, xpValue) {
-    const h = terrainHeight(x, z);
-    const mesh = new THREE.Mesh(mapGemGeo, mapGemMat);
-    mesh.position.set(x, h + 0.6, z);
-    mesh.rotation.y = Math.random() * Math.PI * 2;
-    scene.add(mesh);
-    return { mesh, x, z, xpValue, alive: true };
-  }
+  // (mapGemGeo, mapGemMat, createMapGem moved above generateMapGems)
 
   /**
    * Find the nearest platform to a world position within a maximum distance.
