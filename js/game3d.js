@@ -1342,38 +1342,72 @@ export function launch3DGame(options) {
   updateChunks(0, 0);
   updatePlatformChunks(0, 0);
 
+  // BD-88: Spread shrines/totems across a much wider area with minimum spacing.
+  // All placed positions are tracked to enforce MIN_SHRINE_SPACING between any two objects.
+  const SPAWN_HALF_RANGE = 400;  // shrines can appear up to 400 units from origin in each axis
+  const MIN_SHRINE_SPACING = 50; // minimum distance between any two shrines/totems/charge shrines
+  const MAX_PLACEMENT_ATTEMPTS = 50; // rejection sampling attempts before giving up
+  const allPlacedPositions = []; // shared list: {x, z} of every placed shrine/totem
+
+  /**
+   * Find a position within [-SPAWN_HALF_RANGE, SPAWN_HALF_RANGE] that is at least
+   * MIN_SHRINE_SPACING away from every already-placed position.
+   * Returns {x, z} or null if no valid position found after MAX_PLACEMENT_ATTEMPTS tries.
+   */
+  function findSpacedPosition() {
+    for (let attempt = 0; attempt < MAX_PLACEMENT_ATTEMPTS; attempt++) {
+      const x = (Math.random() - 0.5) * SPAWN_HALF_RANGE * 2;
+      const z = (Math.random() - 0.5) * SPAWN_HALF_RANGE * 2;
+      let tooClose = false;
+      for (let j = 0; j < allPlacedPositions.length; j++) {
+        const dx = x - allPlacedPositions[j].x;
+        const dz = z - allPlacedPositions[j].z;
+        if (dx * dx + dz * dz < MIN_SHRINE_SPACING * MIN_SHRINE_SPACING) {
+          tooClose = true;
+          break;
+        }
+      }
+      if (!tooClose) return { x, z };
+    }
+    return null;
+  }
+
   // Pre-generate finite shrines across the map
   for (let i = 0; i < SHRINE_COUNT; i++) {
-    const sx = (Math.random() - 0.5) * (ARENA_SIZE * 2 - 20);
-    const sz = (Math.random() - 0.5) * (ARENA_SIZE * 2 - 20);
-    const shrine = createShrineMesh(sx, sz);
+    const pos = findSpacedPosition();
+    if (!pos) continue;
+    allPlacedPositions.push(pos);
+    const shrine = createShrineMesh(pos.x, pos.z);
     st.shrines.push(shrine);
   }
 
   // Pre-generate difficulty totems
   const TOTEM_COUNT = 16;
   for (let ti = 0; ti < TOTEM_COUNT; ti++) {
-    const tx = (Math.random() - 0.5) * (ARENA_SIZE * 2 - 30);
-    const tz = (Math.random() - 0.5) * (ARENA_SIZE * 2 - 30);
-    const totem = createTotemMesh(tx, tz);
+    const pos = findSpacedPosition();
+    if (!pos) continue;
+    allPlacedPositions.push(pos);
+    const totem = createTotemMesh(pos.x, pos.z);
     st.totems.push(totem);
   }
 
   // Pre-generate charge shrines across the map
   for (let i = 0; i < CHARGE_SHRINE_COUNT; i++) {
-    const csx = (Math.random() - 0.5) * (ARENA_SIZE * 2 - 20);
-    const csz = (Math.random() - 0.5) * (ARENA_SIZE * 2 - 20);
+    const pos = findSpacedPosition();
+    if (!pos) continue;
+    allPlacedPositions.push(pos);
     const rarity = rollChargeShrineRarity();
-    const cs = createChargeShrineMesh(csx, csz, rarity);
+    const cs = createChargeShrineMesh(pos.x, pos.z, rarity);
     st.chargeShrines.push(cs);
   }
 
   // === GENERATE CHALLENGE SHRINES (BD-77) ===
   for (let i = 0; i < CHALLENGE_SHRINE_COUNT; i++) {
-    const angle = Math.random() * Math.PI * 2;
-    const dist = 40 + Math.random() * 120;
-    const cx = Math.cos(angle) * dist;
-    const cz = Math.sin(angle) * dist;
+    const pos = findSpacedPosition();
+    if (!pos) continue;
+    allPlacedPositions.push(pos);
+    const cx = pos.x;
+    const cz = pos.z;
 
     // Visual: dark red glowing shrine
     const shrineGroup = new THREE.Group();

@@ -494,12 +494,28 @@ export function generateChunk(cx, cz, scene, ts) {
   // === FOREST DECORATIONS ===
   // Generate a variety of decoration types per chunk.
   // Use different noise seeds per decoration type so their placement is independent.
+  // BD-89: Track occupied positions to prevent decorations overlapping each other.
+  const occupiedPositions = []; // {x, z} of each placed decoration in this chunk
+  const MIN_DECO_SPACING = 2.5; // minimum distance between any two decorations
+  const MIN_DECO_SPACING_SQ = MIN_DECO_SPACING * MIN_DECO_SPACING;
+
+  /** Check if (px, pz) is far enough from all occupied positions. */
+  function isDecoPositionClear(px, pz) {
+    for (let i = 0; i < occupiedPositions.length; i++) {
+      const ddx = px - occupiedPositions[i].x;
+      const ddz = pz - occupiedPositions[i].z;
+      if (ddx * ddx + ddz * ddz < MIN_DECO_SPACING_SQ) return false;
+    }
+    return true;
+  }
 
   // Trees: 2-5 per chunk
   const numTrees = 2 + Math.floor(noise2D(cx * 3 + 7, cz * 3 + 13) * 4);
   for (let d = 0; d < numTrees; d++) {
     const dx = ox + noise2D(cx + d * 7, cz + d * 13) * CHUNK_SIZE;
     const dz = oz + noise2D(cx + d * 11, cz + d * 17) * CHUNK_SIZE;
+    if (!isDecoPositionClear(dx, dz)) continue;
+    occupiedPositions.push({ x: dx, z: dz });
     const h = terrainHeight(dx, dz);
     const meshes = createTree(dx, dz, h, scene);
     ts.decorations.push({ meshes, x: dx, z: dz });
@@ -511,6 +527,8 @@ export function generateChunk(cx, cz, scene, ts) {
   for (let d = 0; d < numRocks; d++) {
     const dx = ox + noise2D(cx + d * 19 + 3, cz + d * 23 + 5) * CHUNK_SIZE;
     const dz = oz + noise2D(cx + d * 23 + 7, cz + d * 29 + 11) * CHUNK_SIZE;
+    if (!isDecoPositionClear(dx, dz)) continue;
+    occupiedPositions.push({ x: dx, z: dz });
     const h = terrainHeight(dx, dz);
     const meshes = createRock(dx, dz, h, scene);
     ts.decorations.push({ meshes, x: dx, z: dz });
@@ -522,6 +540,8 @@ export function generateChunk(cx, cz, scene, ts) {
   for (let d = 0; d < numLogs; d++) {
     const dx = ox + noise2D(cx + d * 31 + 9, cz + d * 37 + 13) * CHUNK_SIZE;
     const dz = oz + noise2D(cx + d * 37 + 17, cz + d * 41 + 19) * CHUNK_SIZE;
+    if (!isDecoPositionClear(dx, dz)) continue;
+    occupiedPositions.push({ x: dx, z: dz });
     const h = terrainHeight(dx, dz);
     const meshes = createFallenLog(dx, dz, h, scene);
     ts.decorations.push({ meshes, x: dx, z: dz });
@@ -532,6 +552,8 @@ export function generateChunk(cx, cz, scene, ts) {
   for (let d = 0; d < numMushrooms; d++) {
     const dx = ox + noise2D(cx + d * 43 + 21, cz + d * 47 + 23) * CHUNK_SIZE;
     const dz = oz + noise2D(cx + d * 47 + 27, cz + d * 53 + 29) * CHUNK_SIZE;
+    if (!isDecoPositionClear(dx, dz)) continue;
+    occupiedPositions.push({ x: dx, z: dz });
     const h = terrainHeight(dx, dz);
     const meshes = createMushroomCluster(dx, dz, h, scene);
     ts.decorations.push({ meshes, x: dx, z: dz });
@@ -542,6 +564,8 @@ export function generateChunk(cx, cz, scene, ts) {
   for (let d = 0; d < numStumps; d++) {
     const dx = ox + noise2D(cx + d * 53 + 31, cz + d * 59 + 37) * CHUNK_SIZE;
     const dz = oz + noise2D(cx + d * 59 + 41, cz + d * 61 + 43) * CHUNK_SIZE;
+    if (!isDecoPositionClear(dx, dz)) continue;
+    occupiedPositions.push({ x: dx, z: dz });
     const h = terrainHeight(dx, dz);
     const meshes = createStump(dx, dz, h, scene);
     ts.decorations.push({ meshes, x: dx, z: dz });
