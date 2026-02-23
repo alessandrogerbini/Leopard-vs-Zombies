@@ -18,6 +18,7 @@
 
 import {
   WEAPON_TYPES, HOWL_TYPES, ITEMS_3D, ITEM_RARITIES, SHRINE_AUGMENTS, ZOMBIE_TIERS,
+  MAP_HALF,
 } from './constants.js';
 
 /**
@@ -361,7 +362,7 @@ export function drawHUD(ctx, s, deps) {
       const mmSize = s.showFullMap ? Math.min(W * 0.6, H * 0.6) : 120;
       const mmX = s.showFullMap ? (W - mmSize) / 2 : W - mmSize - 10;
       const mmY = s.showFullMap ? (H - mmSize) / 2 : H - mmSize - 10;
-      const mmRange = s.showFullMap ? 200 : 60; // world units visible
+      const mmRange = s.showFullMap ? 140 : 60; // world units visible
 
       // Background
       ctx.save();
@@ -390,6 +391,17 @@ export function drawHUD(ctx, s, deps) {
       fogGrad.addColorStop(1, 'rgba(0,0,0,0.5)');
       ctx.fillStyle = fogGrad;
       ctx.fillRect(mmX, mmY, mmSize, mmSize);
+
+      // Draw map boundary edges
+      {
+        const bx = cx + (-MAP_HALF - s.playerX) * scale;
+        const by = cy + (-MAP_HALF - s.playerZ) * scale;
+        const bw = MAP_HALF * 2 * scale;
+        const bh = MAP_HALF * 2 * scale;
+        ctx.strokeStyle = '#557755';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(bx, by, bw, bh);
+      }
 
       // Draw enemies as red dots
       if (s.enemies) {
