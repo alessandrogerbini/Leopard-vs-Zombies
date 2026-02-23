@@ -390,8 +390,8 @@ export const CHARGE_SHRINE_TIME = 4;
 /** Radius in world units — player must stay within this to charge */
 export const CHARGE_SHRINE_RADIUS = 3;
 
-/** Number of challenge shrines per world (BD-77). */
-export const CHALLENGE_SHRINE_COUNT = 6;
+/** Number of challenge shrines per world (BD-77, BD-100: increased from 6). */
+export const CHALLENGE_SHRINE_COUNT = 10;
 
 /** Challenge shrine visual radius (BD-77). */
 export const CHALLENGE_SHRINE_RADIUS = 2.5;

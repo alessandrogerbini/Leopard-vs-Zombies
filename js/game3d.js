@@ -1343,18 +1343,12 @@ export function launch3DGame(options) {
   updateChunks(0, 0);
   updatePlatformChunks(0, 0);
 
-  // BD-88: Spread shrines/totems across a much wider area with minimum spacing.
-  // All placed positions are tracked to enforce MIN_SHRINE_SPACING between any two objects.
-  const SPAWN_HALF_RANGE = 400;  // shrines can appear up to 400 units from origin in each axis
-  const MIN_SHRINE_SPACING = 50; // minimum distance between any two shrines/totems/charge shrines
-  const MAX_PLACEMENT_ATTEMPTS = 50; // rejection sampling attempts before giving up
+  // BD-88+BD-100: Spread shrines/totems with spacing, INSIDE playable map (MAP_HALF=128).
+  const SPAWN_HALF_RANGE = MAP_HALF - 10;  // 118 — keeps all spawns inside the playable area
+  const MIN_SHRINE_SPACING = 20; // minimum distance between any two shrines/totems
+  const MAX_PLACEMENT_ATTEMPTS = 100; // rejection sampling attempts before giving up
   const allPlacedPositions = []; // shared list: {x, z} of every placed shrine/totem
 
-  /**
-   * Find a position within [-SPAWN_HALF_RANGE, SPAWN_HALF_RANGE] that is at least
-   * MIN_SHRINE_SPACING away from every already-placed position.
-   * Returns {x, z} or null if no valid position found after MAX_PLACEMENT_ATTEMPTS tries.
-   */
   function findSpacedPosition() {
     for (let attempt = 0; attempt < MAX_PLACEMENT_ATTEMPTS; attempt++) {
       const x = (Math.random() - 0.5) * SPAWN_HALF_RANGE * 2;
@@ -1382,8 +1376,8 @@ export function launch3DGame(options) {
     st.shrines.push(shrine);
   }
 
-  // Pre-generate difficulty totems
-  const TOTEM_COUNT = 16;
+  // Pre-generate difficulty totems (BD-100: increased from 16 to 24)
+  const TOTEM_COUNT = 24;
   for (let ti = 0; ti < TOTEM_COUNT; ti++) {
     const pos = findSpacedPosition();
     if (!pos) continue;
@@ -1402,7 +1396,7 @@ export function launch3DGame(options) {
     st.chargeShrines.push(cs);
   }
 
-  // === GENERATE CHALLENGE SHRINES (BD-77) ===
+  // === GENERATE CHALLENGE SHRINES (BD-77, BD-100: capped distance to stay inside map) ===
   for (let i = 0; i < CHALLENGE_SHRINE_COUNT; i++) {
     const pos = findSpacedPosition();
     if (!pos) continue;
@@ -2185,7 +2179,7 @@ export function launch3DGame(options) {
     // Totem-spawned zombies always drop loot (BD-96)
     // Lucky Charm: +50% chance to drop, Lucky Penny: +8% per stack
     const tierNum = e.tier || 1;
-    let dropChance = tierNum <= 1 ? 0.01 : tierNum === 2 ? 0.02 : tierNum === 3 ? 0.03 : 0.05;
+    let dropChance = [0.05, 0.10, 0.15, 0.25, 0.25, 0.30, 0.30, 0.40, 0.40, 0.60][tierNum - 1];
     if (st.items.charm) dropChance *= 1.5;
     if (st.items.luckyPenny > 0) dropChance *= (1 + st.items.luckyPenny * 0.08);
     const forceDrop = e.isTotemSpawned && !(e.isBoss && e.bossShrine); // BD-96: totem zombies always drop (bosses already get legendary)
@@ -2196,14 +2190,18 @@ export function launch3DGame(options) {
       // Higher tier zombies bias toward item drops; totem zombies get extra item bias
       const itemChance = e.isTotemSpawned ? 0.40 : (0.01 + tierNum * 0.05); // 6% T1, 11% T2, etc.; 40% for totem spawns
       if (roll < itemChance) {
-        // Item drop — rarity biased by tier (BD-95) and totem flag (BD-96)
+        // Item drop — rarity biased by tier (BD-95/BD-96) + floating text (BD-99)
         const pickup = e.isTotemSpawned
-          ? createItemPickup(dropX, dropZ, null, 'uncommon') // BD-96: bias uncommon+
-          : createItemPickup(dropX, dropZ, null, tierNum >= 3 ? 'uncommon' : null); // BD-95: T3+ bias uncommon+
-        if (pickup) st.itemPickups.push(pickup);
+          ? createItemPickup(dropX, dropZ, null, 'uncommon')
+          : createItemPickup(dropX, dropZ, null, tierNum >= 3 ? 'uncommon' : null);
+        if (pickup) {
+          st.itemPickups.push(pickup);
+          st.floatingTexts3d.push({ text: pickup.itype.name, color: '#ffd700', x: dropX, y: terrainHeight(dropX, dropZ) + 2, z: dropZ, life: 1.5 });
+        }
       } else if (roll < 0.55) {
         // Powerup crate
         st.powerupCrates.push(createPowerupCrate(dropX, dropZ));
+        st.floatingTexts3d.push({ text: 'POWERUP!', color: '#4488ff', x: dropX, y: terrainHeight(dropX, dropZ) + 2, z: dropZ, life: 1.5 });
       } else if (roll < 0.80) {
         // Health orb — heal 15% max HP
         st.hp = Math.min(st.hp + st.maxHp * 0.15, st.maxHp);
@@ -2213,6 +2211,7 @@ export function launch3DGame(options) {
         for (let g = 0; g < 3; g++) {
           st.xpGems.push(createXpGem(dropX + (Math.random() - 0.5) * 2, dropZ + (Math.random() - 0.5) * 2));
         }
+        st.floatingTexts3d.push({ text: '+XP', color: '#aa88ff', x: dropX, y: terrainHeight(dropX, dropZ) + 2, z: dropZ, life: 1.5 });
       }
     }
     disposeEnemy(e);
