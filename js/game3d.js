@@ -743,7 +743,7 @@ export function launch3DGame(options) {
   const wallHeight = 8;
   const wallThickness = 2;
   const wallColor = 0x665544;
-  const wallMat = new THREE.MeshLambertMaterial({ color: wallColor });
+  const wallMat = new THREE.MeshLambertMaterial({ color: wallColor, transparent: true, opacity: 0.3 });
   // North wall
   const northWall = new THREE.Mesh(new THREE.BoxGeometry(MAP_HALF * 2 + wallThickness * 2, wallHeight, wallThickness), wallMat);
   northWall.position.set(0, wallHeight / 2, -MAP_HALF - wallThickness / 2);
