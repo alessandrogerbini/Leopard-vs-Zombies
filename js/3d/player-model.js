@@ -1,0 +1,462 @@
+/**
+ * @module 3d/player-model
+ * @description Player model construction, animation, and visual updates for the 3D Roguelike Survivor mode.
+ *
+ * This module handles:
+ * - Building bipedal animal models (leopard, redPanda, lion, gator) from box primitives
+ * - Angel wings visual attachment for the flight powerup
+ * - Bipedal walk cycle animation (legs, arms, body bob, tail wag)
+ * - Flight pose animation (superman tilt, wing flapping, banking)
+ * - Muscle growth visual scaling per level
+ * - Player rotation toward movement direction
+ *
+ * The module is purely visual/geometric — it reads game state but does not mutate it.
+ *
+ * Dependencies: Three.js (global), 3d/utils.js (box helper)
+ * Exports: buildPlayerModel, animatePlayer, updateMuscleGrowth
+ */
+
+import { box } from './utils.js';
+
+/**
+ * @typedef {Object} PlayerModel
+ * @property {THREE.Group} group     - The root group containing the entire player model (added to scene).
+ * @property {THREE.Mesh[]} legs     - [leftLeg, rightLeg] meshes for walk animation.
+ * @property {THREE.Mesh[]} arms     - [leftArm, rightArm] meshes for arm swing.
+ * @property {THREE.Mesh|null} tail  - Tail mesh for wag animation, or null.
+ * @property {Object.<string, THREE.Mesh>} muscles - Named muscle meshes for growth scaling
+ *   (chest, bicepL, bicepR, shoulderL, shoulderR, thighL, thighR).
+ * @property {THREE.Group} wingGroup - Angel wings group (child of group, initially hidden).
+ * @property {Object} wingMeshes     - Individual wing segment meshes for flap animation.
+ * @property {THREE.Mesh} wingMeshes.wingL1 - Left wing inner segment.
+ * @property {THREE.Mesh} wingMeshes.wingL2 - Left wing middle segment.
+ * @property {THREE.Mesh} wingMeshes.wingL3 - Left wing tip segment.
+ * @property {THREE.Mesh} wingMeshes.wingR1 - Right wing inner segment.
+ * @property {THREE.Mesh} wingMeshes.wingR2 - Right wing middle segment.
+ * @property {THREE.Mesh} wingMeshes.wingR3 - Right wing tip segment.
+ */
+
+/**
+ * Build the complete player model for the given animal type and add it to the scene.
+ *
+ * Creates a bipedal animal model from box primitives with species-specific geometry,
+ * plus angel wings (initially hidden) for the flight powerup.
+ *
+ * @param {string} animalId - One of 'leopard', 'redPanda', 'lion', 'gator'.
+ * @param {THREE.Scene} scene - The Three.js scene to add the model to.
+ * @returns {PlayerModel} Structured object containing all model parts for animation.
+ */
+export function buildPlayerModel(animalId, scene) {
+  const group = new THREE.Group();
+  const legs = []; // [leftLeg, rightLeg] (bipedal)
+  const arms = []; // [leftArm, rightArm]
+  let tail = null;
+  const muscles = {}; // { chest, bicepL, bicepR, shoulderL, shoulderR, thighL, thighR }
+
+  if (animalId === 'leopard') {
+    // === BIPEDAL LEOPARD ===
+    // Torso (vertical)
+    muscles.chest = box(group, 0.7, 0.65, 0.45, 0xe8a828, 0, 0.85, 0, true);
+    // Belly
+    box(group, 0.55, 0.2, 0.35, 0xf0c858, 0, 0.65, 0.05);
+    // Rosette spots on torso
+    [[0.25, 1.0, 0.15], [-0.2, 0.95, -0.1], [0.15, 0.8, 0.18], [-0.25, 0.85, 0.1]].forEach(p => {
+      box(group, 0.1, 0.08, 0.08, 0xc08018, p[0], p[1], p[2]);
+    });
+    // Shoulders
+    muscles.shoulderL = box(group, 0.22, 0.2, 0.22, 0xe8a828, -0.42, 1.1, 0);
+    muscles.shoulderR = box(group, 0.22, 0.2, 0.22, 0xe8a828, 0.42, 1.1, 0);
+    // Neck
+    box(group, 0.3, 0.25, 0.22, 0xe8a828, 0, 1.25, 0);
+    // Head
+    box(group, 0.5, 0.42, 0.45, 0xe8a828, 0, 1.55, 0, true);
+    box(group, 0.4, 0.12, 0.1, 0xe8a828, 0, 1.75, 0);
+    // Snout
+    box(group, 0.22, 0.18, 0.22, 0xf0c050, 0, 1.42, 0.25);
+    box(group, 0.1, 0.06, 0.05, 0xff6688, 0, 1.47, 0.36); // nose
+    box(group, 0.12, 0.03, 0.05, 0xc08018, 0, 1.38, 0.33); // mouth
+    // Eyes
+    box(group, 0.1, 0.08, 0.06, 0x00dd00, -0.14, 1.58, 0.2);
+    box(group, 0.1, 0.08, 0.06, 0x00dd00, 0.14, 1.58, 0.2);
+    box(group, 0.04, 0.08, 0.03, 0x000000, -0.14, 1.58, 0.23);
+    box(group, 0.04, 0.08, 0.03, 0x000000, 0.14, 1.58, 0.23);
+    // Ears
+    box(group, 0.1, 0.15, 0.07, 0xd09020, -0.16, 1.82, 0);
+    box(group, 0.1, 0.15, 0.07, 0xd09020, 0.16, 1.82, 0);
+    box(group, 0.06, 0.1, 0.04, 0xe8a0a0, -0.16, 1.82, 0.02);
+    box(group, 0.06, 0.1, 0.04, 0xe8a0a0, 0.16, 1.82, 0.02);
+    // Arms (at sides)
+    muscles.bicepL = box(group, 0.16, 0.35, 0.16, 0xe8a828, -0.48, 0.85, 0, true);
+    muscles.bicepR = box(group, 0.16, 0.35, 0.16, 0xe8a828, 0.48, 0.85, 0, true);
+    arms.push(muscles.bicepL, muscles.bicepR);
+    // Hands/paws
+    box(group, 0.13, 0.1, 0.13, 0xd09020, -0.48, 0.62, 0.05);
+    box(group, 0.13, 0.1, 0.13, 0xd09020, 0.48, 0.62, 0.05);
+    // Legs (standing)
+    muscles.thighL = box(group, 0.2, 0.45, 0.2, 0xc89020, -0.18, 0.25, 0, true);
+    muscles.thighR = box(group, 0.2, 0.45, 0.2, 0xc89020, 0.18, 0.25, 0, true);
+    legs.push(muscles.thighL, muscles.thighR);
+    // Feet
+    box(group, 0.22, 0.08, 0.25, 0xd09020, -0.18, 0.02, 0.03);
+    box(group, 0.22, 0.08, 0.25, 0xd09020, 0.18, 0.02, 0.03);
+    // Tail (from lower back)
+    tail = box(group, 0.08, 0.08, 0.25, 0xe8a828, 0, 0.6, -0.3);
+    box(group, 0.08, 0.08, 0.2, 0xd09020, 0, 0.55, -0.5);
+    box(group, 0.06, 0.06, 0.15, 0x1a1a1a, 0, 0.52, -0.68);
+
+  } else if (animalId === 'redPanda') {
+    // === BIPEDAL RED PANDA ===
+    // Torso (vertical, reddish-brown)
+    muscles.chest = box(group, 0.65, 0.6, 0.4, 0xcc4422, 0, 0.85, 0, true);
+    // Black underbelly
+    box(group, 0.5, 0.2, 0.32, 0x111111, 0, 0.65, 0.05);
+    box(group, 0.66, 0.1, 0.3, 0x1a1a1a, 0, 0.7, 0);
+    // Shoulders
+    muscles.shoulderL = box(group, 0.2, 0.18, 0.2, 0xcc4422, -0.38, 1.1, 0);
+    muscles.shoulderR = box(group, 0.2, 0.18, 0.2, 0xcc4422, 0.38, 1.1, 0);
+    // Neck
+    box(group, 0.28, 0.22, 0.2, 0xcc4422, 0, 1.22, 0);
+    // Head (large, round)
+    box(group, 0.58, 0.5, 0.5, 0xcc4422, 0, 1.55, 0, true);
+    box(group, 0.48, 0.12, 0.1, 0xcc4422, 0, 1.78, 0);
+    // White face mask
+    box(group, 0.44, 0.26, 0.12, 0xffffff, 0, 1.48, 0.22);
+    // White cheek patches
+    box(group, 0.16, 0.15, 0.1, 0xffffff, -0.28, 1.45, 0.2);
+    box(group, 0.16, 0.15, 0.1, 0xffffff, 0.28, 1.45, 0.2);
+    // Dark eye patches (tear marks)
+    box(group, 0.14, 0.14, 0.06, 0x441100, -0.14, 1.55, 0.22);
+    box(group, 0.14, 0.14, 0.06, 0x441100, 0.14, 1.55, 0.22);
+    // Dark beady eyes
+    box(group, 0.07, 0.07, 0.05, 0x111111, -0.14, 1.55, 0.26);
+    box(group, 0.07, 0.07, 0.05, 0x111111, 0.14, 1.55, 0.26);
+    // White snout
+    box(group, 0.2, 0.14, 0.18, 0xffffff, 0, 1.4, 0.25);
+    // Black nose
+    box(group, 0.08, 0.06, 0.05, 0x111111, 0, 1.44, 0.35);
+    // Ears (large pointed, with white rims)
+    box(group, 0.12, 0.25, 0.08, 0x882211, -0.2, 1.88, 0);
+    box(group, 0.12, 0.25, 0.08, 0x882211, 0.2, 1.88, 0);
+    box(group, 0.03, 0.23, 0.08, 0xffffff, -0.28, 1.88, 0);
+    box(group, 0.03, 0.23, 0.08, 0xffffff, 0.28, 1.88, 0);
+    box(group, 0.06, 0.16, 0.05, 0xffffff, -0.2, 1.88, 0.02);
+    box(group, 0.06, 0.16, 0.05, 0xffffff, 0.2, 1.88, 0.02);
+    // Arms (BLACK - characteristic)
+    muscles.bicepL = box(group, 0.15, 0.35, 0.15, 0x111111, -0.44, 0.85, 0, true);
+    muscles.bicepR = box(group, 0.15, 0.35, 0.15, 0x111111, 0.44, 0.85, 0, true);
+    arms.push(muscles.bicepL, muscles.bicepR);
+    // Paws
+    box(group, 0.12, 0.1, 0.12, 0x0a0a0a, -0.44, 0.62, 0.05);
+    box(group, 0.12, 0.1, 0.12, 0x0a0a0a, 0.44, 0.62, 0.05);
+    // Legs (BLACK)
+    muscles.thighL = box(group, 0.18, 0.45, 0.18, 0x111111, -0.16, 0.25, 0, true);
+    muscles.thighR = box(group, 0.18, 0.45, 0.18, 0x111111, 0.16, 0.25, 0, true);
+    legs.push(muscles.thighL, muscles.thighR);
+    // Feet
+    box(group, 0.2, 0.08, 0.22, 0x0a0a0a, -0.16, 0.02, 0.03);
+    box(group, 0.2, 0.08, 0.22, 0x0a0a0a, 0.16, 0.02, 0.03);
+    // Bushy striped tail
+    tail = box(group, 0.22, 0.22, 0.3, 0xcc4422, 0, 0.6, -0.3);
+    box(group, 0.23, 0.12, 0.06, 0xffccaa, 0, 0.6, -0.2);
+    box(group, 0.22, 0.22, 0.3, 0xcc4422, 0, 0.55, -0.55);
+    box(group, 0.23, 0.12, 0.06, 0xffccaa, 0, 0.55, -0.45);
+    box(group, 0.2, 0.2, 0.12, 0x882211, 0, 0.52, -0.72);
+
+  } else if (animalId === 'lion') {
+    // === BIPEDAL LION ===
+    // Torso (wider, muscular)
+    muscles.chest = box(group, 0.8, 0.7, 0.5, 0xdda030, 0, 0.85, 0, true);
+    // Belly
+    box(group, 0.6, 0.2, 0.38, 0xeec060, 0, 0.62, 0.05);
+    // Shoulders (big)
+    muscles.shoulderL = box(group, 0.25, 0.22, 0.25, 0xdda030, -0.48, 1.12, 0);
+    muscles.shoulderR = box(group, 0.25, 0.22, 0.25, 0xdda030, 0.48, 1.12, 0);
+    // Neck
+    box(group, 0.35, 0.3, 0.28, 0xdda030, 0, 1.28, 0);
+    // Mane (around head, layered)
+    box(group, 0.95, 0.75, 0.8, 0xaa6610, 0, 1.6, -0.02);
+    box(group, 0.8, 0.65, 0.7, 0xbb7720, 0, 1.6, -0.02);
+    box(group, 0.12, 0.45, 0.55, 0x996610, -0.45, 1.6, 0);
+    box(group, 0.12, 0.45, 0.55, 0x996610, 0.45, 1.6, 0);
+    box(group, 0.65, 0.12, 0.1, 0x996610, 0, 2.0, 0);
+    // Head
+    box(group, 0.5, 0.44, 0.48, 0xdda030, 0, 1.62, 0.05, true);
+    // Snout
+    box(group, 0.26, 0.2, 0.22, 0xeec060, 0, 1.48, 0.28);
+    box(group, 0.12, 0.08, 0.06, 0x996620, 0, 1.53, 0.4); // nose
+    box(group, 0.12, 0.03, 0.05, 0x885510, 0, 1.44, 0.38); // mouth
+    // Eyes (amber)
+    box(group, 0.12, 0.08, 0.06, 0xffaa00, -0.13, 1.66, 0.24);
+    box(group, 0.12, 0.08, 0.06, 0xffaa00, 0.13, 1.66, 0.24);
+    box(group, 0.05, 0.08, 0.03, 0x000000, -0.13, 1.66, 0.27);
+    box(group, 0.05, 0.08, 0.03, 0x000000, 0.13, 1.66, 0.27);
+    // Ears
+    box(group, 0.1, 0.12, 0.07, 0xc89020, -0.18, 1.9, 0);
+    box(group, 0.1, 0.12, 0.07, 0xc89020, 0.18, 1.9, 0);
+    // Arms
+    muscles.bicepL = box(group, 0.18, 0.4, 0.18, 0xdda030, -0.52, 0.85, 0, true);
+    muscles.bicepR = box(group, 0.18, 0.4, 0.18, 0xdda030, 0.52, 0.85, 0, true);
+    arms.push(muscles.bicepL, muscles.bicepR);
+    // Hands
+    box(group, 0.15, 0.12, 0.15, 0xc89020, -0.52, 0.6, 0.05);
+    box(group, 0.15, 0.12, 0.15, 0xc89020, 0.52, 0.6, 0.05);
+    // Legs
+    muscles.thighL = box(group, 0.22, 0.48, 0.22, 0xc89020, -0.2, 0.25, 0, true);
+    muscles.thighR = box(group, 0.22, 0.48, 0.22, 0xc89020, 0.2, 0.25, 0, true);
+    legs.push(muscles.thighL, muscles.thighR);
+    // Feet
+    box(group, 0.24, 0.08, 0.27, 0xc89020, -0.2, 0.02, 0.03);
+    box(group, 0.24, 0.08, 0.27, 0xc89020, 0.2, 0.02, 0.03);
+    // Tail with tuft
+    tail = box(group, 0.08, 0.08, 0.25, 0xdda030, 0, 0.6, -0.32);
+    box(group, 0.06, 0.06, 0.2, 0xdda030, 0, 0.55, -0.52);
+    box(group, 0.18, 0.18, 0.15, 0xaa6610, 0, 0.52, -0.68);
+
+  } else if (animalId === 'gator') {
+    // === BIPEDAL GATOR ===
+    // Torso (armored, wider)
+    muscles.chest = box(group, 0.75, 0.65, 0.5, 0x44aa44, 0, 0.82, 0, true);
+    // Belly
+    box(group, 0.55, 0.2, 0.38, 0x88cc88, 0, 0.6, 0.05);
+    // Back ridges along spine
+    for (let i = 0; i < 5; i++) {
+      box(group, 0.12, 0.1, 0.12, 0x338833, 0, 1.18 - i * 0.12, -0.22);
+    }
+    // Scale texture on sides
+    [[-0.3, 0.9, 0.12], [0.3, 0.88, -0.08], [-0.28, 0.78, 0.1]].forEach(p => {
+      box(group, 0.1, 0.08, 0.1, 0x3a9a3a, p[0], p[1], p[2]);
+    });
+    // Shoulders
+    muscles.shoulderL = box(group, 0.22, 0.2, 0.22, 0x44aa44, -0.44, 1.08, 0);
+    muscles.shoulderR = box(group, 0.22, 0.2, 0.22, 0x44aa44, 0.44, 1.08, 0);
+    // Neck
+    box(group, 0.32, 0.22, 0.25, 0x44aa44, 0, 1.2, 0);
+    // Head (with snout extending forward)
+    box(group, 0.4, 0.3, 0.35, 0x44aa44, 0, 1.42, 0.05, true);
+    // Upper jaw (long snout)
+    box(group, 0.3, 0.15, 0.45, 0x3a9a3a, 0, 1.38, 0.35);
+    box(group, 0.25, 0.1, 0.4, 0x44aa44, 0, 1.42, 0.35);
+    // Lower jaw
+    box(group, 0.25, 0.08, 0.4, 0x2d882d, 0, 1.28, 0.35);
+    // Nostrils
+    box(group, 0.12, 0.08, 0.06, 0x338833, 0, 1.46, 0.58);
+    // Teeth
+    for (let t = 0; t < 3; t++) {
+      box(group, 0.04, 0.05, 0.03, 0xffffff, -0.06 + t * 0.06, 1.32, 0.35 + t * 0.1);
+      box(group, 0.04, 0.05, 0.03, 0xffffff, -0.04 + t * 0.06, 1.26, 0.38 + t * 0.1);
+    }
+    // Eyes (protruding on top)
+    box(group, 0.15, 0.15, 0.15, 0x44aa44, -0.1, 1.58, 0.1);
+    box(group, 0.15, 0.15, 0.15, 0x44aa44, 0.1, 1.58, 0.1);
+    box(group, 0.1, 0.1, 0.1, 0xccff44, -0.1, 1.6, 0.14);
+    box(group, 0.1, 0.1, 0.1, 0xccff44, 0.1, 1.6, 0.14);
+    box(group, 0.03, 0.1, 0.04, 0x000000, -0.1, 1.6, 0.18);
+    box(group, 0.03, 0.1, 0.04, 0x000000, 0.1, 1.6, 0.18);
+    // Arms
+    muscles.bicepL = box(group, 0.17, 0.35, 0.17, 0x338833, -0.48, 0.82, 0, true);
+    muscles.bicepR = box(group, 0.17, 0.35, 0.17, 0x338833, 0.48, 0.82, 0, true);
+    arms.push(muscles.bicepL, muscles.bicepR);
+    // Clawed hands
+    box(group, 0.14, 0.1, 0.14, 0x2d772d, -0.48, 0.6, 0.05);
+    box(group, 0.14, 0.1, 0.14, 0x2d772d, 0.48, 0.6, 0.05);
+    // Claws on hands
+    for (const sx of [-0.48, 0.48]) {
+      for (let c = -1; c <= 1; c++) {
+        box(group, 0.02, 0.06, 0.02, 0xcccc88, sx + c * 0.04, 0.56, 0.12);
+      }
+    }
+    // Legs
+    muscles.thighL = box(group, 0.2, 0.42, 0.22, 0x338833, -0.18, 0.22, 0, true);
+    muscles.thighR = box(group, 0.2, 0.42, 0.22, 0x338833, 0.18, 0.22, 0, true);
+    legs.push(muscles.thighL, muscles.thighR);
+    // Feet
+    box(group, 0.24, 0.06, 0.28, 0x2d772d, -0.18, 0.02, 0.03);
+    box(group, 0.24, 0.06, 0.28, 0x2d772d, 0.18, 0.02, 0.03);
+    // Foot claws
+    for (const fx of [-0.18, 0.18]) {
+      for (let c = -1; c <= 1; c++) {
+        box(group, 0.04, 0.03, 0.05, 0xcccc88, fx + c * 0.06, 0.04, 0.16);
+      }
+    }
+    // Thick tail from lower back
+    tail = box(group, 0.25, 0.18, 0.35, 0x44aa44, 0, 0.55, -0.35);
+    box(group, 0.2, 0.15, 0.3, 0x3a9a3a, 0, 0.5, -0.6);
+    box(group, 0.15, 0.12, 0.22, 0x338833, 0, 0.48, -0.8);
+    // Tail ridges
+    box(group, 0.08, 0.06, 0.08, 0x338833, 0, 0.62, -0.4);
+    box(group, 0.06, 0.05, 0.06, 0x338833, 0, 0.58, -0.6);
+  }
+
+  scene.add(group);
+
+  // === ANGEL WINGS VISUAL ===
+  const wingGroup = new THREE.Group();
+  // Left wing
+  const wingMatL = new THREE.MeshLambertMaterial({ color: 0xaaddff, transparent: true, opacity: 0.85 });
+  const wingL1 = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.5, 0.08), wingMatL);
+  wingL1.position.set(-0.6, 1.0, -0.15);
+  wingL1.rotation.z = 0.3;
+  wingGroup.add(wingL1);
+  const wingL2 = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.35, 0.06), wingMatL);
+  wingL2.position.set(-0.9, 1.15, -0.15);
+  wingL2.rotation.z = 0.5;
+  wingGroup.add(wingL2);
+  // Wing feather tips
+  const wingL3 = new THREE.Mesh(new THREE.BoxGeometry(0.25, 0.2, 0.04), new THREE.MeshLambertMaterial({ color: 0xcceeff, transparent: true, opacity: 0.7 }));
+  wingL3.position.set(-1.1, 1.25, -0.15);
+  wingL3.rotation.z = 0.6;
+  wingGroup.add(wingL3);
+  // Right wing (mirror)
+  const wingMatR = new THREE.MeshLambertMaterial({ color: 0xaaddff, transparent: true, opacity: 0.85 });
+  const wingR1 = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.5, 0.08), wingMatR);
+  wingR1.position.set(0.6, 1.0, -0.15);
+  wingR1.rotation.z = -0.3;
+  wingGroup.add(wingR1);
+  const wingR2 = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.35, 0.06), wingMatR);
+  wingR2.position.set(0.9, 1.15, -0.15);
+  wingR2.rotation.z = -0.5;
+  wingGroup.add(wingR2);
+  const wingR3 = new THREE.Mesh(new THREE.BoxGeometry(0.25, 0.2, 0.04), new THREE.MeshLambertMaterial({ color: 0xcceeff, transparent: true, opacity: 0.7 }));
+  wingR3.position.set(1.1, 1.25, -0.15);
+  wingR3.rotation.z = -0.6;
+  wingGroup.add(wingR3);
+  wingGroup.visible = false;
+  group.add(wingGroup);
+
+  return {
+    group,
+    legs,
+    arms,
+    tail,
+    muscles,
+    wingGroup,
+    wingMeshes: { wingL1, wingL2, wingL3, wingR1, wingR2, wingR3 },
+  };
+}
+
+/**
+ * Animate the player model each frame: walk cycle, rotation, flight pose, wings, tail.
+ *
+ * Handles bipedal leg/arm swing, body bob, tail wag, player rotation toward movement,
+ * flight banking/tilting, wing flapping, and return-to-upright transitions.
+ *
+ * This function does NOT mutate game state (st) — it only reads from it and modifies
+ * the Three.js model objects directly.
+ *
+ * @param {PlayerModel} model - The player model object returned by buildPlayerModel.
+ * @param {State3D} st - The game state object (read-only access).
+ * @param {THREE.Clock} clock - The Three.js clock for elapsed time.
+ * @param {number} len - Movement input magnitude (0 = idle, >0 = moving).
+ * @param {number} mx - Movement X component (for rotation target).
+ * @param {number} mz - Movement Z component (for rotation target).
+ */
+export function animatePlayer(model, st, clock, len, mx, mz) {
+  const { group, legs, arms, tail, wingGroup, wingMeshes } = model;
+
+  // === PLAYER POSITION ===
+  group.position.set(st.playerX, st.playerY, st.playerZ);
+
+  // === PLAYER ROTATION ===
+  // Player rotation toward movement
+  if (len > 0) {
+    const targetAngle = Math.atan2(mx, mz);
+    // Smooth rotation
+    let diff = targetAngle - group.rotation.y;
+    while (diff > Math.PI) diff -= Math.PI * 2;
+    while (diff < -Math.PI) diff += Math.PI * 2;
+    if (st.flying) {
+      // Slower turning when flying (feels more like flight)
+      group.rotation.y += diff * 0.08;
+      // Bank/roll into turns (subtle, clamped)
+      const targetRoll = -diff * 0.6;
+      const clampedRoll = Math.max(-0.35, Math.min(0.35, targetRoll)); // Max ~20 degrees
+      group.rotation.z += (clampedRoll - group.rotation.z) * 0.1;
+    } else {
+      group.rotation.y += diff * 0.15;
+    }
+  } else if (st.flying) {
+    // Return to level flight when not turning
+    group.rotation.z *= 0.9;
+  }
+
+  // === BIPEDAL ANIMATION ===
+  // Bipedal leg + arm animation
+  if (st.flying) {
+    // Flying pose: legs trail behind, arms reach forward
+    if (legs[0]) { legs[0].position.z = -0.15; legs[0].position.y = 0.25; }
+    if (legs[1]) { legs[1].position.z = -0.15; legs[1].position.y = 0.25; }
+    if (arms[0]) arms[0].position.z = 0.2;
+    if (arms[1]) arms[1].position.z = 0.2;
+    // No body bob when flying
+  } else {
+    const walkSpeed = len > 0 ? 10 : 0;
+    const walkPhase = clock.elapsedTime * walkSpeed;
+    const legSwing = Math.sin(walkPhase) * 0.5;
+    const legLift = Math.abs(Math.sin(walkPhase)) * 0.08;
+    if (legs[0]) { legs[0].position.z = legSwing * 0.25; legs[0].position.y = 0.25 + (len > 0 ? legLift : 0); }
+    if (legs[1]) { legs[1].position.z = -legSwing * 0.25; legs[1].position.y = 0.25 + (len > 0 ? Math.abs(Math.sin(walkPhase + Math.PI)) * 0.08 : 0); }
+    // Arm swing (opposite to legs, bigger)
+    if (arms[0]) arms[0].position.z = -legSwing * 0.2;
+    if (arms[1]) arms[1].position.z = legSwing * 0.2;
+    // Body bob when walking
+    if (len > 0) {
+      group.position.y = st.playerY + Math.abs(Math.sin(walkPhase * 2)) * 0.04;
+    }
+  }
+  // Tail wag always plays
+  if (tail) tail.rotation.y = Math.sin(clock.elapsedTime * 3) * 0.4;
+
+  // === ANGEL WINGS + FLIGHT POSE ===
+  // Angel wings visibility + flapping + superman pose
+  wingGroup.visible = st.flying;
+  if (st.flying) {
+    if (st.gManeuver) {
+      // During G maneuver: pitch follows the maneuver angle on top of superman tilt
+      group.rotation.x = -Math.PI / 2.5 + st.gManeuverPitch;
+    } else {
+      // Normal superman flying pose, smoothly blend back from any residual maneuver pitch
+      const targetTilt = -Math.PI / 2.5 + st.gManeuverPitch;
+      group.rotation.x += (targetTilt - group.rotation.x) * 0.1;
+    }
+    // Counter-rotate wings to stay in the horizontal flight plane
+    wingGroup.rotation.x = -group.rotation.x;
+    // Flap: faster during maneuvers, gentler in normal flight
+    const flapSpeed = st.gManeuver ? 12 : 6;
+    const flapAmp = st.gManeuver ? 0.3 : 0.25;
+    const flap = Math.sin(clock.elapsedTime * flapSpeed) * flapAmp;
+    wingMeshes.wingL1.rotation.z = 0.2 + flap;
+    wingMeshes.wingL2.rotation.z = 0.35 + flap * 1.1;
+    wingMeshes.wingL3.rotation.z = 0.45 + flap * 1.2;
+    wingMeshes.wingR1.rotation.z = -0.2 - flap;
+    wingMeshes.wingR2.rotation.z = -0.35 - flap * 1.1;
+    wingMeshes.wingR3.rotation.z = -0.45 - flap * 1.2;
+  } else {
+    // Return to upright
+    if (Math.abs(group.rotation.x) > 0.01) {
+      group.rotation.x *= 0.85;
+    } else {
+      group.rotation.x = 0;
+    }
+    // Reset roll from flight banking
+    if (Math.abs(group.rotation.z) > 0.01) {
+      group.rotation.z *= 0.85;
+    } else {
+      group.rotation.z = 0;
+    }
+    wingGroup.rotation.x = 0;
+  }
+}
+
+/**
+ * Update muscle growth visual scaling based on player level.
+ * Scales all named muscle meshes uniformly. Growth rate is 0.08 per level.
+ *
+ * @param {PlayerModel} model - The player model object returned by buildPlayerModel.
+ * @param {number} level - Current player level (1-based).
+ */
+export function updateMuscleGrowth(model, level) {
+  const muscleScale = 1 + (level - 1) * 0.08;
+  for (const key in model.muscles) {
+    if (model.muscles[key]) model.muscles[key].scale.set(muscleScale, muscleScale, muscleScale);
+  }
+}
