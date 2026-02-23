@@ -280,7 +280,7 @@ const TOTEM_EFFECT = {
  * @property {number} zombieDmgMult  - Difficulty-based zombie contact damage multiplier (2/3/4).
  * @property {number} score          - Accumulated score.
  * @property {number} wave           - Current wave number (increments on wave event).
- * @property {number} ambientSpawnTimer  - Countdown to next ambient zombie spawn (resets to 3s).
+ * @property {number} ambientSpawnTimer  - Countdown to next ambient zombie spawn (resets to 1.7s).
  * @property {number} waveEventTimer     - Countdown to next wave event (resets to 240s).
  * @property {number} waveWarning        - Seconds remaining in wave warning countdown (0 = none).
  * @property {boolean} waveActive        - Whether a wave event is currently active.
@@ -468,7 +468,7 @@ export function launch3DGame(options) {
     zombieDmgMult: diffData.hpMult >= 1.0 ? 2 : diffData.hpMult >= 0.5 ? 3 : 4,
     score: 0,
     wave: 1,
-    ambientSpawnTimer: 3,
+    ambientSpawnTimer: 1.7,
     waveEventTimer: 240,  // 4 minutes until first wave event
     waveWarning: 0,       // countdown seconds (0 = no warning)
     waveActive: false,
@@ -1951,7 +1951,14 @@ export function launch3DGame(options) {
       const dist = 25 + Math.random() * 10;
       const sx = Math.max(-MAP_HALF + 2, Math.min(MAP_HALF - 2, st.playerX + Math.cos(angle) * dist));
       const sz = Math.max(-MAP_HALF + 2, Math.min(MAP_HALF - 2, st.playerZ + Math.sin(angle) * dist));
-      st.enemies.push(createEnemy(sx, sz, baseHp, 1));
+      // Progressive tier spawning: after wave 2, chance of higher tier ambient zombies
+      let tier = 1;
+      if (st.wave >= 2) {
+        const roll = Math.random();
+        const maxTier = Math.min(st.wave, 5);
+        if (roll < 0.03 * st.wave) tier = Math.min(maxTier, 2 + Math.floor(Math.random() * (maxTier - 1)));
+      }
+      st.enemies.push(createEnemy(sx, sz, baseHp * tier, tier));
     }
   }
 
@@ -1974,7 +1981,7 @@ export function launch3DGame(options) {
       const dist = 20 + Math.random() * 15;
       const sx = Math.max(-MAP_HALF + 2, Math.min(MAP_HALF - 2, st.playerX + Math.cos(angle) * dist));
       const sz = Math.max(-MAP_HALF + 2, Math.min(MAP_HALF - 2, st.playerZ + Math.sin(angle) * dist));
-      const tier = Math.random() < 0.1 * st.wave ? Math.min(st.wave, 3) : 1;
+      const tier = Math.random() < 0.15 * st.wave ? Math.min(st.wave + 1, 5) : 1;
       st.enemies.push(createEnemy(sx, sz, waveHp, tier));
     }
     st.wave++;
@@ -3377,7 +3384,7 @@ export function launch3DGame(options) {
       st.ambientSpawnTimer -= dt;
       if (st.ambientSpawnTimer <= 0) {
         spawnAmbient();
-        st.ambientSpawnTimer = 3;
+        st.ambientSpawnTimer = 1.7;
       }
 
       // === AMBIENT CRATE SPAWN (every 30s) ===
