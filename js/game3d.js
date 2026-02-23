@@ -13,7 +13,8 @@
  * a hold-to-charge power attack, up to 4 weapon slots with 6 weapon types, passive scrolls,
  * shrine augments, difficulty totems, 18 temporary powerups, and 11 permanent items.
  *
- * Dependencies: Three.js (global, loaded via CDN in index.html)
+ * Dependencies: Three.js (global, loaded via CDN in index.html), 3d/constants.js (game constants),
+ *               3d/terrain.js (procedural terrain generation and chunk management)
  * Exports: 1 — launch3DGame(options)
  *
  * Key concepts:
@@ -25,230 +26,19 @@
  * - Level-up menu: random draw from weapons, upgrades, scrolls; 3 rerolls per game
  */
 
-/** @constant {number} ARENA_SIZE - Half-size of the initial spawn area for shrines/totems (80 = 160x160 spawn zone). */
-const ARENA_SIZE = 80;
-/** @constant {number} SHRINE_COUNT - Total number of finite shrines pre-placed at game start. */
-const SHRINE_COUNT = 20;
-/** @constant {number} CHUNK_SIZE - Width/depth of each terrain chunk in world units. */
-const CHUNK_SIZE = 16;
-/** @constant {number} GRAVITY_3D - Downward acceleration in units/s^2 for player and zombie jumping. */
-const GRAVITY_3D = 22;
-/** @constant {number} JUMP_FORCE - Base upward velocity applied on jump (modified by jumpBoost). */
-const JUMP_FORCE = 10;
-/** @constant {number} GROUND_Y - Baseline Y coordinate for flat ground (before terrain noise). */
-const GROUND_Y = 0;
-/** @constant {number} MAP_HALF - Half the map dimension; world extends from -MAP_HALF to +MAP_HALF on X and Z. */
-const MAP_HALF = 128; // 256x256 total map (extends -128 to +128 on both axes)
 
-/**
- * Color palettes for each playable animal's 3D box model.
- * Each palette provides hex colors for body, head, accent details, spot markings, and tail.
- *
- * @constant {Object.<string, {body: number, head: number, accent: number, spot: number, tail: number}>}
- * @property {Object} leopard  - Golden-yellow tones with dark amber spots.
- * @property {Object} redPanda - Reddish-brown with dark accents and cream markings.
- * @property {Object} lion     - Warm golden-brown with tawny mane coloring.
- * @property {Object} gator    - Deep green with lighter belly tones.
- */
-const ANIMAL_PALETTES = {
-  leopard: { body: 0xe8a828, head: 0xf0c050, accent: 0xd09020, spot: 0xa06810, tail: 0xc08818 },
-  redPanda: { body: 0xcc4422, head: 0xdd6644, accent: 0xaa3311, spot: 0x882200, tail: 0xbb3318 },
-  lion: { body: 0xdda030, head: 0xeebb44, accent: 0xcc8820, spot: 0xaa6610, tail: 0xbb7718 },
-  gator: { body: 0x44aa44, head: 0x55cc55, accent: 0x338833, spot: 0x226622, tail: 0x2a7a2a },
-};
+import {
+  ARENA_SIZE, SHRINE_COUNT, CHUNK_SIZE, GRAVITY_3D, JUMP_FORCE, GROUND_Y, MAP_HALF,
+  ANIMAL_PALETTES, WEAPON_TYPES, SCROLL_TYPES, POWERUPS_3D, ITEMS_3D,
+  SHRINE_AUGMENTS, TOTEM_EFFECT, ZOMBIE_TIERS, ANIMAL_WEAPONS,
+} from './3d/constants.js';
 
-/**
- * Weapon type definitions for the weapon slot system.
- * Each weapon has a unique attack pattern, base stats, and 5 level-up tiers.
- * Weapons auto-fire at the nearest enemy within range when their cooldown expires.
- *
- * @constant {Object.<string, {id: string, name: string, type: string, color: string, desc: string, baseDamage: number, baseCooldown: number, baseRange: number, maxLevel: number, levelDescs: string[]}>}
- * @property {Object} clawSwipe     - Melee AoE arc slash hitting all enemies in range.
- * @property {Object} boneToss      - Ranged projectile(s) that fly toward targets; gains extra projectiles at levels 2/5.
- * @property {Object} poisonCloud   - AoE damage-over-time cloud placed at enemy position.
- * @property {Object} lightningBolt - Chain lightning that jumps between enemies; gains chains at levels 1/3/5.
- * @property {Object} fireball      - Projectile that explodes on impact dealing AoE damage.
- * @property {Object} boomerang     - Piercing cross-shaped disc that arcs out and returns to player.
- */
-const WEAPON_TYPES = {
-  clawSwipe: {
-    id: 'clawSwipe', name: 'CLAW SWIPE', type: 'melee', color: '#ff8844',
-    desc: 'AoE arc slash', baseDamage: 12, baseCooldown: 1.2, baseRange: 2.5, maxLevel: 5,
-    levelDescs: ['+20% Damage', '+15% Range', '+20% Damage', '-15% Cooldown', '+30% Damage & Range'],
-  },
-  boneToss: {
-    id: 'boneToss', name: 'BONE TOSS', type: 'projectile', color: '#ccccaa',
-    desc: 'Ranged bone projectile', baseDamage: 10, baseCooldown: 1.5, baseRange: 12, maxLevel: 5,
-    levelDescs: ['+25% Damage', '+1 Projectile', '+20% Speed', '-20% Cooldown', '+2 Projectiles'],
-  },
-  poisonCloud: {
-    id: 'poisonCloud', name: 'POISON CLOUD', type: 'aoe', color: '#44cc44',
-    desc: 'DoT cloud at enemy', baseDamage: 5, baseCooldown: 3, baseRange: 8, maxLevel: 5,
-    levelDescs: ['+30% Damage', '+25% Area', '+30% Duration', '-20% Cooldown', '+50% Damage'],
-  },
-  lightningBolt: {
-    id: 'lightningBolt', name: 'LIGHTNING BOLT', type: 'chain', color: '#aaddff',
-    desc: 'Chains between enemies', baseDamage: 15, baseCooldown: 2, baseRange: 8, maxLevel: 5,
-    levelDescs: ['+1 Chain', '+20% Damage', '+1 Chain', '-15% Cooldown', '+2 Chains & +30% Dmg'],
-  },
-  fireball: {
-    id: 'fireball', name: 'FIREBALL', type: 'projectile_aoe', color: '#ff4400',
-    desc: 'Explodes on impact', baseDamage: 20, baseCooldown: 2.5, baseRange: 10, maxLevel: 5,
-    levelDescs: ['+25% Damage', '+30% Explosion', '+25% Damage', '-20% Cooldown', '+50% AoE Damage'],
-  },
-  boomerang: {
-    id: 'boomerang', name: 'BOOMERANG', type: 'boomerang', color: '#aa44ff',
-    desc: 'Piercing, returns', baseDamage: 8, baseCooldown: 1.8, baseRange: 10, maxLevel: 5,
-    levelDescs: ['+20% Damage', '+1 Boomerang', '+25% Speed', '-15% Cooldown', 'Double Damage'],
-  },
-};
+import {
+  noise2D, smoothNoise, terrainHeight, getBiome, BIOME_COLORS,
+  getChunkKey, createTerrainState, generateChunk as terrainGenerateChunk,
+  unloadChunk as terrainUnloadChunk, updateChunks as terrainUpdateChunks,
+} from './3d/terrain.js';
 
-/**
- * Scroll type definitions — passive global buffs selected during level-up.
- * Scrolls stack multiplicatively and affect all weapons simultaneously.
- *
- * @constant {Object.<string, {id: string, name: string, color: string, desc: string, maxLevel: number}>}
- * @property {Object} power    - +15% all weapon damage per level (max 5).
- * @property {Object} haste    - -15% all weapon cooldowns per level (max 5, floor 0.3x).
- * @property {Object} arcane   - +1 projectile count for multi-shot weapons (max 3).
- * @property {Object} vitality - +20 max HP and instant heal per level (max 5).
- * @property {Object} fortune  - +30% XP gain per level (max 3).
- * @property {Object} range    - +20% weapon range per level (max 5).
- */
-const SCROLL_TYPES = {
-  power: { id: 'power', name: 'POWER SCROLL', color: '#ff4444', desc: '+15% all weapon damage', maxLevel: 5 },
-  haste: { id: 'haste', name: 'HASTE SCROLL', color: '#ffaa44', desc: '-15% all cooldowns', maxLevel: 5 },
-  arcane: { id: 'arcane', name: 'ARCANE SCROLL', color: '#aa44ff', desc: '+1 projectile count', maxLevel: 3 },
-  vitality: { id: 'vitality', name: 'VITALITY SCROLL', color: '#44ff44', desc: '+20 max HP & heal', maxLevel: 5 },
-  fortune: { id: 'fortune', name: 'FORTUNE SCROLL', color: '#ffff44', desc: '+30% XP gain', maxLevel: 3 },
-  range: { id: 'range', name: 'RANGE SCROLL', color: '#44aaff', desc: '+20% weapon range', maxLevel: 5 },
-};
-
-/**
- * Temporary powerup definitions for 3D mode. Found in crates and zombie drops.
- * Each powerup has an `apply(st)` that activates the effect and a `remove(st)` that reverses it.
- * Only one powerup can be active at a time; activating a new one removes the previous.
- *
- * 18 powerups total:
- * - jumpyBoots: +50% jump height (15s)
- * - clawsOfSteel: 2x attack damage (20s)
- * - superFangs: 2x attack speed (20s)
- * - raceCar: 2x speed + fire aura trail damage (12s)
- * - bananaCannon: Ranged banana projectile mode (15s)
- * - wings: Free flight with Alt+W/S G-force maneuvers (15s)
- * - frostNova: Instant freeze burst on all nearby zombies (1s, one-shot)
- * - berserkerRage: +50% dmg, +30% speed, but +25% vulnerability (20s)
- * - ghostForm: Full invulnerability, cannot attack (8s)
- * - earthquakeStomp: Landing from jumps creates AoE shockwaves (15s)
- * - vampireFangs: Passive 3 HP/s regeneration (20s)
- * - lightningShield: Zaps nearest enemy every 0.5s for 10 dmg (15s)
- * - giantGrowth: 2x size/dmg, -30% speed (15s)
- * - timeWarp: Slow all zombies to 25% speed (10s)
- * - magnetAura: 5x pickup radius (20s)
- * - mirrorImage: 2 AI clone allies that orbit and attack (15s)
- * - bombTrail: Drop explosive bombs every 0.5s while moving (12s)
- * - regenBurst: Rapidly heal to full at maxHP/5 per second (5s)
- *
- * @constant {Array.<{id: string, name: string, color: string, colorHex: number, desc: string, duration: number, apply: function(State3D): void, remove: function(State3D): void}>}
- */
-const POWERUPS_3D = [
-  { id: 'jumpyBoots', name: 'JUMPY BOOTS', color: '#44ff88', colorHex: 0x44ff88, desc: '+50% Jump Height', duration: 15, apply: s => { s.jumpBoost = 1.5; }, remove: s => { s.jumpBoost = 1; } },
-  { id: 'clawsOfSteel', name: 'CLAWS OF STEEL', color: '#ff8844', colorHex: 0xff8844, desc: '2x Attack Damage', duration: 20, apply: s => { s.dmgBoost = 2; }, remove: s => { s.dmgBoost = 1; } },
-  { id: 'superFangs', name: 'SUPER FANGS', color: '#ff44ff', colorHex: 0xff44ff, desc: '2x Attack Speed', duration: 20, apply: s => { s.atkSpeedBoost = 2; }, remove: s => { s.atkSpeedBoost = 1; } },
-  { id: 'raceCar', name: 'RACE CAR', color: '#cc2222', colorHex: 0xcc2222, desc: '2x Speed + Fire!', duration: 12, apply: s => { s.speedBoost = 2; s.fireAura = true; }, remove: s => { s.speedBoost = 1; s.fireAura = false; } },
-  { id: 'bananaCannon', name: 'BANANA CANNON', color: '#ffdd00', colorHex: 0xffdd00, desc: 'Ranged Attack!', duration: 15, apply: s => { s.rangedMode = true; }, remove: s => { s.rangedMode = false; } },
-  { id: 'wings', name: 'ANGEL WINGS', color: '#aaddff', colorHex: 0xaaddff, desc: 'Fly Anywhere!', duration: 15, apply: s => { s.flying = true; }, remove: s => { s.flying = false; s.gManeuver = false; s.gManeuverPitch = 0; } },
-  { id: 'frostNova', name: 'FROST NOVA', color: '#88ccff', colorHex: 0x88ccff, desc: 'Freeze Nearby Zombies!', duration: 1, apply: s => { s.frostNova = true; }, remove: s => { s.frostNova = false; } },
-  { id: 'berserkerRage', name: 'BERSERKER RAGE', color: '#881111', colorHex: 0x881111, desc: '+50% Dmg, +30% Spd, +25% Vuln', duration: 20, apply: s => { s.dmgBoost = 1.5; s.speedBoost = 1.3; s.berserkVulnerable = true; }, remove: s => { s.dmgBoost = 1; s.speedBoost = 1; s.berserkVulnerable = false; } },
-  { id: 'ghostForm', name: 'GHOST FORM', color: '#eeeeff', colorHex: 0xeeeeff, desc: 'Invulnerable, Can\'t Attack', duration: 8, apply: s => { s.ghostForm = true; s.invincible = 999; }, remove: s => { s.ghostForm = false; s.invincible = 0; } },
-  { id: 'earthquakeStomp', name: 'EARTHQUAKE STOMP', color: '#8B6914', colorHex: 0x8B6914, desc: 'Landings Create Shockwaves!', duration: 15, apply: s => { s.earthquakeStomp = true; }, remove: s => { s.earthquakeStomp = false; } },
-  { id: 'vampireFangs', name: 'VAMPIRE FANGS', color: '#6a0dad', colorHex: 0x6a0dad, desc: 'Passive HP Regen!', duration: 20, apply: s => { s.vampireHeal = true; }, remove: s => { s.vampireHeal = false; } },
-  { id: 'lightningShield', name: 'LIGHTNING SHIELD', color: '#44aaff', colorHex: 0x44aaff, desc: 'Zap Nearby Enemies!', duration: 15, apply: s => { s.lightningShield = true; s.lightningShieldTimer = 0; }, remove: s => { s.lightningShield = false; } },
-  { id: 'giantGrowth', name: 'GIANT GROWTH', color: '#22cc44', colorHex: 0x22cc44, desc: '2x Size & Dmg, -30% Speed', duration: 15, apply: s => { s.dmgBoost = 2; s.speedBoost = 0.7; s.giantMode = true; }, remove: s => { s.dmgBoost = 1; s.speedBoost = 1; s.giantMode = false; } },
-  { id: 'timeWarp', name: 'TIME WARP', color: '#9944ff', colorHex: 0x9944ff, desc: 'Slow All Zombies!', duration: 10, apply: s => { s.timeWarp = true; for (const e of s.enemies) e.speed *= 0.25; }, remove: s => { s.timeWarp = false; for (const e of s.enemies) e.speed *= 4; } },
-  { id: 'magnetAura', name: 'MAGNET AURA', color: '#aaaaaa', colorHex: 0xaaaaaa, desc: '5x Pickup Radius!', duration: 20, apply: s => { s.collectRadius *= 5; }, remove: s => { s.collectRadius /= 5; } },
-  { id: 'mirrorImage', name: 'MIRROR IMAGE', color: '#44ffff', colorHex: 0x44ffff, desc: 'AI Clones Fight For You!', duration: 15, apply: s => { s.mirrorClones = true; }, remove: s => { s.mirrorClones = false; } },
-  { id: 'bombTrail', name: 'BOMB TRAIL', color: '#ff6622', colorHex: 0xff6622, desc: 'Leave Explosive Bombs!', duration: 12, apply: s => { s.bombTrail = true; s.bombTrailTimer = 0; }, remove: s => { s.bombTrail = false; } },
-  { id: 'regenBurst', name: 'REGEN BURST', color: '#33ff33', colorHex: 0x33ff33, desc: 'Rapidly Heal To Full!', duration: 5, apply: s => { s.regenBurst = true; }, remove: s => { s.regenBurst = false; } },
-];
-
-/**
- * Permanent item definitions for 3D mode. Found as floating pickups on the map.
- * Items occupy named equipment slots; only one item per slot (armor allows tier upgrade).
- *
- * 11 items across 9 slots:
- * - leather/chainmail (armor slot, tier 1/2): -25%/-40% damage taken
- * - glasses (glasses slot): Reveals crate/pickup contents through HUD labels
- * - cowboyBoots/soccerCleats (boots slot): +20% attack range / +15% move speed
- * - magnetRing (ring slot): +50% pickup radius (permanent)
- * - luckyCharm (charm slot): +50% zombie loot drop rate
- * - thornedVest (vest slot): Reflects 20% of contact damage back to attacker
- * - healthPendant (pendant slot): +1 HP/s passive regeneration
- * - shieldBracelet (bracelet slot): Blocks 1 hit every 30 seconds
- * - critGloves (gloves slot): 15% chance for 2x damage on attacks
- *
- * @constant {Array.<{id: string, name: string, color: string, colorHex: number, desc: string, slot: string, tier?: number}>}
- */
-const ITEMS_3D = [
-  { id: 'leather', name: 'LEATHER ARMOR', color: '#b08040', colorHex: 0xb08040, desc: '-25% Damage Taken', slot: 'armor', tier: 1 },
-  { id: 'chainmail', name: 'CHAINMAIL', color: '#aaaacc', colorHex: 0xaaaacc, desc: '-40% Damage Taken', slot: 'armor', tier: 2 },
-  { id: 'glasses', name: 'AVIATOR GLASSES', color: '#ffaa00', colorHex: 0xffaa00, desc: 'See Crate Contents', slot: 'glasses' },
-  { id: 'cowboyBoots', name: 'COWBOY BOOTS', color: '#8B4513', colorHex: 0x8B4513, desc: '+20% Attack Range', slot: 'boots' },
-  { id: 'soccerCleats', name: 'SOCCER CLEATS', color: '#00cc44', colorHex: 0x00cc44, desc: '+15% Move Speed', slot: 'boots' },
-  { id: 'magnetRing', name: 'MAGNET RING', color: '#cccccc', colorHex: 0xcccccc, desc: '+50% Pickup Radius', slot: 'ring' },
-  { id: 'luckyCharm', name: 'LUCKY CHARM', color: '#ffdd44', colorHex: 0xffdd44, desc: '+50% Drop Rate', slot: 'charm' },
-  { id: 'thornedVest', name: 'THORNED VEST', color: '#cc4422', colorHex: 0xcc4422, desc: 'Reflect 20% Damage', slot: 'vest' },
-  { id: 'healthPendant', name: 'HEALTH PENDANT', color: '#44ff88', colorHex: 0x44ff88, desc: '+1 HP/s Regen', slot: 'pendant' },
-  { id: 'shieldBracelet', name: 'SHIELD BRACELET', color: '#4488ff', colorHex: 0x4488ff, desc: 'Block 1 Hit / 30s', slot: 'bracelet' },
-  { id: 'critGloves', name: 'CRIT GLOVES', color: '#ff4488', colorHex: 0xff4488, desc: '15% Chance 2x Damage', slot: 'gloves' },
-];
-
-/**
- * Shrine augment types — permanent micro-buffs obtained by destroying shrines.
- * Each shrine grants a random augment. Augments stack indefinitely.
- *
- * 8 augment types:
- * - maxHp: +5% max HP + 10 HP instant heal
- * - xpGain: +5% XP gain (multiplicative via augmentXpMult)
- * - damage: +5% damage (multiplicative via augmentDmgMult)
- * - moveSpeed: +5% movement speed (multiplicative on playerSpeed)
- * - atkSpeed: +5% attack speed (multiplicative on attackSpeed)
- * - pickupRadius: +10% pickup radius (multiplicative on collectRadius)
- * - armor: +3% flat damage reduction (additive on augmentArmor)
- * - regen: +0.5 HP/s regeneration (additive on augmentRegen)
- *
- * @constant {Array.<{id: string, name: string, color: string, apply: function(State3D): void}>}
- */
-const SHRINE_AUGMENTS = [
-  { id: 'maxHp', name: '+5% Max HP', color: '#44ff44', apply: s => { s.maxHp = Math.floor(s.maxHp * 1.05); s.hp = Math.min(s.hp + 10, s.maxHp); } },
-  { id: 'xpGain', name: '+5% XP Gain', color: '#44aaff', apply: s => { s.augmentXpMult = (s.augmentXpMult || 1) * 1.05; } },
-  { id: 'damage', name: '+5% Damage', color: '#ff4444', apply: s => { s.augmentDmgMult = (s.augmentDmgMult || 1) * 1.05; } },
-  { id: 'moveSpeed', name: '+5% Move Speed', color: '#ffaa44', apply: s => { s.playerSpeed *= 1.05; } },
-  { id: 'atkSpeed', name: '+5% Attack Speed', color: '#ff44ff', apply: s => { s.attackSpeed *= 1.05; } },
-  { id: 'pickupRadius', name: '+10% Pickup Radius', color: '#ffff44', apply: s => { s.collectRadius *= 1.1; } },
-  { id: 'armor', name: '+3% Armor', color: '#aaaacc', apply: s => { s.augmentArmor = (s.augmentArmor || 0) + 0.03; } },
-  { id: 'regen', name: '+0.5 HP/s Regen', color: '#88ffaa', apply: s => { s.augmentRegen = (s.augmentRegen || 0) + 0.5; } },
-];
-
-/**
- * Difficulty totem effect multipliers — applied per totem destroyed.
- * Totems are a risk/reward mechanic: destroying one increases zombie difficulty
- * but also boosts XP and score gains. All multipliers are cumulative (multiplicative).
- *
- * @constant {Object}
- * @property {number} zombieHpMult    - 1.15 = +15% zombie HP per totem destroyed.
- * @property {number} zombieSpeedMult - 1.10 = +10% zombie movement speed per totem.
- * @property {number} spawnRateMult   - 1.15 = +15% spawn rate per totem.
- * @property {number} xpBonusMult     - 1.25 = +25% XP gain per totem.
- * @property {number} scoreBonusMult  - 1.25 = +25% score gain per totem.
- */
-const TOTEM_EFFECT = {
-  zombieHpMult: 1.15,     // +15% zombie HP per totem
-  zombieSpeedMult: 1.10,  // +10% zombie speed per totem
-  spawnRateMult: 1.15,    // +15% spawn rate per totem
-  xpBonusMult: 1.25,      // +25% XP per totem
-  scoreBonusMult: 1.25,   // +25% score per totem
-};
 
 /**
  * @typedef {Object} State3D
@@ -589,13 +379,7 @@ export function launch3DGame(options) {
     localStorage.setItem(`avz3d-leaderboard-${diffKey}`, JSON.stringify(st.leaderboard3d));
   }
 
-  // Animal-specific starting weapon
-  const ANIMAL_WEAPONS = {
-    leopard: 'clawSwipe',
-    redPanda: 'boomerang',
-    lion: 'lightningBolt',
-    gator: 'poisonCloud',
-  };
+  // Animal-specific starting weapon (ANIMAL_WEAPONS imported from 3d/constants.js)
   const startWeapon = ANIMAL_WEAPONS[animalId] || 'clawSwipe';
   st.weapons.push({ typeId: startWeapon, level: 1, cooldownTimer: 0 });
 
@@ -779,228 +563,18 @@ export function launch3DGame(options) {
   scene.add(eastWall);
 
   // === PROCEDURAL TERRAIN ===
+  // Terrain generation logic is imported from 3d/terrain.js.
+  // Pure functions (noise2D, smoothNoise, terrainHeight, getBiome, BIOME_COLORS, getChunkKey)
+  // are used directly. Chunk management functions use a TerrainState object.
+  const terrainState = createTerrainState();
 
-  /**
-   * Simple seeded 2D noise function using sine-based hash.
-   * Produces a deterministic pseudo-random value in [0, 1) for any (x, z) coordinate.
-   * Used as the foundation for terrain height, biome selection, and decoration placement.
-   *
-   * @param {number} x - X coordinate input.
-   * @param {number} z - Z coordinate input.
-   * @returns {number} Pseudo-random value in [0, 1).
-   */
-  function noise2D(x, z) {
-    const n = Math.sin(x * 12.9898 + z * 78.233) * 43758.5453;
-    return n - Math.floor(n);
-  }
-  /**
-   * Bilinearly interpolated noise at a given scale.
-   * Smooths the raw noise2D output using Hermite interpolation for natural-looking terrain.
-   *
-   * @param {number} x - World X coordinate.
-   * @param {number} z - World Z coordinate.
-   * @param {number} scale - Noise scale (larger = smoother/broader features).
-   * @returns {number} Interpolated noise value in [0, 1).
-   */
-  function smoothNoise(x, z, scale) {
-    const sx = x / scale, sz = z / scale;
-    const ix = Math.floor(sx), iz = Math.floor(sz);
-    const fx = sx - ix, fz = sz - iz;
-    const a = noise2D(ix, iz), b = noise2D(ix + 1, iz);
-    const c = noise2D(ix, iz + 1), d = noise2D(ix + 1, iz + 1);
-    const u = fx * fx * (3 - 2 * fx), v = fz * fz * (3 - 2 * fz);
-    return a * (1 - u) * (1 - v) + b * u * (1 - v) + c * (1 - u) * v + d * u * v;
-  }
-  /**
-   * Compute the terrain height at a world position using multi-octave noise.
-   * Combines 3 octaves at scales 12, 6, and 3 for varied terrain with large hills and fine detail.
-   *
-   * @param {number} x - World X coordinate.
-   * @param {number} z - World Z coordinate.
-   * @returns {number} Terrain height in world Y units (typically 0-3.3 range).
-   */
-  function terrainHeight(x, z) {
-    return smoothNoise(x, z, 12) * 2 + smoothNoise(x, z, 6) * 1 + smoothNoise(x, z, 3) * 0.3;
-  }
-  /**
-   * Determine the biome type at a world position.
-   * Uses a large-scale noise sample (offset by 500 to decouple from terrain height)
-   * to divide the world into three biome regions.
-   *
-   * @param {number} x - World X coordinate.
-   * @param {number} z - World Z coordinate.
-   * @returns {'forest'|'desert'|'plains'} The biome at the given position.
-   */
-  function getBiome(x, z) {
-    const v = smoothNoise(x + 500, z + 500, 25);
-    if (v < 0.33) return 'forest';
-    if (v < 0.66) return 'desert';
-    return 'plains';
-  }
-  const BIOME_COLORS = {
-    forest: [0x1a6622, 0x228833, 0x2a7a2a],
-    desert: [0xc4a44a, 0xbba040, 0xd4b44a],
-    plains: [0x44aa44, 0x55bb55, 0x3a9a3a],
-  };
+  /** Wrapper: generate a terrain chunk, delegating to the terrain module. */
+  function generateChunk(cx, cz) { terrainGenerateChunk(cx, cz, scene, terrainState); }
+  /** Wrapper: unload a terrain chunk, delegating to the terrain module. */
+  function unloadChunk(cx, cz) { terrainUnloadChunk(cx, cz, scene, terrainState); }
+  /** Wrapper: update terrain chunks around the player, delegating to the terrain module. */
+  function updateChunks(px, pz) { terrainUpdateChunks(px, pz, scene, terrainState); }
 
-  // Generate terrain chunks
-  const terrainChunks = {};
-  const chunkMeshes = {};
-  const loadedChunks = new Set();
-  const decorations = []; // trees, rocks, etc.
-
-  /**
-   * Generate a string key for a chunk at grid coordinates (cx, cz).
-   *
-   * @param {number} cx - Chunk X index.
-   * @param {number} cz - Chunk Z index.
-   * @returns {string} Chunk key in "cx,cz" format.
-   */
-  function getChunkKey(cx, cz) { return `${cx},${cz}`; }
-
-  /**
-   * Generate a terrain chunk at the given chunk grid coordinates.
-   * Creates an 8x8 subdivided plane mesh with per-vertex height displacement,
-   * biome-colored material, and random decorations (trees in forest/plains, rocks in desert).
-   * Skips chunks outside MAP_HALF bounds or already loaded.
-   *
-   * @param {number} cx - Chunk X index.
-   * @param {number} cz - Chunk Z index.
-   */
-  function generateChunk(cx, cz) {
-    const key = getChunkKey(cx, cz);
-    if (loadedChunks.has(key)) return;
-    // Skip chunks entirely outside map bounds
-    const chunkMinX = cx * CHUNK_SIZE;
-    const chunkMaxX = chunkMinX + CHUNK_SIZE;
-    const chunkMinZ = cz * CHUNK_SIZE;
-    const chunkMaxZ = chunkMinZ + CHUNK_SIZE;
-    if (chunkMaxX < -MAP_HALF || chunkMinX > MAP_HALF || chunkMaxZ < -MAP_HALF || chunkMinZ > MAP_HALF) return;
-    loadedChunks.add(key);
-
-    const ox = cx * CHUNK_SIZE, oz = cz * CHUNK_SIZE;
-    const geo = new THREE.PlaneGeometry(CHUNK_SIZE, CHUNK_SIZE, 8, 8);
-    const posAttr = geo.attributes.position;
-
-    // Determine dominant biome for chunk
-    const biome = getBiome(ox + CHUNK_SIZE / 2, oz + CHUNK_SIZE / 2);
-    const colors = BIOME_COLORS[biome];
-    const color = colors[Math.floor(noise2D(cx, cz) * colors.length)];
-
-    for (let i = 0; i < posAttr.count; i++) {
-      const lx = posAttr.getX(i);
-      const lz = posAttr.getY(i); // plane is XY before rotation
-      const wx = ox + lx, wz = oz + lz;
-      const h = terrainHeight(wx, wz);
-      posAttr.setZ(i, h);
-    }
-    geo.computeVertexNormals();
-
-    const mat = new THREE.MeshLambertMaterial({ color });
-    const mesh = new THREE.Mesh(geo, mat);
-    mesh.rotation.x = -Math.PI / 2;
-    mesh.position.set(ox, 0, oz);
-    mesh.receiveShadow = true;
-    scene.add(mesh);
-    chunkMeshes[key] = mesh;
-
-    // Decorations: trees, rocks
-    const numDecos = Math.floor(noise2D(cx * 3 + 7, cz * 3 + 13) * 5);
-    for (let d = 0; d < numDecos; d++) {
-      const dx = ox + noise2D(cx + d * 7, cz + d * 13) * CHUNK_SIZE;
-      const dz = oz + noise2D(cx + d * 11, cz + d * 17) * CHUNK_SIZE;
-      const h = terrainHeight(dx, dz);
-
-      if (biome === 'forest' || (biome === 'plains' && noise2D(dx, dz) > 0.5)) {
-        // Tree: trunk + canopy
-        const trunk = new THREE.Mesh(
-          new THREE.BoxGeometry(0.3, 2, 0.3),
-          new THREE.MeshLambertMaterial({ color: 0x664422 })
-        );
-        trunk.position.set(dx, h + 1, dz);
-        trunk.castShadow = true;
-        scene.add(trunk);
-        const canopy = new THREE.Mesh(
-          new THREE.BoxGeometry(1.8, 1.5, 1.8),
-          new THREE.MeshLambertMaterial({ color: biome === 'forest' ? 0x226622 : 0x44aa33 })
-        );
-        canopy.position.set(dx, h + 2.5, dz);
-        canopy.castShadow = true;
-        scene.add(canopy);
-        decorations.push({ meshes: [trunk, canopy], x: dx, z: dz });
-      } else if (biome === 'desert') {
-        // Rock
-        const rock = new THREE.Mesh(
-          new THREE.BoxGeometry(0.8 + noise2D(dx, dz) * 0.8, 0.5 + noise2D(dz, dx) * 0.6, 0.8 + noise2D(dx + 1, dz) * 0.8),
-          new THREE.MeshLambertMaterial({ color: 0x998877 })
-        );
-        rock.position.set(dx, h + 0.3, dz);
-        rock.castShadow = true;
-        scene.add(rock);
-        decorations.push({ meshes: [rock], x: dx, z: dz });
-      }
-    }
-  }
-
-  /**
-   * Unload a terrain chunk and its decorations, disposing all Three.js resources.
-   *
-   * @param {number} cx - Chunk X index.
-   * @param {number} cz - Chunk Z index.
-   */
-  function unloadChunk(cx, cz) {
-    const key = getChunkKey(cx, cz);
-    if (!loadedChunks.has(key)) return;
-    const mesh = chunkMeshes[key];
-    if (mesh) {
-      scene.remove(mesh);
-      mesh.geometry.dispose();
-      mesh.material.dispose();
-      delete chunkMeshes[key];
-    }
-    // Remove decorations in this chunk
-    const ox = cx * CHUNK_SIZE, oz = cz * CHUNK_SIZE;
-    for (let i = decorations.length - 1; i >= 0; i--) {
-      const d = decorations[i];
-      if (d.x >= ox && d.x < ox + CHUNK_SIZE && d.z >= oz && d.z < oz + CHUNK_SIZE) {
-        d.meshes.forEach(m => { scene.remove(m); m.geometry.dispose(); m.material.dispose(); });
-        decorations.splice(i, 1);
-      }
-    }
-    loadedChunks.delete(key);
-  }
-
-  /**
-   * Load/unload terrain chunks around the player position.
-   * Loads all chunks within VIEW_DIST (4) chunks of the player's chunk,
-   * and unloads any loaded chunks beyond VIEW_DIST + 1.
-   *
-   * @param {number} px - Player world X position.
-   * @param {number} pz - Player world Z position.
-   * @see generateChunk
-   * @see unloadChunk
-   */
-  function updateChunks(px, pz) {
-    const pcx = Math.floor(px / CHUNK_SIZE);
-    const pcz = Math.floor(pz / CHUNK_SIZE);
-    const VIEW_DIST = 4;
-
-    // Load nearby
-    for (let dx = -VIEW_DIST; dx <= VIEW_DIST; dx++) {
-      for (let dz = -VIEW_DIST; dz <= VIEW_DIST; dz++) {
-        generateChunk(pcx + dx, pcz + dz);
-      }
-    }
-    // Unload far
-    const toRemove = [];
-    for (const key of loadedChunks) {
-      const [cx, cz] = key.split(',').map(Number);
-      if (Math.abs(cx - pcx) > VIEW_DIST + 1 || Math.abs(cz - pcz) > VIEW_DIST + 1) {
-        toRemove.push([cx, cz]);
-      }
-    }
-    toRemove.forEach(([cx, cz]) => unloadChunk(cx, cz));
-  }
 
   // === PLATFORMS ===
   const platforms = [];
@@ -1559,20 +1133,7 @@ export function launch3DGame(options) {
   const fireGeo = new THREE.BoxGeometry(0.2, 0.2, 0.2);
   const fireMat = new THREE.MeshBasicMaterial({ color: 0xff6600 });
 
-  // === ZOMBIE TIER SYSTEM ===
-  // Tiers 1-10: zombies merge on collision to form stronger ones
-  const ZOMBIE_TIERS = [
-    { scale: 1.0,  hpMult: 1,   dmgMult: 1,   speed: 1.8,  body: 0x4a6a4a, head: 0x5a7a5a, eye: 0xff0000, name: 'Shambler' },
-    { scale: 1.15, hpMult: 2.2, dmgMult: 1.5, speed: 1.7, body: 0x3a6a3a, head: 0x4a8a4a, eye: 0xff2200, name: 'Lurcher' },
-    { scale: 1.3,  hpMult: 3.5, dmgMult: 2,   speed: 1.6, body: 0x3a5a2a, head: 0x4a6a3a, eye: 0xff4400, name: 'Bruiser' },
-    { scale: 1.5,  hpMult: 5,   dmgMult: 2.8, speed: 1.5, body: 0x4a4a2a, head: 0x5a5a3a, eye: 0xff6600, name: 'Brute' },
-    { scale: 1.7,  hpMult: 7,   dmgMult: 3.5, speed: 1.4, body: 0x5a3a2a, head: 0x6a4a3a, eye: 0xff8800, name: 'Ravager' },
-    { scale: 1.9,  hpMult: 10,  dmgMult: 4.5, speed: 1.35, body: 0x6a2a1a, head: 0x7a3a2a, eye: 0xffaa00, name: 'Horror' },
-    { scale: 2.15, hpMult: 14,  dmgMult: 5.5, speed: 1.3, body: 0x7a1a1a, head: 0x8a2a2a, eye: 0xffcc00, name: 'Abomination' },
-    { scale: 2.4,  hpMult: 19,  dmgMult: 7,   speed: 1.25, body: 0x8a1010, head: 0x9a2020, eye: 0xffdd00, name: 'Nightmare' },
-    { scale: 2.7,  hpMult: 25,  dmgMult: 9,   speed: 1.2, body: 0x990808, head: 0xaa1818, eye: 0xffee44, name: 'Titan' },
-    { scale: 3.0,  hpMult: 35,  dmgMult: 12,  speed: 1.15, body: 0xaa0000, head: 0xbb1111, eye: 0xffff66, name: 'Overlord' },
-  ];
+  // === ZOMBIE TIER SYSTEM === (ZOMBIE_TIERS imported from 3d/constants.js)
 
   // === ENEMY CREATION (tier-based zombie) ===
 
