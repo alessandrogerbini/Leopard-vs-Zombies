@@ -7,8 +7,8 @@
  * combat, UI, and cleanup within a single function scope. Three.js handles 3D rendering while
  * a transparent HUD canvas overlay provides 2D UI elements (health bars, menus, score display).
  *
- * The world uses chunk-based infinite terrain with procedural noise-driven biomes (forest,
- * desert, plains). Enemies follow a 10-tier zombie merge system where same-tier zombies
+ * The world uses chunk-based infinite terrain with procedural noise-driven forest biome
+ * and grounded plateaus. Enemies follow a 10-tier zombie merge system where same-tier zombies
  * collide and combine into stronger variants. The player has an auto-attack system,
  * a hold-to-charge power attack, up to 4 weapon slots with 6 weapon types, passive scrolls,
  * shrine augments, difficulty totems, 18 temporary powerups, and 11 permanent items.
@@ -257,7 +257,7 @@ export function launch3DGame(options) {
     collectRadius: 2,
     jumpForce: JUMP_FORCE,
     attackTimer: 0, // legacy, kept for crate proximity check
-    playerX: 0, playerY: GROUND_Y + 0.2, playerZ: 0,
+    playerX: 0, playerY: terrainHeight(0, 0) + 0.55, playerZ: 0,
     playerVY: 0,
     onGround: true,
     onPlatformY: null, // Y of the platform we're standing on
@@ -586,13 +586,108 @@ export function launch3DGame(options) {
   function updateChunks(px, pz) { terrainUpdateChunks(px, pz, scene, terrainState); }
 
 
-  // === PLATFORMS ===
+  // === PLATEAUS ===
+  // Grounded plateaus replace floating platforms. Each plateau has a flat top surface
+  // and visible earth/stone sides. Heights are 1-4 units (1 unit ~ zombie height ~ 1.0 world units).
+  // The platforms array and collision system remain unchanged for compatibility.
   const platforms = [];
   const platformsByChunk = {};
 
+  // Colors for plateau construction
+  const PLATEAU_TOP_COLOR = 0x556633;    // mossy earth green (forest)
+  const PLATEAU_SIDE_COLORS = [0x8B7355, 0x7A6645, 0x6B5B3A]; // earth/stone browns
+  const PLATEAU_STONE_COLORS = [0x777777, 0x888888, 0x666666]; // stone grays for tall plateaus
+
   /**
-   * Generate elevated platforms for a chunk. Platforms are box meshes floating 2-4 units
-   * above terrain, with biome-tinted coloring. Number of platforms per chunk is noise-driven (0-2).
+   * Build the meshes for a single plateau at the given position.
+   * Creates a flat top surface and visible side walls with earth/stone coloring.
+   * For taller plateaus (3+), lower portions use stone colors.
+   *
+   * @param {number} px - World X center of plateau.
+   * @param {number} pz - World Z center of plateau.
+   * @param {number} baseH - Terrain height at the plateau position.
+   * @param {number} plateauHeight - Height of the plateau in world units (1-4).
+   * @param {number} pw - Plateau width.
+   * @param {number} pd - Plateau depth.
+   * @returns {THREE.Mesh[]} Array of all meshes composing this plateau.
+   */
+  function buildPlateauMeshes(px, pz, baseH, plateauHeight, pw, pd) {
+    const meshes = [];
+    const topY = baseH + plateauHeight;
+
+    // Top surface (flat walkable area)
+    const topGeo = new THREE.BoxGeometry(pw, 0.3, pd);
+    const topMat = new THREE.MeshLambertMaterial({ color: PLATEAU_TOP_COLOR });
+    const topMesh = new THREE.Mesh(topGeo, topMat);
+    topMesh.position.set(px, topY, pz);
+    topMesh.castShadow = true;
+    topMesh.receiveShadow = true;
+    scene.add(topMesh);
+    meshes.push(topMesh);
+
+    // Side walls — build the visible sides of the plateau
+    // Each side is a tall thin box stretching from terrain level to just below the top.
+    const sideH = plateauHeight;
+    const sideY = baseH + sideH / 2;
+    const wallThick = 0.15;
+
+    // Determine side color based on height — taller plateaus get stone coloring on lower half
+    const useStoneLower = plateauHeight >= 3;
+
+    // Helper to pick color for a side segment
+    function getSideColor(segmentY) {
+      if (useStoneLower && segmentY < baseH + plateauHeight * 0.5) {
+        return PLATEAU_STONE_COLORS[Math.floor(noise2D(px + segmentY, pz) * PLATEAU_STONE_COLORS.length)];
+      }
+      return PLATEAU_SIDE_COLORS[Math.floor(noise2D(px + segmentY * 2, pz + segmentY) * PLATEAU_SIDE_COLORS.length)];
+    }
+
+    // Build sides in segments for visual variety (breaks up the flat look)
+    const numSegments = Math.max(1, Math.ceil(plateauHeight / 1.0));
+    const segH = sideH / numSegments;
+
+    for (let seg = 0; seg < numSegments; seg++) {
+      const segBot = baseH + seg * segH;
+      const segMid = segBot + segH / 2;
+      const sideColor = getSideColor(segBot);
+      const sideMat = new THREE.MeshLambertMaterial({ color: sideColor });
+
+      // Front side (positive Z)
+      const front = new THREE.Mesh(new THREE.BoxGeometry(pw, segH, wallThick), sideMat);
+      front.position.set(px, segMid, pz + pd / 2);
+      front.castShadow = true;
+      scene.add(front);
+      meshes.push(front);
+
+      // Back side (negative Z)
+      const back = new THREE.Mesh(new THREE.BoxGeometry(pw, segH, wallThick), sideMat);
+      back.position.set(px, segMid, pz - pd / 2);
+      back.castShadow = true;
+      scene.add(back);
+      meshes.push(back);
+
+      // Left side (negative X)
+      const left = new THREE.Mesh(new THREE.BoxGeometry(wallThick, segH, pd), sideMat);
+      left.position.set(px - pw / 2, segMid, pz);
+      left.castShadow = true;
+      scene.add(left);
+      meshes.push(left);
+
+      // Right side (positive X)
+      const right = new THREE.Mesh(new THREE.BoxGeometry(wallThick, segH, pd), sideMat);
+      right.position.set(px + pw / 2, segMid, pz);
+      right.castShadow = true;
+      scene.add(right);
+      meshes.push(right);
+    }
+
+    return meshes;
+  }
+
+  /**
+   * Generate grounded plateaus for a chunk. Plateaus are solid earth/stone formations
+   * rising 1-4 units from the terrain surface, with visible sides and flat walkable tops.
+   * 0-2 plateaus per chunk (noise-driven). Occasional stacking creates compound formations.
    *
    * @param {number} cx - Chunk X index.
    * @param {number} cz - Chunk Z index.
@@ -607,34 +702,63 @@ export function launch3DGame(options) {
     platformsByChunk[key] = [];
 
     const ox = cx * CHUNK_SIZE, oz = cz * CHUNK_SIZE;
-    const numPlats = Math.floor(noise2D(cx * 5 + 31, cz * 5 + 37) * 3);
+    const numPlats = Math.floor(noise2D(cx * 5 + 31, cz * 5 + 37) * 3); // 0-2
     for (let i = 0; i < numPlats; i++) {
       const px = ox + 2 + noise2D(cx + i * 19, cz + i * 23) * (CHUNK_SIZE - 4);
       const pz = oz + 2 + noise2D(cx + i * 29, cz + i * 31) * (CHUNK_SIZE - 4);
       const baseH = terrainHeight(px, pz);
-      const ph = baseH + 2 + noise2D(px, pz) * 2; // 2-4 units above ground
-      const pw = 2 + noise2D(px * 2, pz * 2) * 2; // 2-4 wide
-      const pd = 2 + noise2D(px * 3, pz * 3) * 2;
 
-      const biome = getBiome(px, pz);
-      const platColor = biome === 'desert' ? 0xaa8855 : biome === 'forest' ? 0x556633 : 0x667744;
+      // Plateau height: 1, 2, 3, or 4 units
+      const heightRoll = noise2D(px * 1.7, pz * 2.3);
+      let plateauHeight;
+      if (heightRoll < 0.35) plateauHeight = 1;       // 35% chance: low (walkable beneath)
+      else if (heightRoll < 0.65) plateauHeight = 2;   // 30% chance: medium
+      else if (heightRoll < 0.85) plateauHeight = 3;   // 20% chance: tall
+      else plateauHeight = 4;                           // 15% chance: very tall
 
-      const geo = new THREE.BoxGeometry(pw, 0.4, pd);
-      const mat = new THREE.MeshLambertMaterial({ color: platColor });
-      const mesh = new THREE.Mesh(geo, mat);
-      mesh.position.set(px, ph, pz);
-      mesh.castShadow = true;
-      mesh.receiveShadow = true;
-      scene.add(mesh);
+      // Plateau width/depth: varies from narrow pillars to wide hills
+      const sizeRoll = noise2D(px * 2.1, pz * 3.7);
+      let pw, pd;
+      if (sizeRoll < 0.25) {
+        // Narrow pillar
+        pw = 1.5 + noise2D(px * 2, pz * 2) * 1.0; // 1.5-2.5
+        pd = 1.5 + noise2D(px * 3, pz * 3) * 1.0;
+      } else if (sizeRoll < 0.65) {
+        // Medium platform
+        pw = 2.5 + noise2D(px * 2, pz * 2) * 2.0; // 2.5-4.5
+        pd = 2.5 + noise2D(px * 3, pz * 3) * 2.0;
+      } else {
+        // Wide hill
+        pw = 4 + noise2D(px * 2, pz * 2) * 3.0; // 4-7
+        pd = 4 + noise2D(px * 3, pz * 3) * 3.0;
+      }
 
-      const plat = { mesh, x: px, y: ph, z: pz, w: pw, d: pd };
+      const topY = baseH + plateauHeight;
+      const allMeshes = buildPlateauMeshes(px, pz, baseH, plateauHeight, pw, pd);
+
+      // Store as platform for collision (topMesh is allMeshes[0])
+      const plat = { mesh: allMeshes[0], meshes: allMeshes, x: px, y: topY, z: pz, w: pw, d: pd };
       platforms.push(plat);
       platformsByChunk[key].push(plat);
+
+      // Occasional stacking: a smaller plateau on top of this one (10% chance)
+      if (noise2D(px * 4.3, pz * 5.7) > 0.9 && plateauHeight <= 3) {
+        const stackHeight = 1; // stacked plateau is always 1 unit
+        const stackW = pw * (0.5 + noise2D(px * 6, pz * 6) * 0.2); // 50-70% of parent width
+        const stackD = pd * (0.5 + noise2D(px * 7, pz * 7) * 0.2);
+        const stackBaseH = topY + 0.15; // slight gap above parent top
+        const stackTopY = stackBaseH + stackHeight;
+        const stackMeshes = buildPlateauMeshes(px, pz, stackBaseH, stackHeight, stackW, stackD);
+
+        const stackPlat = { mesh: stackMeshes[0], meshes: stackMeshes, x: px, y: stackTopY, z: pz, w: stackW, d: stackD };
+        platforms.push(stackPlat);
+        platformsByChunk[key].push(stackPlat);
+      }
     }
   }
 
   /**
-   * Unload all platforms in a chunk, disposing Three.js resources and removing from the global array.
+   * Unload all plateaus in a chunk, disposing Three.js resources and removing from the global array.
    *
    * @param {number} cx - Chunk X index.
    * @param {number} cz - Chunk Z index.
@@ -644,9 +768,19 @@ export function launch3DGame(options) {
     const plats = platformsByChunk[key];
     if (!plats) return;
     plats.forEach(p => {
-      scene.remove(p.mesh);
-      p.mesh.geometry.dispose();
-      p.mesh.material.dispose();
+      // Dispose all meshes in the plateau (top + sides)
+      if (p.meshes) {
+        p.meshes.forEach(m => {
+          scene.remove(m);
+          m.geometry.dispose();
+          m.material.dispose();
+        });
+      } else {
+        // Fallback for legacy single-mesh platforms
+        scene.remove(p.mesh);
+        p.mesh.geometry.dispose();
+        p.mesh.material.dispose();
+      }
       const idx = platforms.indexOf(p);
       if (idx >= 0) platforms.splice(idx, 1);
     });
