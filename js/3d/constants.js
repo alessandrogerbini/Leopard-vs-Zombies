@@ -312,6 +312,58 @@ export const SHRINE_AUGMENTS = [
 ];
 
 /**
+ * Charge shrine upgrade definitions, organized by rarity tier.
+ * Each shrine rolls a tier on creation (weighted like ITEM_RARITIES).
+ * On charge completion, 3 random upgrades from that tier are offered.
+ */
+export const CHARGE_SHRINE_UPGRADES = {
+  common: [
+    { id: 'hp5',       name: '+5 Max HP',         color: '#44ff44', apply: s => { s.maxHp += 5; s.hp = Math.min(s.hp + 5, s.maxHp); } },
+    { id: 'speed3',    name: '+3% Move Speed',     color: '#ffaa44', apply: s => { s.playerSpeed *= 1.03; } },
+    { id: 'atk3',      name: '+3% Attack Speed',   color: '#ff44ff', apply: s => { s.attackSpeed *= 1.03; } },
+    { id: 'dmg3',      name: '+3% Damage',          color: '#ff4444', apply: s => { s.augmentDmgMult = (s.augmentDmgMult || 1) * 1.03; } },
+    { id: 'regen03',   name: '+0.3 HP/s Regen',    color: '#88ffaa', apply: s => { s.augmentRegen = (s.augmentRegen || 0) + 0.3; } },
+    { id: 'pickup5',   name: '+5% Pickup Radius',  color: '#ffff44', apply: s => { s.collectRadius *= 1.05; } },
+  ],
+  uncommon: [
+    { id: 'hp12',      name: '+12 Max HP',         color: '#44ff44', apply: s => { s.maxHp += 12; s.hp = Math.min(s.hp + 12, s.maxHp); } },
+    { id: 'speed6',    name: '+6% Move Speed',     color: '#ffaa44', apply: s => { s.playerSpeed *= 1.06; } },
+    { id: 'atk6',      name: '+6% Attack Speed',   color: '#ff44ff', apply: s => { s.attackSpeed *= 1.06; } },
+    { id: 'dmg6',      name: '+6% Damage',          color: '#ff4444', apply: s => { s.augmentDmgMult = (s.augmentDmgMult || 1) * 1.06; } },
+    { id: 'regen07',   name: '+0.7 HP/s Regen',    color: '#88ffaa', apply: s => { s.augmentRegen = (s.augmentRegen || 0) + 0.7; } },
+    { id: 'armor3',    name: '+3% Armor',           color: '#aaaacc', apply: s => { s.augmentArmor = (s.augmentArmor || 0) + 0.03; } },
+  ],
+  rare: [
+    { id: 'hp25',      name: '+25 Max HP',         color: '#44ff44', apply: s => { s.maxHp += 25; s.hp = Math.min(s.hp + 25, s.maxHp); } },
+    { id: 'speed10',   name: '+10% Move Speed',    color: '#ffaa44', apply: s => { s.playerSpeed *= 1.10; } },
+    { id: 'atk10',     name: '+10% Attack Speed',  color: '#ff44ff', apply: s => { s.attackSpeed *= 1.10; } },
+    { id: 'dmg10',     name: '+10% Damage',         color: '#ff4444', apply: s => { s.augmentDmgMult = (s.augmentDmgMult || 1) * 1.10; } },
+    { id: 'regen12',   name: '+1.2 HP/s Regen',    color: '#88ffaa', apply: s => { s.augmentRegen = (s.augmentRegen || 0) + 1.2; } },
+    { id: 'xp10',      name: '+10% XP Gain',       color: '#44aaff', apply: s => { s.augmentXpMult = (s.augmentXpMult || 1) * 1.10; } },
+  ],
+  legendary: [
+    { id: 'hp50',      name: '+50 Max HP',         color: '#44ff44', apply: s => { s.maxHp += 50; s.hp = Math.min(s.hp + 50, s.maxHp); } },
+    { id: 'speed15',   name: '+15% Move Speed',    color: '#ffaa44', apply: s => { s.playerSpeed *= 1.15; } },
+    { id: 'dmg15',     name: '+15% Damage',         color: '#ff4444', apply: s => { s.augmentDmgMult = (s.augmentDmgMult || 1) * 1.15; } },
+    { id: 'regen2',    name: '+2.0 HP/s Regen',    color: '#88ffaa', apply: s => { s.augmentRegen = (s.augmentRegen || 0) + 2.0; } },
+    { id: 'fullheal',  name: 'Full Heal',           color: '#ffffff', apply: s => { s.hp = s.maxHp; } },
+    { id: 'allstats5', name: '+5% All Stats',       color: '#ffcc00', apply: s => { s.playerSpeed *= 1.05; s.attackSpeed *= 1.05; s.augmentDmgMult = (s.augmentDmgMult || 1) * 1.05; s.maxHp = Math.floor(s.maxHp * 1.05); } },
+  ],
+};
+
+/** Rarity weights for charge shrine tier assignment */
+export const CHARGE_SHRINE_WEIGHTS = { common: 50, uncommon: 28, rare: 16, legendary: 6 };
+
+/** Number of charge shrines to pre-place at game start */
+export const CHARGE_SHRINE_COUNT = 12;
+
+/** Charge time in seconds to activate a shrine */
+export const CHARGE_SHRINE_TIME = 4;
+
+/** Radius in world units — player must stay within this to charge */
+export const CHARGE_SHRINE_RADIUS = 3;
+
+/**
  * Difficulty totem effect multipliers — applied per totem destroyed.
  * Totems are a risk/reward mechanic: destroying one increases zombie difficulty
  * but also boosts XP and score gains. All multipliers are cumulative (multiplicative).

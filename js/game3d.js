@@ -34,6 +34,8 @@ import {
   ANIMAL_PALETTES, WEAPON_TYPES, HOWL_TYPES, POWERUPS_3D, ITEMS_3D, ITEM_RARITIES,
   SHRINE_AUGMENTS, TOTEM_EFFECT, ZOMBIE_TIERS, ANIMAL_WEAPONS,
   MAP_GEMS_PER_CHUNK, GEM_XP_MIN, GEM_XP_MAX, GEM_COLLECT_RADIUS,
+  CHARGE_SHRINE_UPGRADES, CHARGE_SHRINE_WEIGHTS, CHARGE_SHRINE_COUNT,
+  CHARGE_SHRINE_TIME, CHARGE_SHRINE_RADIUS,
 } from './3d/constants.js';
 
 import {
@@ -365,6 +367,13 @@ export function launch3DGame(options) {
     augmentDmgMult: 1,
     augmentArmor: 0,
     augmentRegen: 0,
+    // Charge shrines
+    chargeShrines: [],          // Array of charge shrine objects
+    chargeShrineCurrent: null,  // Shrine currently being charged (or null)
+    chargeShrineProgress: 0,    // 0 to CHARGE_SHRINE_TIME seconds
+    chargeShrineMenu: false,    // true = showing upgrade choice overlay
+    chargeShrineChoices: [],    // 3 upgrade options rolled on charge complete
+    selectedChargeShrineUpgrade: 0, // cursor index in choice menu
     // Difficulty totems
     totems: [],
     totemCount: 0,
@@ -516,6 +525,50 @@ export function launch3DGame(options) {
         st.rerolls--;
         showUpgradeMenu(); // re-generates choices
       }
+    } else if (st.chargeShrineMenu && !st.gameOver) {
+      // Charge shrine choice menu navigation
+      if (e.code === 'ArrowLeft' || e.code === 'KeyA') {
+        st.selectedChargeShrineUpgrade = Math.max(0, st.selectedChargeShrineUpgrade - 1);
+      }
+      if (e.code === 'ArrowRight' || e.code === 'KeyD') {
+        st.selectedChargeShrineUpgrade = Math.min(st.chargeShrineChoices.length - 1, st.selectedChargeShrineUpgrade + 1);
+      }
+      if (e.code === 'Enter' || e.code === 'Space') {
+        const chosen = st.chargeShrineChoices[st.selectedChargeShrineUpgrade];
+        if (chosen) {
+          chosen.apply(st);
+          // Mark shrine as used
+          if (st.chargeShrineCurrent) {
+            st.chargeShrineCurrent.charged = true;
+            // Dim the shrine visually
+            if (st.chargeShrineCurrent.crystal) {
+              st.chargeShrineCurrent.crystal.material.opacity = 0.2;
+              st.chargeShrineCurrent.crystal.material.color.setHex(0x444444);
+            }
+            if (st.chargeShrineCurrent.groundRing) {
+              st.chargeShrineCurrent.groundRing.material.opacity = 0.05;
+            }
+          }
+          // Show floating text
+          if (st.chargeShrineCurrent) {
+            st.floatingTexts3d.push({
+              text: chosen.name,
+              color: chosen.color,
+              x: st.chargeShrineCurrent.x,
+              y: terrainHeight(st.chargeShrineCurrent.x, st.chargeShrineCurrent.z) + 3,
+              z: st.chargeShrineCurrent.z,
+              life: 2.0,
+            });
+          }
+          playSound('sfx_level_up'); // Celebration sound
+        }
+        // Close menu
+        st.chargeShrineMenu = false;
+        st.paused = false;
+        st.chargeShrineCurrent = null;
+        st.chargeShrineProgress = 0;
+        st.chargeShrineChoices = [];
+      }
     } else if (st.pauseMenu && !st.gameOver) {
       // Pause menu navigation
       if (e.code === 'Escape') {
@@ -541,7 +594,7 @@ export function launch3DGame(options) {
           onReturn();
         }
       }
-    } else if (!st.gameOver && !st.upgradeMenu && !st.pauseMenu) {
+    } else if (!st.gameOver && !st.upgradeMenu && !st.pauseMenu && !st.chargeShrineMenu) {
       // Normal gameplay — Enter/NumpadEnter/B handled by power attack in game loop via keys3d
       // Escape opens pause menu
       if (e.code === 'Escape') {
@@ -570,7 +623,7 @@ export function launch3DGame(options) {
       st.enterReleasedSinceGameOver = true;
     }
     // Power attack release
-    if ((e.code === 'Enter' || e.code === 'NumpadEnter' || e.code === 'KeyB') && st.charging && !st.gameOver && !st.upgradeMenu && !st.pauseMenu) {
+    if ((e.code === 'Enter' || e.code === 'NumpadEnter' || e.code === 'KeyB') && st.charging && !st.gameOver && !st.upgradeMenu && !st.pauseMenu && !st.chargeShrineMenu) {
       st.charging = false;
       st.powerAttackReady = true;
     }
@@ -1104,6 +1157,105 @@ export function launch3DGame(options) {
     return { group, x, z, y: gh, orb, hp: 5, alive: true };
   }
 
+  // === CHARGE SHRINES ===
+
+  /**
+   * Roll a rarity tier for a charge shrine using weighted random selection.
+   * Weights match CHARGE_SHRINE_WEIGHTS: common 50, uncommon 28, rare 16, legendary 6.
+   *
+   * @returns {string} One of 'common', 'uncommon', 'rare', 'legendary'.
+   */
+  function rollChargeShrineRarity() {
+    const total = Object.values(CHARGE_SHRINE_WEIGHTS).reduce((a, b) => a + b, 0);
+    let roll = Math.random() * total;
+    for (const [rarity, weight] of Object.entries(CHARGE_SHRINE_WEIGHTS)) {
+      roll -= weight;
+      if (roll <= 0) return rarity;
+    }
+    return 'common';
+  }
+
+  /**
+   * Create a charge shrine mesh at the given world position.
+   * Charge shrines are visually larger than regular shrines with rarity-colored crystals.
+   * Player must stand within CHARGE_SHRINE_RADIUS for CHARGE_SHRINE_TIME seconds to activate.
+   *
+   * @param {number} x - World X coordinate.
+   * @param {number} z - World Z coordinate.
+   * @param {string} rarity - Rarity tier ('common', 'uncommon', 'rare', 'legendary').
+   * @returns {{group: THREE.Group, crystal: THREE.Mesh, rune: THREE.Mesh, groundRing: THREE.Mesh, x: number, z: number, rarity: string, alive: boolean, charged: boolean}} Charge shrine object.
+   */
+  function createChargeShrineMesh(x, z, rarity) {
+    const group = new THREE.Group();
+    const h = terrainHeight(x, z);
+
+    // Rarity color mapping (matches ITEM_RARITIES visual language)
+    const rarityColors = {
+      common: 0xffffff,
+      uncommon: 0x44ff44,
+      rare: 0x4488ff,
+      legendary: 0xff8800,
+    };
+    const glowColor = rarityColors[rarity] || 0xffffff;
+
+    // Wide stone platform base (2x2)
+    const base = new THREE.Mesh(
+      new THREE.BoxGeometry(2, 0.4, 2),
+      new THREE.MeshLambertMaterial({ color: 0x666666 })
+    );
+    base.position.y = 0.2;
+    base.castShadow = true;
+    base.receiveShadow = true;
+    group.add(base);
+
+    // Inner platform ring
+    const ring = new THREE.Mesh(
+      new THREE.BoxGeometry(1.6, 0.15, 1.6),
+      new THREE.MeshLambertMaterial({ color: 0x888888 })
+    );
+    ring.position.y = 0.45;
+    group.add(ring);
+
+    // Central pillar (tall — 3.5 units to be visible from distance)
+    const pillar = new THREE.Mesh(
+      new THREE.BoxGeometry(0.5, 3.5, 0.5),
+      new THREE.MeshLambertMaterial({ color: 0x999999 })
+    );
+    pillar.position.y = 2.15;
+    pillar.castShadow = true;
+    group.add(pillar);
+
+    // Glowing crystal on top (rarity-colored)
+    const crystal = new THREE.Mesh(
+      new THREE.BoxGeometry(0.6, 0.6, 0.6),
+      new THREE.MeshBasicMaterial({ color: glowColor, transparent: true, opacity: 0.9 })
+    );
+    crystal.position.y = 4.1;
+    crystal.rotation.y = Math.PI / 4; // Diamond orientation
+    group.add(crystal);
+
+    // Smaller floating rune cube
+    const rune = new THREE.Mesh(
+      new THREE.BoxGeometry(0.2, 0.2, 0.2),
+      new THREE.MeshBasicMaterial({ color: glowColor, transparent: true, opacity: 0.6 })
+    );
+    rune.position.y = 3.5;
+    group.add(rune);
+
+    // Ground ring indicator (flat, semi-transparent — shows charge radius)
+    const groundRing = new THREE.Mesh(
+      new THREE.BoxGeometry(CHARGE_SHRINE_RADIUS * 2, 0.05, CHARGE_SHRINE_RADIUS * 2),
+      new THREE.MeshBasicMaterial({ color: glowColor, transparent: true, opacity: 0.15 })
+    );
+    groundRing.position.y = 0.05;
+    group.add(groundRing);
+
+    group.position.set(x, h, z);
+    scene.add(group);
+
+    return { group, crystal, rune, groundRing, x, z, rarity, alive: true, charged: false };
+  }
+
   // Initial terrain + platforms
   updateChunks(0, 0);
   updatePlatformChunks(0, 0);
@@ -1123,6 +1275,15 @@ export function launch3DGame(options) {
     const tz = (Math.random() - 0.5) * (ARENA_SIZE * 2 - 30);
     const totem = createTotemMesh(tx, tz);
     st.totems.push(totem);
+  }
+
+  // Pre-generate charge shrines across the map
+  for (let i = 0; i < CHARGE_SHRINE_COUNT; i++) {
+    const csx = (Math.random() - 0.5) * (ARENA_SIZE * 2 - 20);
+    const csz = (Math.random() - 0.5) * (ARENA_SIZE * 2 - 20);
+    const rarity = rollChargeShrineRarity();
+    const cs = createChargeShrineMesh(csx, csz, rarity);
+    st.chargeShrines.push(cs);
   }
 
   // === PLAYER MODEL (built via 3d/player-model.js) ===
@@ -3755,7 +3916,7 @@ export function launch3DGame(options) {
       // power attack that hits all enemies in range. Charge multiplier increases damage and range.
       // A growing glow mesh provides visual feedback during charging.
       const chargeKey = keys3d['Enter'] || keys3d['NumpadEnter'] || keys3d['KeyB'];
-      if (chargeKey && !st.upgradeMenu && !st.pauseMenu) {
+      if (chargeKey && !st.upgradeMenu && !st.pauseMenu && !st.chargeShrineMenu) {
         if (!st.charging) {
           st.charging = true;
           st.chargeTime = 0;
@@ -4122,6 +4283,72 @@ export function launch3DGame(options) {
         }
       }
 
+      // === CHARGE SHRINE INTERACTION ===
+      // Player stands near an uncharged charge shrine to accumulate charge.
+      // On charge completion, 3 random upgrades from the shrine's rarity tier are offered.
+      if (!st.chargeShrineMenu && !st.upgradeMenu && !st.pauseMenu && !st.gameOver) {
+        let nearestShrine = null;
+        let nearestDist = Infinity;
+        for (const cs of st.chargeShrines) {
+          if (!cs.alive || cs.charged) continue;
+          const dx = st.playerX - cs.x;
+          const dz = st.playerZ - cs.z;
+          const dist = Math.sqrt(dx * dx + dz * dz);
+          if (dist < CHARGE_SHRINE_RADIUS && dist < nearestDist) {
+            nearestShrine = cs;
+            nearestDist = dist;
+          }
+        }
+
+        if (nearestShrine) {
+          if (st.chargeShrineCurrent !== nearestShrine) {
+            // Started charging a new shrine
+            st.chargeShrineCurrent = nearestShrine;
+            st.chargeShrineProgress = 0;
+          }
+          // Accumulate charge
+          st.chargeShrineProgress += dt;
+          if (st.chargeShrineProgress >= CHARGE_SHRINE_TIME) {
+            // Charge complete! Roll 3 upgrades from this shrine's tier
+            const tierUpgrades = CHARGE_SHRINE_UPGRADES[nearestShrine.rarity] || CHARGE_SHRINE_UPGRADES.common;
+            // Pick 3 random unique upgrades
+            const shuffled = [...tierUpgrades].sort(() => Math.random() - 0.5);
+            st.chargeShrineChoices = shuffled.slice(0, Math.min(3, shuffled.length));
+            st.selectedChargeShrineUpgrade = 0;
+            st.chargeShrineMenu = true;
+            st.paused = true;
+            st.chargeShrineProgress = CHARGE_SHRINE_TIME; // Clamp
+            playSound('sfx_shrine_break'); // Reuse shrine sound for activation
+          }
+        } else {
+          // Player left the radius — reset progress
+          if (st.chargeShrineCurrent) {
+            st.chargeShrineCurrent = null;
+            st.chargeShrineProgress = 0;
+          }
+        }
+      }
+
+      // === CHARGE SHRINE ANIMATIONS ===
+      // Crystal rotation, rune orbiting, and pulse glow when player is charging.
+      for (const cs of st.chargeShrines) {
+        if (!cs.alive) continue;
+        // Crystal rotation
+        if (cs.crystal) cs.crystal.rotation.y += dt * 1.5;
+        // Rune orbiting
+        if (cs.rune) {
+          cs.rune.rotation.y += dt * 3;
+          cs.rune.position.x = Math.sin(Date.now() * 0.002) * 0.4;
+          cs.rune.position.z = Math.cos(Date.now() * 0.002) * 0.4;
+        }
+        // Pulse glow when player is charging
+        if (cs === st.chargeShrineCurrent && !cs.charged) {
+          const pulse = 0.6 + Math.sin(Date.now() * 0.01) * 0.3;
+          if (cs.crystal) cs.crystal.material.opacity = pulse;
+          if (cs.groundRing) cs.groundRing.material.opacity = 0.15 + pulse * 0.15;
+        }
+      }
+
       // === FLOATING TEXTS 3D ===
       for (let i = st.floatingTexts3d.length - 1; i >= 0; i--) {
         st.floatingTexts3d[i].y += dt * 1.5;
@@ -4231,6 +4458,18 @@ export function launch3DGame(options) {
     st.weaponEffects.forEach(e => { if (e.shared) scene.remove(e.mesh); else disposeSceneObject(e.mesh); });
     // Dispose charge glow
     if (st.chargeGlow) disposeSceneObject(st.chargeGlow);
+    // Dispose charge shrine meshes
+    st.chargeShrines.forEach(cs => {
+      if (cs.group) {
+        scene.remove(cs.group);
+        cs.group.traverse(child => {
+          if (child.isMesh) {
+            if (child.geometry) child.geometry.dispose();
+            if (child.material) child.material.dispose();
+          }
+        });
+      }
+    });
 
     // Dispose all Three.js objects
     scene.traverse(child => {

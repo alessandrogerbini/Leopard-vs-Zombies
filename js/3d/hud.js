@@ -63,7 +63,7 @@ export function drawHUD(ctx, s, deps) {
   ctx.clearRect(0, 0, W, H);
 
   // --- Normal Gameplay HUD ---
-  if (!s.gameOver && !s.upgradeMenu) {
+  if (!s.gameOver && !s.upgradeMenu && !s.chargeShrineMenu) {
     // Enable text shadow for all HUD text
     ctx.shadowColor = 'rgba(0,0,0,0.8)';
     ctx.shadowBlur = 2;
@@ -317,6 +317,40 @@ export function drawHUD(ctx, s, deps) {
       ctx.fillText('[M] mute', vx, vy + 12);
     }
 
+    // --- Charge Shrine Progress Bar ---
+    if (s.chargeShrineCurrent && !s.chargeShrineMenu && !s.chargeShrineCurrent.charged) {
+      const CHARGE_TIME = 4; // Must match CHARGE_SHRINE_TIME constant
+      const ratio = Math.min(s.chargeShrineProgress / CHARGE_TIME, 1);
+      const rarityColors = { common: '#ffffff', uncommon: '#44ff44', rare: '#4488ff', legendary: '#ff8800' };
+      const shrineColor = rarityColors[s.chargeShrineCurrent.rarity] || '#ffffff';
+      const barW = 200, barH = 20;
+      const bx = W / 2 - barW / 2;
+      const by = H - 120;
+
+      // Background
+      ctx.fillStyle = 'rgba(0,0,0,0.7)';
+      ctx.fillRect(bx - 4, by - 4, barW + 8, barH + 8);
+      ctx.strokeStyle = shrineColor;
+      ctx.lineWidth = 2;
+      ctx.strokeRect(bx - 4, by - 4, barW + 8, barH + 8);
+
+      // Fill
+      ctx.fillStyle = '#1a1a1a';
+      ctx.fillRect(bx, by, barW, barH);
+      ctx.fillStyle = shrineColor;
+      ctx.fillRect(bx, by, barW * ratio, barH);
+
+      // Text
+      ctx.textAlign = 'center';
+      ctx.fillStyle = '#ffffff';
+      ctx.font = 'bold 16px "Courier New"';
+      ctx.fillText('CHARGING SHRINE...', W / 2, by - 10);
+      ctx.fillStyle = '#cccccc';
+      ctx.font = '14px "Courier New"';
+      ctx.fillText('STAY IN RANGE', W / 2, by + barH + 16);
+      ctx.textAlign = 'left';
+    }
+
     // --- Controls Hint (bottom-center) ---
     ctx.textAlign = 'center';
     ctx.fillStyle = 'rgba(255,255,255,0.3)'; ctx.font = '14px "Courier New"';
@@ -544,6 +578,68 @@ export function drawHUD(ctx, s, deps) {
       ctx.fillStyle = '#444'; ctx.font = '14px "Courier New"';
       ctx.fillText('No rerolls remaining', W / 2, cardY + cardH + 80);
     }
+  }
+
+  // --- Charge Shrine Choice Menu ---
+  if (s.chargeShrineMenu && !s.gameOver) {
+    ctx.shadowColor = 'transparent'; ctx.shadowBlur = 0; ctx.shadowOffsetX = 0; ctx.shadowOffsetY = 0;
+    ctx.fillStyle = 'rgba(0,0,0,0.7)'; ctx.fillRect(0, 0, W, H);
+    ctx.textAlign = 'center';
+
+    // Rarity label
+    const rarityNames = { common: 'COMMON', uncommon: 'UNCOMMON', rare: 'RARE', legendary: 'LEGENDARY' };
+    const rarityMenuColors = { common: '#ffffff', uncommon: '#44ff44', rare: '#4488ff', legendary: '#ff8800' };
+    const csRarity = s.chargeShrineCurrent ? s.chargeShrineCurrent.rarity : 'common';
+    const rarColor = rarityMenuColors[csRarity] || '#ffffff';
+
+    ctx.fillStyle = rarColor; ctx.font = 'bold 32px "Courier New"';
+    ctx.fillText('SHRINE ACTIVATED', W / 2, 100);
+    ctx.fillStyle = rarColor; ctx.font = 'bold 18px "Courier New"';
+    ctx.fillText(`${rarityNames[csRarity] || 'COMMON'} SHRINE`, W / 2, 130);
+    ctx.fillStyle = '#ffffff'; ctx.font = '16px "Courier New"';
+    ctx.fillText('Choose an upgrade:', W / 2, 155);
+
+    const csCardW = 180, csCardH = 120, csGap = 25;
+    const csTotalW = s.chargeShrineChoices.length * csCardW + (s.chargeShrineChoices.length - 1) * csGap;
+    const csStartX = (W - csTotalW) / 2;
+    const csCardY = 180;
+
+    for (let i = 0; i < s.chargeShrineChoices.length; i++) {
+      const u = s.chargeShrineChoices[i];
+      const cx = csStartX + i * (csCardW + csGap);
+      const isSelected = i === s.selectedChargeShrineUpgrade;
+
+      if (isSelected) {
+        ctx.fillStyle = u.color;
+        ctx.fillRect(cx - 3, csCardY - 3, csCardW + 6, csCardH + 6);
+      }
+      ctx.fillStyle = isSelected ? '#1a1a2a' : '#111118';
+      ctx.fillRect(cx, csCardY, csCardW, csCardH);
+
+      // Upgrade name
+      ctx.fillStyle = u.color; ctx.font = 'bold 16px "Courier New"';
+      ctx.fillText(u.name, cx + csCardW / 2, csCardY + csCardH / 2 + 6);
+
+      // Selection arrow
+      if (isSelected) {
+        const t = Date.now() * 0.003;
+        const arrowBob = Math.sin(t * 3) * 4;
+        ctx.fillStyle = '#ffcc00';
+        ctx.beginPath();
+        ctx.moveTo(cx + csCardW / 2, csCardY - 10 + arrowBob);
+        ctx.lineTo(cx + csCardW / 2 - 8, csCardY - 20 + arrowBob);
+        ctx.lineTo(cx + csCardW / 2 + 8, csCardY - 20 + arrowBob);
+        ctx.closePath(); ctx.fill();
+      }
+    }
+
+    ctx.fillStyle = '#666'; ctx.font = '14px "Courier New"';
+    ctx.fillText('<  ARROW KEYS  >', W / 2, csCardY + csCardH + 25);
+    if (Math.sin(Date.now() * 0.005) > 0) {
+      ctx.fillStyle = '#ffcc00'; ctx.font = 'bold 18px "Courier New"';
+      ctx.fillText('PRESS ENTER TO SELECT', W / 2, csCardY + csCardH + 55);
+    }
+    ctx.textAlign = 'left';
   }
 
   // --- Game Over Screen (stats + feedback + name entry + leaderboard) ---
