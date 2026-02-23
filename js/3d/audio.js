@@ -32,13 +32,13 @@ const DEFAULT_VOLUME = 0.3;
 const SOUND_MAP = {
   // --- Combat ---
   sfx_melee_hit: [
-    'Bite-1.mp3', 'Bite-2.ogg', 'bite-3.ogg', 'bite-4.ogg',
+    'bite-1.mp3', 'bite-2.ogg', 'bite-3.ogg', 'bite-4.ogg',
   ],
   sfx_power_attack_charge: [
     'leapord-growl-1.ogg',
   ],
   sfx_power_attack_release: [
-    'rawr-1.ogg', 'rawr-2.ogg',
+    'rawr-1.ogg',
   ],
   sfx_explosion: [
     'explode-1.ogg',
@@ -46,10 +46,10 @@ const SOUND_MAP = {
 
   // --- Weapons ---
   sfx_weapon_projectile: [
-    'pew-pew-pew-1.ogg', 'pew-pew-pew-2.ogg',
+    'pew-3x-1.ogg', 'pew-3x-2.ogg',
   ],
   sfx_weapon_multishot: [
-    'pew-pew-pew-pew-pew-1.ogg',
+    'pew-5x-1.ogg',
   ],
   sfx_weapon_heavy: [
     'big-pew-1.ogg',
@@ -59,20 +59,27 @@ const SOUND_MAP = {
     'fart-1.ogg', 'fart-2.ogg', 'fart-3.ogg',
   ],
   sfx_weapon_boomerang: [
-    'wings-4.ogg',
+    // No boomerang sound in pack -- needs Sound Pack Beta
+  ],
+  sfx_weapon_litterbox: [
+    'litterbox-1.ogg',
   ],
 
   // --- Movement ---
   sfx_jump: [
-    'bouncy-boots-1.ogg', 'bouncy-boots-2.ogg', 'bouncy-boots-3.ogg',
+    'bouncy-boots-1.ogg', 'bouncy-boots-2.ogg',
+    'bouncy-boots-3.ogg', 'bouncy-boots-4.ogg',
   ],
   sfx_land: [
-    'bouncy-boots-4.ogg',
+    // No dedicated landing sound -- needs Sound Pack Beta
   ],
 
   // --- Powerups ---
   sfx_powerup_wings: [
-    'wings-1.ogg', 'wings-2.ogg',
+    'wings-1.ogg', 'wings-2.ogg', 'wings-4.ogg',
+  ],
+  sfx_powerup_wings_expire: [
+    'falling-scream-1.ogg',
   ],
   sfx_powerup_racecar: [
     'race-car-1.ogg', 'race-car-2.ogg', 'race-car-3.ogg',
@@ -81,21 +88,25 @@ const SOUND_MAP = {
     'e-scooter-1.ogg', 'e-scooter-2.ogg',
   ],
   sfx_powerup_generic: [
-    'litterbox-1.ogg',
+    // No generic powerup sound -- needs Sound Pack Beta
   ],
 
-  // --- Zombie ---
+  // --- Zombie (all merge-tiered, no spawn/death in this pack) ---
   sfx_zombie_spawn: [
-    'zombie-1.ogg', 'zombie-2.ogg',
   ],
-  sfx_zombie_merge: [
-    'zombie-3.ogg', 'zombie-6.ogg',
+  sfx_zombie_merge_low: [
+    'zombie-1.ogg', 'zombie-2.ogg', 'zombie-3.ogg', 'zombie-7.ogg',
+  ],
+  sfx_zombie_merge_mid: [
+    'zombie-6.ogg',
+  ],
+  sfx_zombie_merge_high: [
+    'zombie-4.ogg', 'zombie-5.ogg',
   ],
   sfx_zombie_death_low: [
-    'zombie-7.ogg',
   ],
   sfx_zombie_death_high: [
-    'zombie-4.ogg', 'zombie-5.ogg',
+    'explode-1.ogg',
   ],
 
   // --- Player ---
@@ -103,27 +114,26 @@ const SOUND_MAP = {
     'leapord-growl-1.ogg',
   ],
   sfx_player_death: [
-    'falling-scream-1.ogg',
+    // Needs Sound Pack Beta
   ],
 
   // --- Progression ---
   sfx_level_up: [
-    'rawr-1.ogg',
+    'rawr-2.ogg',
   ],
   sfx_xp_pickup: [
-    // No dedicated chime in sound pack; use a quiet bite as a subtle pickup tick
-    'Bite-1.mp3',
+    // Needs Sound Pack Beta
   ],
 
   // --- World ---
   sfx_crate_open: [
-    'litterbox-1.ogg',
+    // Needs Sound Pack Beta
   ],
   sfx_shrine_break: [
     'explode-1.ogg',
   ],
   sfx_item_pickup: [
-    'litterbox-1.ogg',
+    // Needs Sound Pack Beta
   ],
   sfx_comedic_drop: [
     'poop-1.ogg',
