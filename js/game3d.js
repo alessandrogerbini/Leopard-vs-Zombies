@@ -331,6 +331,8 @@ export function launch3DGame(options) {
       rubberDucky: 0, thickFur: 0, sillyStraw: 0, bandana: 0,
       hotSauce: 0, bouncyBall: 0, luckyPenny: 0, alarmClock: 0,
     },
+    // Wearable equip flash timers (fade over 0.8s when new wearable equipped)
+    wearableFlash: { armor: 0, boots: 0, glasses: 0 },
     shieldBraceletTimer: 0,
     shieldBraceletReady: true,
     // Silly Straw kill counter (heals 1 HP per 10 kills)
@@ -3508,6 +3510,10 @@ export function launch3DGame(options) {
 
       // Invincibility timer
       if (st.invincible > 0) st.invincible -= dt;
+      // Wearable equip flash timers
+      if (st.wearableFlash.armor > 0) st.wearableFlash.armor = Math.max(0, st.wearableFlash.armor - dt);
+      if (st.wearableFlash.boots > 0) st.wearableFlash.boots = Math.max(0, st.wearableFlash.boots - dt);
+      if (st.wearableFlash.glasses > 0) st.wearableFlash.glasses = Math.max(0, st.wearableFlash.glasses - dt);
 
       // === ACTIVE POWERUP TIMER ===
       if (st.activePowerup) {
@@ -4650,9 +4656,9 @@ export function launch3DGame(options) {
             st.items[it.id]++;
             // Thick Fur: +15 max HP per stack (immediate)
             if (it.id === 'thickFur') { st.maxHp += 15; st.hp = Math.min(st.hp + 15, st.maxHp); }
-          } else if (it.slot === 'armor') st.items.armor = it.id;
-          else if (it.slot === 'glasses') st.items.glasses = true;
-          else if (it.slot === 'boots') st.items.boots = it.id;
+          } else if (it.slot === 'armor') { st.items.armor = it.id; st.wearableFlash.armor = 0.8; }
+          else if (it.slot === 'glasses') { st.items.glasses = true; st.wearableFlash.glasses = 0.8; }
+          else if (it.slot === 'boots') { st.items.boots = it.id; st.wearableFlash.boots = 0.8; }
           else if (it.slot === 'ring') { st.items.ring = true; st.collectRadius *= 1.5; }
           else if (it.slot === 'charm') st.items.charm = true;
           else if (it.slot === 'vest') st.items.vest = true;
