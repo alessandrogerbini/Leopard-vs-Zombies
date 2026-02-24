@@ -285,6 +285,7 @@ export function launch3DGame(options) {
     xp: 0, xpToNext: 10, level: 1,
     enemies: [],
     xpGems: [],
+    gemMergeTimer: 0,
     mapGems: [],              // Active map gem objects [{mesh, x, z, xpValue, chunkKey, gemIndex, alive}]
     collectedGemKeys: {},     // Track collected gems: {"cx,cz": Set of indices}
     attackLines: [],
@@ -1647,23 +1648,25 @@ export function launch3DGame(options) {
 
   // === XP GEM ===
   // NOTE: Shared geometry and material for all XP gems to reduce draw calls.
-  const gemGeo = new THREE.BoxGeometry(0.25, 0.25, 0.25);
+  const gemGeo = new THREE.BoxGeometry(0.2, 0.2, 0.2);
   const gemMat = new THREE.MeshLambertMaterial({ color: 0x44ff44, emissive: 0x22aa22 });
 
   /**
    * Create an XP gem pickup at the given world position.
    * Gems bob up and down, spin, and are attracted toward the player when within collectRadius * 2.
+   * Nearby gems merge periodically to reduce draw calls in late-game.
    *
    * @param {number} x - World X position.
    * @param {number} z - World Z position.
-   * @returns {XpGem} Gem object with mesh and bob animation phase.
+   * @param {number} [xpValue=1] - XP value this gem awards on collection.
+   * @returns {XpGem} Gem object with mesh, bob animation phase, and xpValue.
    */
-  function createXpGem(x, z) {
-    const mesh = new THREE.Mesh(gemGeo, gemMat);
+  function createXpGem(x, z, xpValue = 1) {
+    const mesh = new THREE.Mesh(gemGeo, gemMat.clone());
     const h = terrainHeight(x, z);
     mesh.position.set(x, h + 0.5, z);
     scene.add(mesh);
-    return { mesh, bobPhase: Math.random() * Math.PI * 2 };
+    return { mesh, bobPhase: Math.random() * Math.PI * 2, xpValue };
   }
 
   // (mapGemGeo, mapGemMat, createMapGem moved above generateMapGems)
@@ -4499,6 +4502,38 @@ export function launch3DGame(options) {
         }
       }
 
+      // === XP GEM MERGE ===
+      // Merge nearby XP gems every 0.5s to reduce draw calls in late-game.
+      st.gemMergeTimer -= dt;
+      if (st.gemMergeTimer <= 0) {
+        st.gemMergeTimer = 0.5;
+        for (let i = st.xpGems.length - 1; i >= 0; i--) {
+          const a = st.xpGems[i];
+          if (!a.mesh) continue;
+          for (let j = i - 1; j >= 0; j--) {
+            const b = st.xpGems[j];
+            if (!b.mesh) continue;
+            const dx = a.mesh.position.x - b.mesh.position.x;
+            const dz = a.mesh.position.z - b.mesh.position.z;
+            if (dx * dx + dz * dz < 2.25) { // 1.5^2
+              a.xpValue += b.xpValue;
+              scene.remove(b.mesh);
+              b.mesh.geometry.dispose();
+              b.mesh.material.dispose();
+              b.mesh = null;
+              st.xpGems.splice(j, 1);
+              i--;
+              // Scale merged gem based on total XP value
+              const s = Math.min(0.2 + a.xpValue * 0.03, 0.7);
+              a.mesh.scale.set(s / 0.2, s / 0.2, s / 0.2);
+              // Brighten emissive based on density
+              const brightness = Math.min(0.3 + a.xpValue * 0.05, 1.0);
+              a.mesh.material.emissiveIntensity = brightness;
+            }
+          }
+        }
+      }
+
       // === XP GEMS ===
       // XP gems bob, spin, and are magnetically pulled toward the player when within 2x collectRadius.
       // Collection grants XP scaled by augmentXpMult, Fortune Howl, and totem bonuses.
@@ -4519,8 +4554,9 @@ export function launch3DGame(options) {
           gem.mesh.position.z += (dz / dist) * pull;
         }
         if (dist < st.collectRadius) {
-          st.xp += Math.max(1, Math.round(st.augmentXpMult * getHowlXpMult() * (st.totemXpMult || 1)));
+          st.xp += Math.max(1, Math.round(gem.xpValue * st.augmentXpMult * getHowlXpMult() * (st.totemXpMult || 1)));
           scene.remove(gem.mesh);
+          gem.mesh.material.dispose();
           st.xpGems.splice(i, 1);
           playSound('sfx_xp_pickup');
           if (st.xp >= st.xpToNext) {
@@ -4533,6 +4569,7 @@ export function launch3DGame(options) {
         } else if (dist > 50) {
           // Cleanup far-away XP gems to prevent unbounded accumulation
           scene.remove(gem.mesh);
+          gem.mesh.material.dispose();
           st.xpGems.splice(i, 1);
         }
       }
