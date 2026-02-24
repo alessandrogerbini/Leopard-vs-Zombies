@@ -32,7 +32,7 @@
 import {
   ARENA_SIZE, SHRINE_COUNT, CHUNK_SIZE, GRAVITY_3D, JUMP_FORCE, GROUND_Y, MAP_HALF,
   ANIMAL_PALETTES, WEAPON_TYPES, HOWL_TYPES, POWERUPS_3D, ITEMS_3D, ITEM_RARITIES,
-  SHRINE_AUGMENTS, TOTEM_EFFECT, ZOMBIE_TIERS, ANIMAL_WEAPONS, WEARABLES_3D,
+  SHRINE_AUGMENTS, TOTEM_EFFECT, ZOMBIE_TIERS, ANIMAL_WEAPONS, WEARABLES_3D, KILL_MILESTONES,
   MAP_GEMS_PER_CHUNK, GEM_XP_MIN, GEM_XP_MAX, GEM_COLLECT_RADIUS,
   CHARGE_SHRINE_UPGRADES, CHARGE_SHRINE_WEIGHTS, CHARGE_SHRINE_COUNT,
   CHARGE_SHRINE_TIME, CHARGE_SHRINE_RADIUS,
@@ -205,9 +205,8 @@ import { initAudio, playSound, toggleMute, isMuted, getVolume, disposeAudio } fr
  * --- Kill Tracking ---
  * @property {Array.<number>} killsByTier   - Kill count per zombie tier (index 0 = tier 1).
  * @property {number} totalKills            - Total zombies killed.
- * @property {number} comboCount            - Current kill combo streak (resets when comboTimer expires).
- * @property {number} comboTimer            - Seconds remaining before combo resets (2s window).
- * @property {number} bestCombo             - Highest combo achieved this run (for game-over display).
+ * @property {number} nextMilestoneIdx     - Index of next kill milestone to trigger.
+ * @property {?Object} killMilestone         - Active milestone display {text, color, timer} or null.
  */
 
 /**
@@ -425,10 +424,8 @@ export function launch3DGame(options) {
     // Kill tracking
     killsByTier: new Array(10).fill(0),
     totalKills: 0,
-    // Combo tracking (BD-142)
-    comboCount: 0,
-    comboTimer: 0,
-    bestCombo: 0,
+    nextMilestoneIdx: 0, // Index into KILL_MILESTONES for next celebration
+    killMilestone: null,  // Active milestone announcement {text, color, timer}
     // Randomized weapon/howl pools (6 of 10 each per run)
     availableWeapons: [],
     availableHowls: [],
@@ -447,8 +444,6 @@ export function launch3DGame(options) {
     _fpsDisplay: 0,
   };
 
-  // Combo milestone thresholds — notifications only fire at these counts (BD-142)
-  const COMBO_MILESTONES = [10, 25, 50, 100, 200, 500, 1000];
 
   // Load 3D leaderboard (single unified key — no per-difficulty split)
   st.leaderboard3d = JSON.parse(localStorage.getItem('avz3d-leaderboard') || '[]');
@@ -2496,14 +2491,14 @@ export function launch3DGame(options) {
     }
     st.totalKills++;
     st.killsByTier[(e.tier || 1) - 1]++;
-    // Combo tracking (BD-142)
-    st.comboCount++;
-    st.comboTimer = 2.0;
-    if (st.comboCount > st.bestCombo) st.bestCombo = st.comboCount;
-    if (COMBO_MILESTONES.includes(st.comboCount)) {
-      const comboColor = st.comboCount >= 100 ? '#ff00ff' : st.comboCount >= 50 ? '#ffaa00' : '#ff4444';
-      addFloatingText('x' + st.comboCount + ' COMBO!', comboColor, st.playerX, st.playerY + 3, st.playerZ, 2.0, true);
+    // Kill milestone celebration (BD-195)
+    if (st.nextMilestoneIdx < KILL_MILESTONES.length &&
+        st.totalKills >= KILL_MILESTONES[st.nextMilestoneIdx].kills) {
+      const ms = KILL_MILESTONES[st.nextMilestoneIdx];
+      st.killMilestone = { text: ms.text, color: ms.color, timer: 3.0 };
+      st.floatingTexts3d.push({ text: ms.text, color: ms.color, x: st.playerX, y: st.playerY + 4, z: st.playerZ, life: 3 });
       playSound('sfx_level_up');
+      st.nextMilestoneIdx++;
     }
     // Silly Straw: heal 1 HP per 10 kills
     if (st.items.sillyStraw > 0) {
@@ -4257,6 +4252,11 @@ export function launch3DGame(options) {
 
     if (!st.paused && !st.gameOver) {
       st.gameTime += dt;
+      // Decrement kill milestone display timer (BD-195)
+      if (st.killMilestone) {
+        st.killMilestone.timer -= dt;
+        if (st.killMilestone.timer <= 0) st.killMilestone = null;
+      }
 
 
       // === PLAYER INPUT ===
@@ -4498,13 +4498,7 @@ export function launch3DGame(options) {
       // BD-126: Attack lunge animation timer
       if (st.attackAnimTimer > 0) st.attackAnimTimer -= dt;
 
-      // Combo decay
-      if (st.comboTimer > 0) {
-        st.comboTimer -= dt;
-        if (st.comboTimer <= 0) {
-          st.comboCount = 0;
-        }
-      }
+
 
       // === ACTIVE POWERUP TIMER ===
       if (st.activePowerup) {
@@ -6049,11 +6043,7 @@ export function launch3DGame(options) {
         }
       }
 
-      // === COMBO DECAY (BD-142) ===
-      if (st.comboTimer > 0) {
-        st.comboTimer -= dt;
-        if (st.comboTimer <= 0) st.comboCount = 0;
-      }
+
 
       // === BD-147: Item pickup feedback timers ===
       if (st.itemAnnouncement) {
