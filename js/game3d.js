@@ -2521,11 +2521,11 @@ export function launch3DGame(options) {
       st._inExplosionChain = false;
       addFloatingText('BOOM!', '#ff88cc', e.group.position.x, e.group.position.y + 2, e.group.position.z, 0.5);
     }
-    // Loot drop roll — tier-based rates (BD-95): T1=1%, T2=2%, T3=3%, T4+=5%
+    // Loot drop roll — tier-based rates (BD-95/BD-196): T1=0.5%, T2=2%, T3=4%, T4+=6%
     // Totem-spawned zombies always drop loot (BD-96)
     // Lucky Charm: +50% chance to drop, Lucky Penny: +8% per stack
     const tierNum = e.tier || 1;
-    let dropChance = [0.01, 0.02, 0.04, 0.06, 0.06, 0.08, 0.08, 0.10, 0.10, 0.15][tierNum - 1];
+    let dropChance = [0.005, 0.02, 0.04, 0.06, 0.06, 0.08, 0.08, 0.10, 0.10, 0.15][tierNum - 1];
     if (st.items.charm) dropChance *= 1.5;
     if (st.items.luckyPenny > 0) dropChance *= (1 + st.items.luckyPenny * 0.08);
     const forceDrop = e.isTotemSpawned && !(e.isBoss && e.bossShrine); // BD-96: totem zombies always drop (bosses already get legendary)
@@ -2570,8 +2570,12 @@ export function launch3DGame(options) {
         addFloatingText('+XP', '#aa88ff', dropX, terrainHeight(dropX, dropZ) + 2, dropZ, 0.5);
       }
     }
-    // Wearable drop roll — 15% chance, independent of regular loot
-    if (Math.random() < 0.15) {
+    // Wearable drop roll — tier-scaled (BD-196): T1=2%, T2=4%, ... T10=20%
+    // Lucky Charm: +50% chance, Lucky Penny: +8% per stack
+    let wearableChance = 0.02 + (tierNum - 1) * 0.02;
+    if (st.items.charm) wearableChance *= 1.5;
+    if (st.items.luckyPenny > 0) wearableChance *= (1 + st.items.luckyPenny * 0.08);
+    if (Math.random() < wearableChance) {
       const wp = createWearablePickup(e.group.position.x, e.group.position.z);
       st.wearablePickups.push(wp);
     }
