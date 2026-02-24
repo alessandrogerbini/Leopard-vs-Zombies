@@ -540,70 +540,114 @@ export function updateMuscleGrowth(model, level) {
 }
 
 // ============================================================================
-// ITEM VISUALS — BD-70: Display equipped items on the character model
+// ITEM VISUALS — BD-70/BD-104: Display equipped items on the character model
 // ============================================================================
 
 /**
- * Registry mapping item IDs to voxel box specifications for visual display on the player model.
- * Each entry defines a slot (for grouping) and an array of box primitives with position/size/color.
+ * Registry mapping visual keys to voxel box specifications for display on the player model.
+ * Keys correspond either to item IDs (for string-value slots like armor/boots) or to
+ * st.items property names (for boolean/stackable slots).
+ *
+ * Each entry defines a body region (slot) and an array of box primitives with position/size/color.
+ * Optional `emissive` property on boxes adds glow for rare/legendary items.
  * Coordinates are in model-local space (same as buildPlayerModel boxes).
  *
- * @type {Object.<string, {slot: string, boxes: Array.<{w: number, h: number, d: number, color: number, x: number, y: number, z: number}>}>}
+ * @type {Object.<string, {slot: string, boxes: Array.<{w: number, h: number, d: number, color: number, x: number, y: number, z: number, emissive?: number}>}>}
  */
 const ITEM_VISUALS = {
+  // --- Armor slot (string-value: st.items.armor = 'leather' | 'chainmail') ---
   leather: { slot: 'torso', boxes: [
     { w: 0.75, h: 0.5, d: 0.48, color: 0xb08040, x: 0, y: 0.85, z: 0.02 },
     { w: 0.15, h: 0.2, d: 0.15, color: 0x8a6030, x: -0.35, y: 1.05, z: 0 },
     { w: 0.15, h: 0.2, d: 0.15, color: 0x8a6030, x: 0.35, y: 1.05, z: 0 },
   ]},
   chainmail: { slot: 'torso', boxes: [
-    { w: 0.78, h: 0.52, d: 0.5, color: 0xaaaacc, x: 0, y: 0.85, z: 0.02 },
-    { w: 0.2, h: 0.22, d: 0.18, color: 0x888aaa, x: -0.38, y: 1.08, z: 0 },
-    { w: 0.2, h: 0.22, d: 0.18, color: 0x888aaa, x: 0.38, y: 1.08, z: 0 },
+    { w: 0.78, h: 0.52, d: 0.5, color: 0xaaaacc, x: 0, y: 0.85, z: 0.02, emissive: 0x222233 },
+    { w: 0.2, h: 0.22, d: 0.18, color: 0x888aaa, x: -0.38, y: 1.08, z: 0, emissive: 0x222233 },
+    { w: 0.2, h: 0.22, d: 0.18, color: 0x888aaa, x: 0.38, y: 1.08, z: 0, emissive: 0x222233 },
   ]},
-  thickFur: { slot: 'torso', boxes: [
-    { w: 0.8, h: 0.55, d: 0.52, color: 0xaa8855, x: 0, y: 0.85, z: 0 },
+  // --- Boots slot (string-value: st.items.boots = 'soccerCleats' | 'cowboyBoots') ---
+  soccerCleats: { slot: 'feet', boxes: [
+    { w: 0.2, h: 0.12, d: 0.25, color: 0x228822, x: -0.2, y: 0.06, z: 0 },
+    { w: 0.2, h: 0.12, d: 0.25, color: 0x228822, x: 0.2, y: 0.06, z: 0 },
   ]},
+  cowboyBoots: { slot: 'feet', boxes: [
+    { w: 0.22, h: 0.25, d: 0.22, color: 0x8B4513, x: -0.2, y: 0.12, z: 0 },
+    { w: 0.22, h: 0.25, d: 0.22, color: 0x8B4513, x: 0.2, y: 0.12, z: 0 },
+  ]},
+  // --- Boolean slots (st.items.KEY = true/false) ---
   glasses: { slot: 'face', boxes: [
     { w: 0.12, h: 0.06, d: 0.06, color: 0x222222, x: -0.14, y: 1.56, z: 0.26 },
     { w: 0.12, h: 0.06, d: 0.06, color: 0x222222, x: 0.14, y: 1.56, z: 0.26 },
     { w: 0.06, h: 0.03, d: 0.03, color: 0x444444, x: 0, y: 1.57, z: 0.27 },
   ]},
-  crown: { slot: 'head', boxes: [
-    { w: 0.08, h: 0.12, d: 0.08, color: 0xffaa00, x: -0.15, y: 1.82, z: 0 },
-    { w: 0.08, h: 0.12, d: 0.08, color: 0xffaa00, x: 0.15, y: 1.82, z: 0 },
-    { w: 0.08, h: 0.12, d: 0.08, color: 0xffaa00, x: 0, y: 1.82, z: -0.1 },
-    { w: 0.08, h: 0.12, d: 0.08, color: 0xffaa00, x: 0, y: 1.82, z: 0.1 },
-    { w: 0.08, h: 0.10, d: 0.08, color: 0xffcc00, x: -0.08, y: 1.85, z: 0.08 },
-  ]},
-  cleats: { slot: 'feet', boxes: [
-    { w: 0.2, h: 0.12, d: 0.25, color: 0x228822, x: -0.2, y: 0.06, z: 0 },
-    { w: 0.2, h: 0.12, d: 0.25, color: 0x228822, x: 0.2, y: 0.06, z: 0 },
-  ]},
-  cowboy: { slot: 'feet', boxes: [
-    { w: 0.22, h: 0.25, d: 0.22, color: 0x8B4513, x: -0.2, y: 0.12, z: 0 },
-    { w: 0.22, h: 0.25, d: 0.22, color: 0x8B4513, x: 0.2, y: 0.12, z: 0 },
-  ]},
-  turbo: { slot: 'feet', boxes: [
-    { w: 0.22, h: 0.14, d: 0.26, color: 0x22cccc, x: -0.2, y: 0.07, z: 0 },
-    { w: 0.22, h: 0.14, d: 0.26, color: 0x22cccc, x: 0.2, y: 0.07, z: 0 },
-    { w: 0.06, h: 0.08, d: 0.04, color: 0x88ffff, x: -0.32, y: 0.1, z: 0 },
-    { w: 0.06, h: 0.08, d: 0.04, color: 0x88ffff, x: 0.32, y: 0.1, z: 0 },
+  ring: { slot: 'hand', boxes: [
+    { w: 0.08, h: 0.04, d: 0.08, color: 0xcccccc, x: -0.32, y: 0.65, z: 0.15 },
   ]},
   gloves: { slot: 'hands', boxes: [
-    { w: 0.16, h: 0.12, d: 0.14, color: 0xcc3333, x: -0.3, y: 0.62, z: 0.15 },
-    { w: 0.16, h: 0.12, d: 0.14, color: 0xcc3333, x: 0.3, y: 0.62, z: 0.15 },
+    { w: 0.16, h: 0.12, d: 0.14, color: 0xcc3333, x: -0.48, y: 0.62, z: 0.05 },
+    { w: 0.16, h: 0.12, d: 0.14, color: 0xcc3333, x: 0.48, y: 0.62, z: 0.05 },
+  ]},
+  crown: { slot: 'head', boxes: [
+    { w: 0.08, h: 0.12, d: 0.08, color: 0xFFD700, x: -0.15, y: 1.82, z: 0, emissive: 0x332200 },
+    { w: 0.08, h: 0.12, d: 0.08, color: 0xFFD700, x: 0.15, y: 1.82, z: 0, emissive: 0x332200 },
+    { w: 0.08, h: 0.12, d: 0.08, color: 0xFFD700, x: 0, y: 1.82, z: -0.1, emissive: 0x332200 },
+    { w: 0.08, h: 0.12, d: 0.08, color: 0xFFD700, x: 0, y: 1.82, z: 0.1, emissive: 0x332200 },
+    { w: 0.08, h: 0.10, d: 0.08, color: 0xffcc00, x: -0.08, y: 1.85, z: 0.08, emissive: 0x332200 },
+  ]},
+  scarf: { slot: 'neck', boxes: [
+    { w: 0.42, h: 0.1, d: 0.35, color: 0xff44ff, x: 0, y: 1.2, z: 0, emissive: 0x331133 },
+    { w: 0.08, h: 0.25, d: 0.06, color: 0xff66ff, x: 0.18, y: 1.05, z: 0.18, emissive: 0x331133 },
+  ]},
+  vest: { slot: 'torso', boxes: [
+    { w: 0.72, h: 0.45, d: 0.46, color: 0xcc4422, x: 0, y: 0.88, z: 0.02, emissive: 0x221100 },
+    { w: 0.1, h: 0.08, d: 0.1, color: 0xdddddd, x: -0.28, y: 0.95, z: 0.22, emissive: 0x221100 },
+    { w: 0.1, h: 0.08, d: 0.1, color: 0xdddddd, x: 0.28, y: 0.95, z: 0.22, emissive: 0x221100 },
+  ]},
+  pendant: { slot: 'neck', boxes: [
+    { w: 0.06, h: 0.06, d: 0.04, color: 0x44ff88, x: 0, y: 1.12, z: 0.22 },
+    { w: 0.18, h: 0.03, d: 0.03, color: 0x888888, x: 0, y: 1.18, z: 0.2 },
+  ]},
+  bracelet: { slot: 'hand', boxes: [
+    { w: 0.14, h: 0.05, d: 0.14, color: 0x4488ff, x: 0.48, y: 0.7, z: 0, emissive: 0x112244 },
+  ]},
+  cushion: { slot: 'belt', boxes: [
+    { w: 0.15, h: 0.1, d: 0.12, color: 0xff88cc, x: -0.35, y: 0.55, z: 0, emissive: 0x221122 },
+  ]},
+  turboshoes: { slot: 'feet', boxes: [
+    { w: 0.22, h: 0.14, d: 0.26, color: 0x22cccc, x: -0.2, y: 0.07, z: 0, emissive: 0x112222 },
+    { w: 0.22, h: 0.14, d: 0.26, color: 0x22cccc, x: 0.2, y: 0.07, z: 0, emissive: 0x112222 },
+    { w: 0.06, h: 0.08, d: 0.04, color: 0x88ffff, x: -0.32, y: 0.1, z: 0, emissive: 0x224444 },
+    { w: 0.06, h: 0.08, d: 0.04, color: 0x88ffff, x: 0.32, y: 0.1, z: 0, emissive: 0x224444 },
+  ]},
+  goldenbone: { slot: 'belt', boxes: [
+    { w: 0.2, h: 0.06, d: 0.06, color: 0xffcc00, x: -0.3, y: 0.55, z: 0.15, emissive: 0x443300 },
+    { w: 0.06, h: 0.1, d: 0.06, color: 0xffcc00, x: -0.38, y: 0.55, z: 0.15, emissive: 0x443300 },
+    { w: 0.06, h: 0.1, d: 0.06, color: 0xffcc00, x: -0.22, y: 0.55, z: 0.15, emissive: 0x443300 },
+  ]},
+  zombiemagnet: { slot: 'belt', boxes: [
+    { w: 0.1, h: 0.12, d: 0.06, color: 0x88ff88, x: 0.32, y: 0.6, z: -0.15, emissive: 0x113311 },
+    { w: 0.04, h: 0.12, d: 0.06, color: 0xff4444, x: 0.36, y: 0.6, z: -0.15, emissive: 0x331111 },
+  ]},
+  // --- Stackable items (st.items.KEY = count) ---
+  thickFur: { slot: 'torso', boxes: [
+    { w: 0.8, h: 0.55, d: 0.52, color: 0xaa8855, x: 0, y: 0.85, z: 0 },
   ]},
   bandana: { slot: 'head', boxes: [
     { w: 0.42, h: 0.06, d: 0.42, color: 0xcc2222, x: 0, y: 1.68, z: 0 },
   ]},
-  duck: { slot: 'belt', boxes: [
+  rubberDucky: { slot: 'belt', boxes: [
     { w: 0.12, h: 0.12, d: 0.12, color: 0xffdd00, x: 0.35, y: 0.55, z: 0 },
   ]},
-  magnetRing: { slot: 'hand', boxes: [
-    { w: 0.08, h: 0.04, d: 0.08, color: 0xcccccc, x: -0.32, y: 0.65, z: 0.15 },
-  ]},
 };
+
+/**
+ * Slots where st.items[key] holds a string item ID (the equipped item's id from ITEMS_3D)
+ * rather than a boolean or stack count. For these slots, the visual key is the string value,
+ * not the st.items property name.
+ * @type {Set<string>}
+ */
+const STRING_VALUE_SLOTS = new Set(['armor', 'boots']);
 
 /**
  * Per-animal Y offsets and scale factors for item visual placement.
@@ -626,9 +670,14 @@ const ANIMAL_OFFSETS = {
  * player model's root group so they move/rotate with the character.
  *
  * This function is called whenever the player picks up an item, and handles:
- * - Boolean-slot items (glasses, crown, gloves, etc.) keyed directly by slot name
- * - String-slot items (armor → 'leather'/'chainmail', boots → value mapped to visual key)
- * - Stackable items (thickFur, bandana, rubberDucky) keyed by item ID
+ * - String-value slots (armor, boots) — the value IS the ITEM_VISUALS key
+ *     e.g. st.items.armor = 'leather' → look up ITEM_VISUALS['leather']
+ * - Boolean slots (glasses, crown, gloves, ring, scarf, etc.) — the st.items key IS the visual key
+ *     e.g. st.items.glasses = true → look up ITEM_VISUALS['glasses']
+ * - Stackable items (thickFur, bandana, rubberDucky, etc.) — the st.items key IS the visual key
+ *     e.g. st.items.bandana = 3 → look up ITEM_VISUALS['bandana']
+ *
+ * Rare/legendary items get emissive glow via per-box `emissive` property in ITEM_VISUALS.
  *
  * @param {PlayerModel} model - The player model object returned by buildPlayerModel.
  * @param {Object} items - The st.items object containing equipped item state.
@@ -649,21 +698,34 @@ export function updateItemVisuals(model, items, animalId) {
 
   const offsets = ANIMAL_OFFSETS[animalId] || ANIMAL_OFFSETS.leopard;
 
-  for (const itemId in items) {
-    if (!items[itemId] || items[itemId] <= 0) continue;
-    const visual = ITEM_VISUALS[itemId];
+  for (const slotKey in items) {
+    const val = items[slotKey];
+    if (!val || val <= 0) continue;
+
+    // Resolve the visual key: for string-value slots (armor, boots), use the string value;
+    // for boolean/count slots, use the st.items property name directly.
+    let visualKey;
+    if (STRING_VALUE_SLOTS.has(slotKey)) {
+      visualKey = val; // val is the item ID string, e.g. 'leather', 'soccerCleats'
+    } else {
+      visualKey = slotKey; // key is the visual key, e.g. 'glasses', 'crown', 'bandana'
+    }
+
+    const visual = ITEM_VISUALS[visualKey];
     if (!visual) continue;
 
     const meshes = [];
     for (const b of visual.boxes) {
       const geo = new THREE.BoxGeometry(b.w, b.h, b.d);
-      const mat = new THREE.MeshLambertMaterial({ color: b.color });
+      const matOpts = { color: b.color };
+      if (b.emissive) matOpts.emissive = b.emissive;
+      const mat = new THREE.MeshLambertMaterial(matOpts);
       const mesh = new THREE.Mesh(geo, mat);
       mesh.position.set(b.x, b.y + (offsets.headY || 0), b.z);
       mesh.castShadow = true;
       model.group.add(mesh);
       meshes.push(mesh);
     }
-    model.itemMeshes[itemId] = meshes;
+    model.itemMeshes[visualKey] = meshes;
   }
 }
