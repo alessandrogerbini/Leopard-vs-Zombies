@@ -163,32 +163,6 @@ export function drawHUD(ctx, s, deps) {
       ctx.fillText(Math.ceil(s.waveWarning).toString(), W / 2, H * 0.22);
       ctx.textAlign = 'left';
     }
-    // --- Kill Milestone Celebration (BD-195) ---
-    if (s.killMilestone) {
-      const ms = s.killMilestone;
-      const alpha = Math.min(1, ms.timer / 0.5); // fade out in last 0.5s
-      ctx.save();
-      ctx.globalAlpha = alpha;
-      ctx.textAlign = 'center';
-      // Glow effect for "GOD MODE!" (white milestone)
-      if (ms.color === '#ffffff') {
-        ctx.shadowColor = '#00ffff';
-        ctx.shadowBlur = 30;
-      } else {
-        ctx.shadowColor = ms.color;
-        ctx.shadowBlur = 20;
-      }
-      ctx.fillStyle = ms.color;
-      ctx.font = 'bold 52px "Courier New"';
-      ctx.fillText(ms.text, W / 2, H / 2 - 80);
-      // Sub-line with kill count
-      ctx.shadowBlur = 0;
-      ctx.fillStyle = '#ffffff';
-      ctx.font = 'bold 20px "Courier New"';
-      ctx.fillText(s.totalKills + ' KILLS!', W / 2, H / 2 - 50);
-      ctx.restore();
-    }
-
     // --- Active Powerup Indicator (top-center) ---
     if (s.activePowerup) {
       const pw = s.activePowerup;

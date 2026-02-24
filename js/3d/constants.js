@@ -762,20 +762,3 @@ export const ANIMAL_WEAPONS = {
   lion: 'lightningBolt',
   gator: 'poisonCloud',
 };
-
-/**
- * Total kill milestones that trigger kid-friendly celebratory announcements.
- * Each entry defines the kill count threshold, display text, and color.
- * Milestones fire once per run when totalKills reaches each threshold.
- *
- * @constant {Array.<{kills: number, text: string, color: string}>}
- */
-export const KILL_MILESTONES = [
-  { kills: 50,   text: 'AWESOME!',           color: '#ffff00' },
-  { kills: 100,  text: 'SUPER COOL!',        color: '#ff8800' },
-  { kills: 250,  text: 'UNSTOPPABLE!',       color: '#ff2222' },
-  { kills: 500,  text: 'LEGENDARY!',         color: '#ff00ff' },
-  { kills: 1000, text: 'ZOMBIE SLAYER!',     color: '#ffd700' },
-  { kills: 2500, text: 'ULTIMATE WARRIOR!',  color: '#00ffff' },
-  { kills: 5000, text: 'GOD MODE!',          color: '#ffffff' },
-];
