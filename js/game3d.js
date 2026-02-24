@@ -83,6 +83,7 @@ import { initAudio, playSound, toggleMute, isMuted, getVolume, disposeAudio } fr
  * @property {number} wave           - Current wave number (increments on wave event).
  * @property {number} ambientSpawnTimer  - Countdown to next ambient zombie spawn (resets to 1.7s).
  * @property {number} waveEventTimer     - Countdown to next wave event (first=75s, then 90s).
+ * @property {number} waveTimerMax       - Maximum value of waveEventTimer (for HUD progress bar).
  * @property {number} waveWarning        - Seconds remaining in wave warning countdown (0 = none).
  * @property {boolean} waveActive        - Whether a wave event is currently active.
  * @property {number} ambientCrateTimer  - Countdown to next ambient crate spawn (resets to 30s).
@@ -281,6 +282,7 @@ export function launch3DGame(options) {
     wave: 1,
     ambientSpawnTimer: 1.36,
     waveEventTimer: 75,   // ~1.25 minutes until first wave event
+    waveTimerMax: 75,     // matches initial waveEventTimer for HUD progress bar
     waveWarning: 0,       // countdown seconds (0 = no warning)
     initialBurstDone: false,
     _inExplosionChain: false,  // BD-134: recursion guard for Whoopee Cushion chain explosions
@@ -4640,6 +4642,7 @@ export function launch3DGame(options) {
           st.waveWarning = 0;
           spawnWaveEvent();
           st.waveEventTimer = 90; // Reset for next wave in 1.5 min
+          st.waveTimerMax = 90;
         }
       }
 

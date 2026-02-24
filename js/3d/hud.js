@@ -126,7 +126,7 @@ export function drawHUD(ctx, s, deps) {
     ctx.fillStyle = '#ff6644'; ctx.font = 'bold 22px "Courier New"';
     ctx.fillText(`WAVE ${s.wave}`, W - 20, 35);
     if (s.waveEventTimer !== undefined && s.waveWarning <= 0) {
-      const progress = Math.max(0, Math.min(1, 1 - (s.waveEventTimer / 90)));
+      const progress = Math.max(0, Math.min(1, 1 - (s.waveEventTimer / (s.waveTimerMax || 90))));
       ctx.fillStyle = 'rgba(255,100,68,0.3)';
       ctx.fillRect(W - 20 - 60, 40, 60 * progress, 3);
     }
