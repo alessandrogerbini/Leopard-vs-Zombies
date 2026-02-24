@@ -2522,7 +2522,7 @@ export function launch3DGame(options) {
     // Totem-spawned zombies always drop loot (BD-96)
     // Lucky Charm: +50% chance to drop, Lucky Penny: +8% per stack
     const tierNum = e.tier || 1;
-    let dropChance = [0.005, 0.02, 0.04, 0.06, 0.06, 0.08, 0.08, 0.10, 0.10, 0.15][tierNum - 1];
+    let dropChance = [0.015, 0.03, 0.05, 0.075, 0.075, 0.10, 0.10, 0.15, 0.15, 0.25][tierNum - 1];
     if (st.items.charm) dropChance *= 1.5;
     if (st.items.luckyPenny > 0) dropChance *= (1 + st.items.luckyPenny * 0.08);
     const forceDrop = e.isTotemSpawned && !(e.isBoss && e.bossShrine); // BD-96: totem zombies always drop (bosses already get legendary)
