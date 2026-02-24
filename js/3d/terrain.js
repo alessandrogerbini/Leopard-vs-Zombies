@@ -455,12 +455,12 @@ function createGrassPatch(dx, dz, h, scene) {
   const bladeCount = 3 + Math.floor(Math.random() * 6);
   const greens = [0x3a7a2f, 0x4a8c3f, 0x5a9c4f, 0x2a6a1f, 0x3a8a35];
   for (let i = 0; i < bladeCount; i++) {
-    const bh = 0.2 + Math.random() * 0.2;
+    const bh = 0.3 + Math.random() * 0.3;
     const m = new THREE.Mesh(
-      new THREE.BoxGeometry(0.02, bh, 0.02),
+      new THREE.BoxGeometry(0.08, bh, 0.05),
       new THREE.MeshLambertMaterial({ color: greens[Math.floor(Math.random() * greens.length)] })
     );
-    m.position.set(dx + (Math.random() - 0.5) * 0.8, h + bh / 2, dz + (Math.random() - 0.5) * 0.8);
+    m.position.set(dx + (Math.random() - 0.5) * 1.2, h + bh / 2, dz + (Math.random() - 0.5) * 1.2);
     scene.add(m);
     meshes.push(m);
   }
@@ -482,18 +482,18 @@ function createFlowerPatch(dx, dz, h, scene) {
   const count = 2 + Math.floor(Math.random() * 3);
   const colors = [0xcc3333, 0xddcc33, 0xeeeedd, 0x4466cc, 0xdd66aa, 0xdd8833];
   for (let i = 0; i < count; i++) {
-    const stemH = 0.15 + Math.random() * 0.1;
+    const stemH = 0.25 + Math.random() * 0.2;
     const stem = new THREE.Mesh(
-      new THREE.BoxGeometry(0.02, stemH, 0.02),
+      new THREE.BoxGeometry(0.06, stemH, 0.06),
       new THREE.MeshLambertMaterial({ color: 0x3a7a2f })
     );
-    const fx = dx + (Math.random() - 0.5) * 0.6;
-    const fz = dz + (Math.random() - 0.5) * 0.6;
+    const fx = dx + (Math.random() - 0.5) * 1.0;
+    const fz = dz + (Math.random() - 0.5) * 1.0;
     stem.position.set(fx, h + stemH / 2, fz);
     scene.add(stem);
     meshes.push(stem);
     const cap = new THREE.Mesh(
-      new THREE.BoxGeometry(0.06, 0.04, 0.06),
+      new THREE.BoxGeometry(0.14, 0.06, 0.14),
       new THREE.MeshLambertMaterial({ color: colors[Math.floor(Math.random() * colors.length)] })
     );
     cap.position.set(fx, h + stemH + 0.02, fz);
