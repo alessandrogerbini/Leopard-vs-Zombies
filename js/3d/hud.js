@@ -60,6 +60,9 @@ import {
  * @param {boolean} [deps.audioMuted] - Whether audio is currently muted.
  * @param {number} [deps.audioVolume] - Current audio volume (0.0 - 1.0).
  */
+
+// BD-165: Reuse a single Vector3 for HUD world-to-screen projections
+const _v = new THREE.Vector3();
 export function drawHUD(ctx, s, deps) {
   const { W, H, animalData, camera, getWeaponCooldown, getGroundAt } = deps;
   ctx.clearRect(0, 0, W, H);
@@ -239,11 +242,11 @@ export function drawHUD(ctx, s, deps) {
 
     // --- Floating 3D Texts (projected to screen space) ---
     for (const ft of s.floatingTexts3d) {
-      const v = new THREE.Vector3(ft.x, ft.y, ft.z);
-      v.project(camera);
-      const sx = (v.x * 0.5 + 0.5) * W + (ft.spreadX || 0);
-      const sy = (-v.y * 0.5 + 0.5) * H;
-      if (v.z > 0 && v.z < 1) {
+      _v.set(ft.x, ft.y, ft.z);
+      _v.project(camera);
+      const sx = (_v.x * 0.5 + 0.5) * W + (ft.spreadX || 0);
+      const sy = (-_v.y * 0.5 + 0.5) * H;
+      if (_v.z > 0 && _v.z < 1) {
         ctx.globalAlpha = Math.min(1, ft.life);
         ctx.fillStyle = ft.color; ctx.textAlign = 'center';
         // BD-160: Size hierarchy — important texts are larger and bold
@@ -309,11 +312,11 @@ export function drawHUD(ctx, s, deps) {
     if (s.items.glasses) {
       for (const c of s.powerupCrates) {
         if (!c.alive || !c.showLabel) continue;
-        const v = new THREE.Vector3(c.x, getGroundAt(c.x, c.z) + 1.5, c.z);
-        v.project(camera);
-        const sx = (v.x * 0.5 + 0.5) * W;
-        const sy = (-v.y * 0.5 + 0.5) * H;
-        if (v.z > 0 && v.z < 1) {
+        _v.set(c.x, getGroundAt(c.x, c.z) + 1.5, c.z);
+        _v.project(camera);
+        const sx = (_v.x * 0.5 + 0.5) * W;
+        const sy = (-_v.y * 0.5 + 0.5) * H;
+        if (_v.z > 0 && _v.z < 1) {
           ctx.fillStyle = c.ptype.color; ctx.font = 'bold 14px "Courier New"'; ctx.textAlign = 'center';
           ctx.fillText(c.ptype.name, sx, sy);
         }
@@ -321,11 +324,11 @@ export function drawHUD(ctx, s, deps) {
       // Item pickup labels (glasses reveal)
       for (const ip of s.itemPickups) {
         if (!ip.alive) continue;
-        const v = new THREE.Vector3(ip.x, getGroundAt(ip.x, ip.z) + 1.8, ip.z);
-        v.project(camera);
-        const sx = (v.x * 0.5 + 0.5) * W;
-        const sy = (-v.y * 0.5 + 0.5) * H;
-        if (v.z > 0 && v.z < 1) {
+        _v.set(ip.x, getGroundAt(ip.x, ip.z) + 1.8, ip.z);
+        _v.project(camera);
+        const sx = (_v.x * 0.5 + 0.5) * W;
+        const sy = (-_v.y * 0.5 + 0.5) * H;
+        if (_v.z > 0 && _v.z < 1) {
           ctx.fillStyle = ip.itype.color; ctx.font = 'bold 14px "Courier New"'; ctx.textAlign = 'center';
           ctx.fillText(ip.itype.name, sx, sy);
         }

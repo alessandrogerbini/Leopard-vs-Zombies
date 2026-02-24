@@ -168,7 +168,6 @@ function createTree(dx, dz, h, scene) {
     new THREE.MeshLambertMaterial({ color: 0x664422 })
   );
   trunk.position.set(dx, h + trunkH / 2, dz);
-  trunk.castShadow = true;
   scene.add(trunk);
   meshes.push(trunk);
 
@@ -183,7 +182,6 @@ function createTree(dx, dz, h, scene) {
       new THREE.MeshLambertMaterial({ color: cc })
     );
     m.position.set(dx + ox, canopyBase + oy, dz + oz);
-    m.castShadow = true;
     m.userData.isCanopy = true;
     m.userData.windSeed = dx * 0.1 + dz * 0.07;
     scene.add(m);
@@ -232,7 +230,6 @@ function createRock(dx, dz, h, scene) {
     );
     rock.position.set(dx, h + rh / 2, dz);
     rock.rotation.y = noise2D(dx * 3, dz * 3) * Math.PI;
-    rock.castShadow = true;
     scene.add(rock);
     meshes.push(rock);
   } else if (variant === 1) {
@@ -246,7 +243,6 @@ function createRock(dx, dz, h, scene) {
     );
     base.position.set(dx, h + baseH / 2, dz);
     base.rotation.y = noise2D(dx * 5, dz * 5) * Math.PI;
-    base.castShadow = true;
     scene.add(base);
     meshes.push(base);
 
@@ -260,7 +256,6 @@ function createRock(dx, dz, h, scene) {
     );
     top.position.set(dx + (noise2D(dx * 2, dz) - 0.5) * 0.2, h + baseH + topH / 2, dz + (noise2D(dx, dz * 2) - 0.5) * 0.2);
     top.rotation.y = noise2D(dx * 7, dz * 7) * Math.PI;
-    top.castShadow = true;
     scene.add(top);
     meshes.push(top);
   } else {
@@ -281,7 +276,6 @@ function createRock(dx, dz, h, scene) {
       const rGroundH = terrainHeight(rx, rz);
       rock.position.set(rx, rGroundH + rh / 2, rz);
       rock.rotation.y = noise2D(dx * (i + 3), dz * (i + 3)) * Math.PI;
-      rock.castShadow = true;
       scene.add(rock);
       meshes.push(rock);
     }
@@ -312,7 +306,6 @@ function createFallenLog(dx, dz, h, scene) {
   log.position.set(dx, h + logRadius, dz);
   // Random rotation around Y for variety
   log.rotation.y = noise2D(dx * 5.3, dz * 7.1) * Math.PI;
-  log.castShadow = true;
   scene.add(log);
 
   // Optionally add a broken branch stump on top
@@ -328,7 +321,6 @@ function createFallenLog(dx, dz, h, scene) {
       h + logRadius * 2 + stumpH / 2,
       dz + (noise2D(dx * 3, dz * 5) - 0.5) * 0.1
     );
-    stump.castShadow = true;
     scene.add(stump);
     meshes.push(stump);
   }
@@ -416,7 +408,6 @@ function createStump(dx, dz, h, scene) {
     new THREE.MeshLambertMaterial({ color })
   );
   stump.position.set(dx, h + stumpH / 2, dz);
-  stump.castShadow = true;
   scene.add(stump);
   meshes.push(stump);
 

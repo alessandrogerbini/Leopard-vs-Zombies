@@ -784,7 +784,7 @@ export function launch3DGame(options) {
   const renderer = new THREE.WebGLRenderer({ canvas: canvas3d, antialias: true });
   renderer.setSize(window.innerWidth, window.innerHeight);
   renderer.shadowMap.enabled = true;
-  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.shadowMap.type = THREE.PCFShadowMap;
   renderer.setClearColor(0x87CEEB); // sky blue
 
   // HUD canvas matches window size
@@ -817,14 +817,14 @@ export function launch3DGame(options) {
   const dirLight = new THREE.DirectionalLight(0xffeedd, 0.9);
   dirLight.position.set(10, 20, 10);
   dirLight.castShadow = true;
-  dirLight.shadow.mapSize.width = 2048;
-  dirLight.shadow.mapSize.height = 2048;
+  dirLight.shadow.mapSize.width = 1024;
+  dirLight.shadow.mapSize.height = 1024;
   dirLight.shadow.camera.near = 0.5;
   dirLight.shadow.camera.far = 80;
-  dirLight.shadow.camera.left = -40;
-  dirLight.shadow.camera.right = 40;
-  dirLight.shadow.camera.top = 40;
-  dirLight.shadow.camera.bottom = -40;
+  dirLight.shadow.camera.left = -25;
+  dirLight.shadow.camera.right = 25;
+  dirLight.shadow.camera.top = 25;
+  dirLight.shadow.camera.bottom = -25;
   scene.add(dirLight);
   scene.add(dirLight.target);
 
@@ -1590,6 +1590,8 @@ export function launch3DGame(options) {
   const MAX_FIRE_PARTICLES = 80;
   const fireGeo = new THREE.BoxGeometry(0.2, 0.2, 0.2);
   const fireMat = new THREE.MeshBasicMaterial({ color: 0xff6600 });
+  // BD-165: Cache fire particle materials to avoid per-particle allocation
+  const fireMatCache = new Map();
 
   /**
    * Spawn a fire particle if below the cap. Returns null if at capacity.
@@ -1603,8 +1605,15 @@ export function launch3DGame(options) {
    */
   function spawnFireParticle(hex, x, y, z, life, opts) {
     if (fireParticles.length >= MAX_FIRE_PARTICLES) return null;
-    const mat = new THREE.MeshBasicMaterial({ color: hex });
-    if (opts && opts.transparent) { mat.transparent = true; mat.opacity = opts.opacity || 1.0; }
+    const transparent = !!(opts && opts.transparent);
+    const opacity = transparent ? (opts.opacity || 1.0) : 1.0;
+    const cacheKey = hex + (transparent ? '_t' + opacity : '');
+    let mat = fireMatCache.get(cacheKey);
+    if (!mat) {
+      mat = new THREE.MeshBasicMaterial({ color: hex });
+      if (transparent) { mat.transparent = true; mat.opacity = opacity; }
+      fireMatCache.set(cacheKey, mat);
+    }
     const fp = new THREE.Mesh(fireGeo, mat);
     fp.position.set(x, y, z);
     scene.add(fp);
@@ -4239,7 +4248,11 @@ export function launch3DGame(options) {
 
       // === PLAYER ANIMATION (rotation, walk cycle, wings, muscle growth) ===
       animatePlayer(playerModel, st, clock, len, mx, mz);
-      updateMuscleGrowth(playerModel, st.level);
+      // BD-165: Only update muscle growth when level changes
+      if (st.level !== st._lastGrowthLevel) {
+        st._lastGrowthLevel = st.level;
+        updateMuscleGrowth(playerModel, st.level);
+      }
 
       // Invincibility timer
       if (st.invincible > 0) st.invincible -= dt;
@@ -4294,8 +4307,7 @@ export function launch3DGame(options) {
         fireParticles[i].mesh.position.y += dt * 3;
         if (fireParticles[i].life <= 0) {
           scene.remove(fireParticles[i].mesh);
-          // Geometry is shared (fireGeo) — only dispose the per-particle material
-          fireParticles[i].mesh.material.dispose();
+          // Material is cached (fireMatCache) — do not dispose
           fireParticles.splice(i, 1);
         }
       }
@@ -4353,6 +4365,7 @@ export function launch3DGame(options) {
 
       // === GHOST FORM visual (transparent player + ghost particles) ===
       if (st.ghostForm) {
+        st._ghostFormWasActive = true;
         playerGroup.traverse(child => {
           if (child.isMesh && child.material) {
             child.material.transparent = true;
@@ -4368,8 +4381,9 @@ export function launch3DGame(options) {
             0.6, { transparent: true, opacity: 0.5 }
           );
         }
-      } else {
-        // Restore opacity when ghost form ends
+      } else if (st._ghostFormWasActive) {
+        // BD-165: Restore opacity only once when ghost form deactivates
+        st._ghostFormWasActive = false;
         playerGroup.traverse(child => {
           if (child.isMesh && child.material && child.material.transparent && child.material.opacity < 0.9) {
             child.material.opacity = 1;
@@ -4856,6 +4870,12 @@ export function launch3DGame(options) {
         const dx = st.playerX - e.group.position.x;
         const dz = st.playerZ - e.group.position.z;
         const dist = Math.sqrt(dx * dx + dz * dz);
+        // BD-164: Distance-based shadow toggle (only when crossing threshold)
+        const wantShadow = dist < 20;
+        if (e._shadowEnabled !== wantShadow) {
+          e._shadowEnabled = wantShadow;
+          e.group.traverse(c => { if (c.isMesh) c.castShadow = wantShadow; });
+        }
         if (dist > 0.01) {
           const nx = dx / dist;
           const nz = dz / dist;
@@ -4942,7 +4962,6 @@ export function launch3DGame(options) {
                 e.group.position.z > p.z - halfD && e.group.position.z < p.z + halfD) {
               const platTop = p.y + 0.2;
               if (e.jumpVY <= 0 && e.group.position.y >= platTop - 0.5 && e.group.position.y <= platTop + 1.0) {
-                const platEScale = ZOMBIE_TIERS[(e.tier || 1) - 1].scale;
                 e.group.position.y = platTop + 0.01;
                 e.jumpVY = 0;
                 e.onPlatform = true;
@@ -4950,7 +4969,6 @@ export function launch3DGame(options) {
             }
           }
 
-          const eScale = ZOMBIE_TIERS[(e.tier || 1) - 1].scale;
           const groundH = getGroundAt(e.group.position.x, e.group.position.z) + 0.01;
           if (e.group.position.y <= groundH) {
             e.group.position.y = groundH;
@@ -4958,7 +4976,6 @@ export function launch3DGame(options) {
             e.onPlatform = false;
           }
         } else {
-          const eScale = ZOMBIE_TIERS[(e.tier || 1) - 1].scale;
           const eh = getGroundAt(e.group.position.x, e.group.position.z) + 0.01;
           e.group.position.y = eh;
         }
@@ -5667,10 +5684,17 @@ export function launch3DGame(options) {
       if (st.itemFlashTimer > 0) st.itemFlashTimer -= dt;
 
       // === CLEANUP + DEATH CHECK ===
-      // Clean dead enemies
-      // Remove dead enemies in-place (avoids allocating a new array every frame)
-      for (let i = st.enemies.length - 1; i >= 0; i--) {
-        if (!st.enemies[i].alive) st.enemies.splice(i, 1);
+      // Clean dead enemies using swap-and-pop (O(1) per removal, avoids splice shifting)
+      {
+        let i = 0;
+        while (i < st.enemies.length) {
+          if (!st.enemies[i].alive) {
+            st.enemies[i] = st.enemies[st.enemies.length - 1];
+            st.enemies.pop();
+          } else {
+            i++;
+          }
+        }
       }
 
       // Player death
