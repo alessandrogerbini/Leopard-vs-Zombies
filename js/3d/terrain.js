@@ -15,12 +15,13 @@
  *
  * Extracted from game3d.js as Layer 1 of the modular decomposition.
  *
- * Dependencies: Three.js (global), 3d/constants.js (CHUNK_SIZE, MAP_HALF)
+ * Dependencies: Three.js (global), 3d/constants.js (CHUNK_SIZE, MAP_HALF), 3d/utils.js (getCachedGeo, getCachedMat)
  * Exports: 10 — noise2D, smoothNoise, terrainHeight, getBiome, BIOME_COLORS,
  *               getChunkKey, createTerrainState, generateChunk, unloadChunk, updateChunks
  */
 
 import { CHUNK_SIZE, MAP_HALF } from './constants.js';
+import { getCachedGeo, getCachedMat } from './utils.js';
 
 // === PURE NOISE FUNCTIONS ===
 
@@ -159,7 +160,8 @@ function adjustColor(hex, rAdj, gAdj, bAdj) {
 
 // === DECORATION BUILDERS ===
 // Each builder creates one decoration type and returns an array of meshes.
-// All decorations use simple BoxGeometry to maintain the voxel art style.
+// All decorations use cached BoxGeometry/MeshLambertMaterial (BD-184) to share
+// identical instances across all chunks, dramatically reducing GPU memory.
 // Positions are set so the base of each decoration sits at terrain height.
 
 /**
@@ -181,12 +183,13 @@ function createTree(dx, dz, h, scene) {
   const canopyMeshes = [];
   const s = sizeVar;
 
-  // Trunk (unchanged)
+  // Trunk
   const trunk = new THREE.Mesh(
-    new THREE.BoxGeometry(0.3 * s, trunkH, 0.3 * s),
-    new THREE.MeshLambertMaterial({ color: 0x664422 })
+    getCachedGeo(0.3 * s, trunkH, 0.3 * s),
+    getCachedMat(0x664422)
   );
   trunk.position.set(dx, h + trunkH / 2, dz);
+  trunk.castShadow = true;
   scene.add(trunk);
   meshes.push(trunk);
 
@@ -197,12 +200,13 @@ function createTree(dx, dz, h, scene) {
   // Helper to add a canopy box
   const addBox = (w, bh, d, ox, oy, oz) => {
     const m = new THREE.Mesh(
-      new THREE.BoxGeometry(w, bh, d),
-      new THREE.MeshLambertMaterial({ color: cc })
+      getCachedGeo(w, bh, d),
+      getCachedMat(cc)
     );
     m.position.set(dx + ox, canopyBase + oy, dz + oz);
     m.userData.isCanopy = true;
     m.userData.windSeed = dx * 0.1 + dz * 0.07;
+    m.castShadow = true;
     scene.add(m);
     meshes.push(m);
     canopyMeshes.push(m);
@@ -244,11 +248,12 @@ function createRock(dx, dz, h, scene) {
     const rh = 0.4 + noise2D(dz, dx) * 0.2;
     const rd = 0.5 + noise2D(dx + 1, dz) * 0.3;
     const rock = new THREE.Mesh(
-      new THREE.BoxGeometry(rw, rh, rd),
-      new THREE.MeshLambertMaterial({ color })
+      getCachedGeo(rw, rh, rd),
+      getCachedMat(color)
     );
     rock.position.set(dx, h + rh / 2, dz);
     rock.rotation.y = noise2D(dx * 3, dz * 3) * Math.PI;
+    rock.castShadow = true;
     scene.add(rock);
     meshes.push(rock);
   } else if (variant === 1) {
@@ -257,11 +262,12 @@ function createRock(dx, dz, h, scene) {
     const baseH = 0.5 + noise2D(dz, dx) * 0.3;
     const baseD = 0.7 + noise2D(dx + 1, dz) * 0.4;
     const base = new THREE.Mesh(
-      new THREE.BoxGeometry(baseW, baseH, baseD),
-      new THREE.MeshLambertMaterial({ color })
+      getCachedGeo(baseW, baseH, baseD),
+      getCachedMat(color)
     );
     base.position.set(dx, h + baseH / 2, dz);
     base.rotation.y = noise2D(dx * 5, dz * 5) * Math.PI;
+    base.castShadow = true;
     scene.add(base);
     meshes.push(base);
 
@@ -270,11 +276,12 @@ function createRock(dx, dz, h, scene) {
     const topH = baseH * 0.5;
     const topD = baseD * 0.6;
     const top = new THREE.Mesh(
-      new THREE.BoxGeometry(topW, topH, topD),
-      new THREE.MeshLambertMaterial({ color: adjustColor(color, 0x11, 0x11, 0x11) })
+      getCachedGeo(topW, topH, topD),
+      getCachedMat(adjustColor(color, 0x11, 0x11, 0x11))
     );
     top.position.set(dx + (noise2D(dx * 2, dz) - 0.5) * 0.2, h + baseH + topH / 2, dz + (noise2D(dx, dz * 2) - 0.5) * 0.2);
     top.rotation.y = noise2D(dx * 7, dz * 7) * Math.PI;
+    top.castShadow = true;
     scene.add(top);
     meshes.push(top);
   } else {
@@ -287,14 +294,15 @@ function createRock(dx, dz, h, scene) {
       const rh = 0.4 + noise2D(dz + i, dx + i) * 0.4;
       const rd = 0.5 + noise2D(dx + i * 2, dz + i * 2) * 0.5;
       const rock = new THREE.Mesh(
-        new THREE.BoxGeometry(rw, rh, rd),
-        new THREE.MeshLambertMaterial({ color: i % 2 === 0 ? color : adjustColor(color, 0x0a, 0x0a, 0x0a) })
+        getCachedGeo(rw, rh, rd),
+        getCachedMat(i % 2 === 0 ? color : adjustColor(color, 0x0a, 0x0a, 0x0a))
       );
       const rx = dx + offsetX;
       const rz = dz + offsetZ;
       const rGroundH = terrainHeight(rx, rz);
       rock.position.set(rx, rGroundH + rh / 2, rz);
       rock.rotation.y = noise2D(dx * (i + 3), dz * (i + 3)) * Math.PI;
+      rock.castShadow = true;
       scene.add(rock);
       meshes.push(rock);
     }
@@ -319,12 +327,13 @@ function createFallenLog(dx, dz, h, scene) {
   const color = logColors[Math.floor(noise2D(dx * 1.3, dz * 2.9) * logColors.length)];
 
   const log = new THREE.Mesh(
-    new THREE.BoxGeometry(logLength, logRadius * 2, logRadius * 2),
-    new THREE.MeshLambertMaterial({ color })
+    getCachedGeo(logLength, logRadius * 2, logRadius * 2),
+    getCachedMat(color)
   );
   log.position.set(dx, h + logRadius, dz);
   // Random rotation around Y for variety
   log.rotation.y = noise2D(dx * 5.3, dz * 7.1) * Math.PI;
+  log.castShadow = true;
   scene.add(log);
 
   // Optionally add a broken branch stump on top
@@ -332,14 +341,15 @@ function createFallenLog(dx, dz, h, scene) {
   if (noise2D(dx * 8.3, dz * 9.7) > 0.6) {
     const stumpH = 0.2 + noise2D(dx * 6, dz * 6) * 0.15;
     const stump = new THREE.Mesh(
-      new THREE.BoxGeometry(0.12, stumpH, 0.12),
-      new THREE.MeshLambertMaterial({ color: adjustColor(color, -0x11, -0x11, 0) })
+      getCachedGeo(0.12, stumpH, 0.12),
+      getCachedMat(adjustColor(color, -0x11, -0x11, 0))
     );
     stump.position.set(
       dx + (noise2D(dx * 4, dz * 4) - 0.5) * logLength * 0.3,
       h + logRadius * 2 + stumpH / 2,
       dz + (noise2D(dx * 3, dz * 5) - 0.5) * 0.1
     );
+    stump.castShadow = true;
     scene.add(stump);
     meshes.push(stump);
   }
@@ -373,8 +383,8 @@ function createMushroomCluster(dx, dz, h, scene) {
 
     // Stem
     const stem = new THREE.Mesh(
-      new THREE.BoxGeometry(0.06, stemH, 0.06),
-      new THREE.MeshLambertMaterial({ color: stemColor })
+      getCachedGeo(0.06, stemH, 0.06),
+      getCachedMat(stemColor)
     );
     stem.position.set(mx, mh + stemH / 2, mz);
     scene.add(stem);
@@ -383,8 +393,8 @@ function createMushroomCluster(dx, dz, h, scene) {
     // Cap (flat wide box on top)
     const capColor = capColors[Math.floor(noise2D(dx + i * 17, dz + i * 19) * capColors.length)];
     const cap = new THREE.Mesh(
-      new THREE.BoxGeometry(capSize, 0.06, capSize),
-      new THREE.MeshLambertMaterial({ color: capColor })
+      getCachedGeo(capSize, 0.06, capSize),
+      getCachedMat(capColor)
     );
     cap.position.set(mx, mh + stemH + 0.03, mz);
     scene.add(cap);
@@ -393,8 +403,8 @@ function createMushroomCluster(dx, dz, h, scene) {
     // Optional white spots on larger caps
     if (capSize > 0.22 && noise2D(dx + i * 23, dz + i * 29) > 0.4) {
       const spot = new THREE.Mesh(
-        new THREE.BoxGeometry(0.04, 0.02, 0.04),
-        new THREE.MeshLambertMaterial({ color: 0xffffff })
+        getCachedGeo(0.04, 0.02, 0.04),
+        getCachedMat(0xffffff)
       );
       spot.position.set(mx + (noise2D(dx + i, dz) - 0.5) * 0.06, mh + stemH + 0.07, mz + (noise2D(dx, dz + i) - 0.5) * 0.06);
       scene.add(spot);
@@ -423,10 +433,11 @@ function createStump(dx, dz, h, scene) {
 
   // Main stump body
   const stump = new THREE.Mesh(
-    new THREE.BoxGeometry(stumpW, stumpH, stumpW),
-    new THREE.MeshLambertMaterial({ color })
+    getCachedGeo(stumpW, stumpH, stumpW),
+    getCachedMat(color)
   );
   stump.position.set(dx, h + stumpH / 2, dz);
+  stump.castShadow = true;
   scene.add(stump);
   meshes.push(stump);
 
@@ -434,8 +445,8 @@ function createStump(dx, dz, h, scene) {
   if (noise2D(dx * 8.1, dz * 9.3) > 0.3) {
     const ringW = stumpW * 0.7;
     const ring = new THREE.Mesh(
-      new THREE.BoxGeometry(ringW, 0.03, ringW),
-      new THREE.MeshLambertMaterial({ color: adjustColor(color, 0x22, 0x22, 0x11) })
+      getCachedGeo(ringW, 0.03, ringW),
+      getCachedMat(adjustColor(color, 0x22, 0x22, 0x11))
     );
     ring.position.set(dx, h + stumpH + 0.015, dz);
     scene.add(ring);
@@ -447,8 +458,8 @@ function createStump(dx, dz, h, scene) {
     const rootW = stumpW * 1.3;
     const rootH = 0.1;
     const root = new THREE.Mesh(
-      new THREE.BoxGeometry(rootW, rootH, rootW),
-      new THREE.MeshLambertMaterial({ color: adjustColor(color, -0x11, -0x11, 0) })
+      getCachedGeo(rootW, rootH, rootW),
+      getCachedMat(adjustColor(color, -0x11, -0x11, 0))
     );
     root.position.set(dx, h + rootH / 2, dz);
     scene.add(root);
@@ -476,8 +487,8 @@ function createGrassPatch(dx, dz, h, scene) {
     const bh = 0.3 + noise2D(dx * 5.7 + i * 7, dz * 3.3 + i * 11) * 0.3; // 0.3-0.6
     const colorIdx = Math.floor(noise2D(dx * 2.1 + i * 13, dz * 6.7 + i * 17) * greens.length);
     const m = new THREE.Mesh(
-      new THREE.BoxGeometry(0.08, bh, 0.05),
-      new THREE.MeshLambertMaterial({ color: greens[colorIdx] })
+      getCachedGeo(0.08, bh, 0.05),
+      getCachedMat(greens[colorIdx])
     );
     const offX = (noise2D(dx * 4.3 + i * 19, dz * 5.9 + i * 23) - 0.5); // -0.5 to 0.5
     const offZ = (noise2D(dx * 6.1 + i * 29, dz * 2.7 + i * 31) - 0.5);
@@ -505,8 +516,8 @@ function createFlowerPatch(dx, dz, h, scene) {
   for (let i = 0; i < count; i++) {
     const stemH = 0.25 + noise2D(dx * 5.3 + i * 7, dz * 3.7 + i * 11) * 0.2; // 0.25-0.45
     const stem = new THREE.Mesh(
-      new THREE.BoxGeometry(0.06, stemH, 0.06),
-      new THREE.MeshLambertMaterial({ color: 0x3a7a2f })
+      getCachedGeo(0.06, stemH, 0.06),
+      getCachedMat(0x3a7a2f)
     );
     const offX = (noise2D(dx * 4.7 + i * 13, dz * 6.1 + i * 17) - 0.5);
     const offZ = (noise2D(dx * 6.3 + i * 19, dz * 2.9 + i * 23) - 0.5);
@@ -517,8 +528,8 @@ function createFlowerPatch(dx, dz, h, scene) {
     meshes.push(stem);
     const colorIdx = Math.floor(noise2D(dx * 3.1 + i * 29, dz * 7.3 + i * 31) * colors.length);
     const cap = new THREE.Mesh(
-      new THREE.BoxGeometry(0.14, 0.06, 0.14),
-      new THREE.MeshLambertMaterial({ color: colors[colorIdx] })
+      getCachedGeo(0.14, 0.06, 0.14),
+      getCachedMat(colors[colorIdx])
     );
     cap.position.set(fx, h + stemH + 0.02, fz);
     scene.add(cap);
@@ -553,6 +564,7 @@ export function generateChunk(cx, cz, scene, ts) {
   ts.loadedChunks.add(key);
 
   const ox = cx * CHUNK_SIZE, oz = cz * CHUNK_SIZE;
+  // PlaneGeometry is NOT cached — each chunk has unique vertex displacement
   const geo = new THREE.PlaneGeometry(CHUNK_SIZE, CHUNK_SIZE, 8, 8);
   const posAttr = geo.attributes.position;
 
@@ -572,7 +584,8 @@ export function generateChunk(cx, cz, scene, ts) {
   }
   geo.computeVertexNormals();
 
-  const mat = new THREE.MeshLambertMaterial({ color });
+  // Ground material uses cache — all chunks share the same forest green
+  const mat = getCachedMat(color);
   const mesh = new THREE.Mesh(geo, mat);
   mesh.rotation.x = -Math.PI / 2;
   // BD-73: Position at chunk center so plane covers [ox, ox+CHUNK_SIZE] with no seam gaps
@@ -712,7 +725,9 @@ export function generateChunk(cx, cz, scene, ts) {
 }
 
 /**
- * Unload a terrain chunk and its decorations, disposing all Three.js resources.
+ * Unload a terrain chunk and its decorations.
+ * Ground PlaneGeometry is disposed (unique per chunk), but decoration
+ * geometry/materials are shared via cache (BD-184) and must NOT be disposed here.
  *
  * @param {number} cx - Chunk X index.
  * @param {number} cz - Chunk Z index.
@@ -725,16 +740,18 @@ export function unloadChunk(cx, cz, scene, ts) {
   const mesh = ts.chunkMeshes[key];
   if (mesh) {
     scene.remove(mesh);
+    // PlaneGeometry is unique per chunk — dispose it.
+    // Material is cached (shared) — do NOT dispose.
     mesh.geometry.dispose();
-    mesh.material.dispose();
     delete ts.chunkMeshes[key];
   }
   // BD-172: O(1) decoration removal via chunk-key index
+  // Only scene.remove, no dispose (geometry/materials shared via getCachedGeo/getCachedMat, BD-184)
   const chunkDecs = ts.decorationsByChunk[key];
   if (chunkDecs) {
     const decsToRemove = new Set(chunkDecs);
     for (const d of chunkDecs) {
-      d.meshes.forEach(m => { scene.remove(m); m.geometry.dispose(); m.material.dispose(); });
+      d.meshes.forEach(m => { scene.remove(m); });
     }
     // Remove from flat array in one pass
     ts.decorations = ts.decorations.filter(d => !decsToRemove.has(d));

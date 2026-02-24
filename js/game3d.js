@@ -45,7 +45,7 @@ import {
   unloadChunk as terrainUnloadChunk, updateChunks as terrainUpdateChunks,
 } from './3d/terrain.js';
 
-import { box } from './3d/utils.js';
+import { box, clearCaches } from './3d/utils.js';
 import { buildPlayerModel, animatePlayer, updateMuscleGrowth, updateItemVisuals, buildWearableMesh, updateWearableVisuals } from './3d/player-model.js';
 import { drawHUD } from './3d/hud.js';
 import { initAudio, playSound, toggleMute, isMuted, getVolume, disposeAudio } from './3d/audio.js';
@@ -1594,17 +1594,42 @@ export function launch3DGame(options) {
   const playerGroup = playerModel.group;
   playerModel.itemMeshes = {};
 
+  // === OBJECT POOL UTILITY (BD-185) ===
+  /**
+   * Create a simple object pool. Acquires objects from the pool or creates new ones
+   * via the factory function when the pool is empty. Released objects are returned
+   * to the pool for reuse, reducing GC pressure from frequent create/destroy cycles.
+   *
+   * @param {Function} factory - Zero-arg function that creates a new pooled object.
+   * @param {number} initialSize - Number of objects to pre-create.
+   * @returns {{acquire: Function, release: Function, disposeAll: Function}}
+   */
+  function createPool(factory, initialSize) {
+    const available = [];
+    for (let i = 0; i < initialSize; i++) available.push(factory());
+    return {
+      acquire() { return available.length > 0 ? available.pop() : factory(); },
+      release(obj) { available.push(obj); },
+      disposeAll(disposeFn) { available.forEach(disposeFn); available.length = 0; }
+    };
+  }
+
   // === FIRE AURA (for race car powerup) ===
   const fireParticles = [];
   /** Maximum concurrent fire particles to prevent GPU memory exhaustion. */
   const MAX_FIRE_PARTICLES = 80;
   const fireGeo = new THREE.BoxGeometry(0.2, 0.2, 0.2);
-  const fireMat = new THREE.MeshBasicMaterial({ color: 0xff6600 });
-  // BD-165: Cache fire particle materials to avoid per-particle allocation
-  const fireMatCache = new Map();
+
+  // Pool of fire particle meshes (BD-185). Each mesh gets a per-instance material
+  // so color can be changed per-spawn. Pool starts with 20 pre-allocated meshes.
+  const firePool = createPool(() => {
+    const mat = new THREE.MeshBasicMaterial({ color: 0xff6600 });
+    return new THREE.Mesh(fireGeo, mat);
+  }, 20);
 
   /**
    * Spawn a fire particle if below the cap. Returns null if at capacity.
+   * Acquires mesh from pool (BD-185) instead of creating new.
    * @param {number} hex - Particle color.
    * @param {number} x - World X.
    * @param {number} y - World Y.
@@ -1615,17 +1640,12 @@ export function launch3DGame(options) {
    */
   function spawnFireParticle(hex, x, y, z, life, opts) {
     if (fireParticles.length >= MAX_FIRE_PARTICLES) return null;
-    const transparent = !!(opts && opts.transparent);
-    const opacity = transparent ? (opts.opacity || 1.0) : 1.0;
-    const cacheKey = hex + (transparent ? '_t' + opacity : '');
-    let mat = fireMatCache.get(cacheKey);
-    if (!mat) {
-      mat = new THREE.MeshBasicMaterial({ color: hex });
-      if (transparent) { mat.transparent = true; mat.opacity = opacity; }
-      fireMatCache.set(cacheKey, mat);
-    }
-    const fp = new THREE.Mesh(fireGeo, mat);
+    const fp = firePool.acquire();
+    fp.material.color.setHex(hex);
+    if (opts && opts.transparent) { fp.material.transparent = true; fp.material.opacity = opts.opacity || 1.0; }
+    else { fp.material.transparent = false; fp.material.opacity = 1.0; }
     fp.position.set(x, y, z);
+    fp.visible = true;
     scene.add(fp);
     const entry = { mesh: fp, life };
     fireParticles.push(entry);
@@ -1879,6 +1899,10 @@ export function launch3DGame(options) {
   // Keep backward compat alias
   const gemMat = gemMats.small;
 
+  // Pool of gem meshes (BD-185). Gems are constantly created/destroyed as enemies die
+  // and XP is collected, so pooling avoids per-gem allocation. Starts with 30.
+  const gemPool = createPool(() => new THREE.Mesh(gemGeo, gemMat), 30);
+
   /** Pick the appropriate shared gem material by XP value. */
   function getGemMaterial(xpValue) {
     if (xpValue >= 10) return gemMats.mega;
@@ -1889,6 +1913,7 @@ export function launch3DGame(options) {
 
   /**
    * Create an XP gem pickup at the given world position.
+   * Acquires mesh from pool (BD-185) instead of creating new.
    * Gems bob up and down, spin, and are attracted toward the player when within collectRadius * 2.
    * Material is chosen by XP value tier (BD-174).
    *
@@ -1899,13 +1924,17 @@ export function launch3DGame(options) {
    */
   function createXpGem(x, z, xpValue = 1) {
     const mat = getGemMaterial(xpValue);
-    const mesh = new THREE.Mesh(gemGeo, mat);
+    const mesh = gemPool.acquire();
+    mesh.material = mat;
     const h = terrainHeight(x, z);
     mesh.position.set(x, h + 0.5, z);
+    mesh.rotation.set(0, 0, 0);
+    mesh.visible = true;
     // Scale up larger gems slightly for visual distinction
     if (xpValue >= 10)     mesh.scale.setScalar(1.8);
     else if (xpValue >= 5) mesh.scale.setScalar(1.4);
     else if (xpValue >= 3) mesh.scale.setScalar(1.2);
+    else                    mesh.scale.setScalar(1.0);
     scene.add(mesh);
     return { mesh, bobPhase: Math.random() * Math.PI * 2, baseScale: 1.0, xpValue };
   }
@@ -4476,8 +4505,10 @@ export function launch3DGame(options) {
         fireParticles[i].life -= dt;
         fireParticles[i].mesh.position.y += dt * 3;
         if (fireParticles[i].life <= 0) {
+          // Return to pool instead of disposing (BD-185)
           scene.remove(fireParticles[i].mesh);
-          // Material is cached (fireMatCache) — do not dispose
+          fireParticles[i].mesh.visible = false;
+          firePool.release(fireParticles[i].mesh);
           fireParticles.splice(i, 1);
         }
       }
@@ -5472,8 +5503,10 @@ export function launch3DGame(options) {
               a.baseScale = targetScale;
               // BD-174: Switch to appropriate tiered material
               a.mesh.material = getGemMaterial(a.xpValue);
+              // Return to pool instead of just removing (BD-185)
               scene.remove(b.mesh);
-              // Material is shared (gemMats) — do not dispose
+              b.mesh.visible = false;
+              gemPool.release(b.mesh);
               st.xpGems.splice(j, 1);
               i--;
               break;
@@ -5516,8 +5549,10 @@ export function launch3DGame(options) {
         // Collection
         if (dist < st.collectRadius) {
           st.xp += Math.max(1, Math.round((gem.xpValue || 1) * st.augmentXpMult * getHowlXpMult() * getWearableXpMult() * (st.totemXpMult || 1)));
+          // Return to pool instead of just removing (BD-185)
           scene.remove(gem.mesh);
-          // Material is shared (gemMats) — do not dispose
+          gem.mesh.visible = false;
+          gemPool.release(gem.mesh);
           st.xpGems.splice(i, 1);
           if (gem.xpValue >= 3) {
             playSound('sfx_weapon_boomerang'); // whoosh for big merged gems!
@@ -5531,9 +5566,10 @@ export function launch3DGame(options) {
             showUpgradeMenu();
           }
         } else if (dist > 50) {
-          // Cleanup far-away XP gems to prevent unbounded accumulation
+          // Cleanup far-away XP gems — return to pool (BD-185)
           scene.remove(gem.mesh);
-          // Material is shared (gemMats) — do not dispose
+          gem.mesh.visible = false;
+          gemPool.release(gem.mesh);
           st.xpGems.splice(i, 1);
         }
       }
@@ -6142,8 +6178,14 @@ export function launch3DGame(options) {
     window.removeEventListener('keyup', onKeyUp);
     disposeAudio();
 
-    // Dispose fire particles
-    fireParticles.forEach(fp => disposeSceneObject(fp.mesh));
+    // Return active fire particles to pool, then dispose all pooled meshes (BD-185)
+    fireParticles.forEach(fp => { scene.remove(fp.mesh); firePool.release(fp.mesh); });
+    fireParticles.length = 0;
+    firePool.disposeAll(m => { if (m.geometry) m.geometry.dispose(); if (m.material) m.material.dispose(); });
+    // Return active XP gems to pool, then dispose all pooled meshes (BD-185)
+    st.xpGems.forEach(gem => { scene.remove(gem.mesh); gemPool.release(gem.mesh); });
+    st.xpGems.length = 0;
+    gemPool.disposeAll(m => { if (m.geometry) m.geometry.dispose(); if (m.material) m.material.dispose(); });
     // Dispose mirror clone groups
     st.mirrorCloneGroups.forEach(cd => disposeSceneObject(cd.group));
     // Dispose bomb trail bombs
@@ -6189,6 +6231,9 @@ export function launch3DGame(options) {
         });
       }
     });
+
+    // Clear geometry/material caches (BD-184) before scene traverse
+    clearCaches();
 
     // Dispose all Three.js objects
     scene.traverse(child => {
