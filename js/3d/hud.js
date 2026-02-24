@@ -353,9 +353,18 @@ export function drawHUD(ctx, s, deps) {
     }
 
     // --- Controls Hint (bottom-center) ---
-    ctx.textAlign = 'center';
-    ctx.fillStyle = 'rgba(255,255,255,0.3)'; ctx.font = '14px "Courier New"';
-    ctx.fillText('WASD: Move | SPACE: Jump | HOLD B: Power Attack | ESC: Pause', W / 2, H - 10);
+    {
+      const hintText = 'WASD: Move | SPACE: Jump | HOLD B: Power Attack | ESC: Pause';
+      ctx.textAlign = 'center';
+      ctx.font = '14px "Courier New"';
+      // Background strip for readability
+      const hintW = ctx.measureText(hintText).width + 20;
+      ctx.fillStyle = 'rgba(0,0,0,0.4)';
+      ctx.fillRect(W / 2 - hintW / 2, H - 24, hintW, 20);
+      // Text with bumped opacity (0.3 -> 0.5)
+      ctx.fillStyle = 'rgba(255,255,255,0.5)';
+      ctx.fillText(hintText, W / 2, H - 10);
+    }
 
     // === MINIMAP (BD-76 + BD-97 fog-of-war) ===
     {

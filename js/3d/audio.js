@@ -62,7 +62,7 @@ const SOUND_MAP = {
     'fart-1.ogg', 'fart-2.ogg', 'fart-3.ogg',
   ],
   sfx_weapon_boomerang: [
-    // No boomerang sound in pack -- needs Sound Pack Beta
+    'wings-4.ogg', // whoosh quality works for boomerang arc
   ],
   sfx_weapon_litterbox: [
     'litterbox-1.ogg',
@@ -74,7 +74,7 @@ const SOUND_MAP = {
     'bouncy-boots-3.ogg', 'bouncy-boots-4.ogg',
   ],
   sfx_land: [
-    // No dedicated landing sound -- needs Sound Pack Beta
+    'bouncy-boots-4.ogg',
   ],
 
   // --- Powerups ---
@@ -91,11 +91,12 @@ const SOUND_MAP = {
     'e-scooter-1.ogg', 'e-scooter-2.ogg',
   ],
   sfx_powerup_generic: [
-    // No generic powerup sound -- needs Sound Pack Beta
+    // No generic powerup sound -- needs Sound Pack Beta -- no suitable match in Alpha
   ],
 
   // --- Zombie (all merge-tiered, no spawn/death in this pack) ---
   sfx_zombie_spawn: [
+    'zombie-1.ogg', 'zombie-2.ogg',
   ],
   sfx_zombie_merge_low: [
     'zombie-1.ogg', 'zombie-2.ogg', 'zombie-3.ogg', 'zombie-7.ogg',
@@ -107,6 +108,7 @@ const SOUND_MAP = {
     'zombie-4.ogg', 'zombie-5.ogg',
   ],
   sfx_zombie_death_low: [
+    'zombie-7.ogg',
   ],
   sfx_zombie_death_high: [
     'explode-1.ogg',
@@ -117,7 +119,7 @@ const SOUND_MAP = {
     'leapord-growl-1.ogg',
   ],
   sfx_player_death: [
-    // Needs Sound Pack Beta
+    'falling-scream-1.ogg',
   ],
 
   // --- Progression ---
@@ -125,18 +127,18 @@ const SOUND_MAP = {
     'rawr-2.ogg',
   ],
   sfx_xp_pickup: [
-    // Needs Sound Pack Beta
+    // Needs Sound Pack Beta -- no suitable match in Alpha
   ],
 
   // --- World ---
   sfx_crate_open: [
-    // Needs Sound Pack Beta
+    'litterbox-1.ogg',
   ],
   sfx_shrine_break: [
     'explode-1.ogg',
   ],
   sfx_item_pickup: [
-    // Needs Sound Pack Beta
+    // Needs Sound Pack Beta -- no suitable match in Alpha
   ],
   sfx_comedic_drop: [
     'poop-1.ogg',
@@ -203,6 +205,11 @@ export function initAudio(base) {
     try {
       const audio = new Audio();
       audio.preload = 'auto';
+      // Handle 404s and load errors gracefully: remove broken entries from cache
+      // so playSound never tries to clone a broken template
+      audio.addEventListener('error', () => {
+        delete audioCache[file];
+      }, { once: true });
       audio.src = basePath + file;
       // Start loading (non-blocking)
       audio.load();
