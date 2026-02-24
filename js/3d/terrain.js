@@ -16,8 +16,8 @@
  * Extracted from game3d.js as Layer 1 of the modular decomposition.
  *
  * Dependencies: Three.js (global), 3d/constants.js (CHUNK_SIZE, MAP_HALF), 3d/utils.js (getCachedGeo, getCachedMat)
- * Exports: 10 — noise2D, smoothNoise, terrainHeight, getBiome, BIOME_COLORS,
- *               getChunkKey, createTerrainState, generateChunk, unloadChunk, updateChunks
+ * Exports: 11 — noise2D, smoothNoise, terrainHeight, getBiome, BIOME_COLORS,
+ *               getChunkKey, createTerrainState, getNearbyColliders, generateChunk, unloadChunk, updateChunks
  */
 
 import { CHUNK_SIZE, MAP_HALF } from './constants.js';
@@ -117,7 +117,7 @@ export function getChunkKey(cx, cz) { return `${cx},${cz}`; }
  * @property {Object.<string, Array>} decorationsByChunk - Decorations indexed by chunk key for O(1) unload.
  * @property {THREE.Mesh[]} canopyMeshes - Flat array of all canopy meshes for wind animation.
  * @property {Object.<string, THREE.Mesh[]>} canopyMeshesByChunk - Canopy meshes indexed by chunk key for cleanup.
- * @property {Array.<{x: number, z: number, radius: number}>} colliders - Collision circles for solid objects (trees, rocks).
+ * @property {Object.<string, Array.<{x: number, z: number, radius: number}>>} collidersByChunk - Chunk-indexed collision circles for solid objects (trees, rocks).
  */
 
 /**
@@ -134,9 +134,34 @@ export function createTerrainState() {
     decorationsByChunk: {},   // Chunk key -> decoration[] for O(1) unload (BD-172)
     canopyMeshes: [],         // Flat array of canopy meshes for wind animation (BD-173)
     canopyMeshesByChunk: {},  // Chunk key -> canopy mesh[] for cleanup (BD-173)
-    colliders: [],            // Array of { x, z, radius } for solid objects (trees, rocks)
-    collidersByChunk: {},     // BD-113: chunk-indexed colliders for enemy collision lookups
+    collidersByChunk: {},     // Chunk key -> array of { x, z, radius } for solid objects
   };
+}
+
+/**
+ * Get colliders from the 9 chunks surrounding (and including) a world position.
+ * This is the chunk-indexed replacement for scanning the entire flat colliders array.
+ * Only checks ~30 colliders (nearby chunks) instead of all ~350 loaded.
+ *
+ * @param {number} wx - World X position to query around.
+ * @param {number} wz - World Z position to query around.
+ * @param {TerrainState} ts - The terrain state with collidersByChunk.
+ * @returns {Array.<{x: number, z: number, radius: number}>} Combined colliders from 9 nearby chunks.
+ */
+export function getNearbyColliders(wx, wz, ts) {
+  const cx = Math.floor(wx / CHUNK_SIZE);
+  const cz = Math.floor(wz / CHUNK_SIZE);
+  const result = [];
+  for (let dx = -1; dx <= 1; dx++) {
+    for (let dz = -1; dz <= 1; dz++) {
+      const key = getChunkKey(cx + dx, cz + dz);
+      const arr = ts.collidersByChunk[key];
+      if (arr) {
+        for (let i = 0; i < arr.length; i++) result.push(arr[i]);
+      }
+    }
+  }
+  return result;
 }
 
 // === COLOR UTILITY ===
@@ -630,9 +655,8 @@ export function generateChunk(cx, cz, scene, ts) {
     const dec = { meshes: tree.meshes, x: dx, z: dz };
     ts.decorations.push(dec);
     ts.decorationsByChunk[key].push(dec);
-    const treeCollider = { x: dx, z: dz, radius: 1.2, r: 1.2 };
-    ts.colliders.push(treeCollider);
-    (ts.collidersByChunk[key] = ts.collidersByChunk[key] || []).push(treeCollider);
+    if (!ts.collidersByChunk[key]) ts.collidersByChunk[key] = [];
+    ts.collidersByChunk[key].push({ x: dx, z: dz, radius: 1.2 });
     // BD-173: Track canopy meshes for wind animation
     for (const cm of tree.canopyMeshes) {
       ts.canopyMeshes.push(cm);
@@ -652,9 +676,8 @@ export function generateChunk(cx, cz, scene, ts) {
     const rockDec = { meshes, x: dx, z: dz };
     ts.decorations.push(rockDec);
     ts.decorationsByChunk[key].push(rockDec);
-    const rockCollider = { x: dx, z: dz, radius: 1.0, r: 1.0 };
-    ts.colliders.push(rockCollider);
-    (ts.collidersByChunk[key] = ts.collidersByChunk[key] || []).push(rockCollider);
+    if (!ts.collidersByChunk[key]) ts.collidersByChunk[key] = [];
+    ts.collidersByChunk[key].push({ x: dx, z: dz, radius: 1.0 });
   }
 
   // Fallen logs: 0-1 per chunk
@@ -764,13 +787,7 @@ export function unloadChunk(cx, cz, scene, ts) {
     ts.canopyMeshes = ts.canopyMeshes.filter(m => !canopySet.has(m));
     delete ts.canopyMeshesByChunk[key];
   }
-  // Remove colliders in this chunk
-  ts.colliders = ts.colliders.filter(c => {
-    const ccx = Math.floor(c.x / CHUNK_SIZE);
-    const ccz = Math.floor(c.z / CHUNK_SIZE);
-    return !(ccx === cx && ccz === cz);
-  });
-  // BD-113: clean up chunk-indexed colliders
+  // Remove colliders for this chunk
   delete ts.collidersByChunk[key];
   ts.loadedChunks.delete(key);
 }

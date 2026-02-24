@@ -41,7 +41,8 @@ import {
 
 import {
   noise2D, smoothNoise, terrainHeight, getBiome, BIOME_COLORS,
-  getChunkKey, createTerrainState, generateChunk as terrainGenerateChunk,
+  getChunkKey, createTerrainState, getNearbyColliders,
+  generateChunk as terrainGenerateChunk,
   unloadChunk as terrainUnloadChunk, updateChunks as terrainUpdateChunks,
 } from './3d/terrain.js';
 
@@ -1017,7 +1018,9 @@ export function launch3DGame(options) {
 
         // Add collider so player can walk on steps
         if (terrainState) {
-          terrainState.colliders.push({ x: sx, z: sz, r: Math.max(sw, sd) / 2 + 0.3 });
+          const stepChunkKey = getChunkKey(Math.floor(sx / CHUNK_SIZE), Math.floor(sz / CHUNK_SIZE));
+          if (!terrainState.collidersByChunk[stepChunkKey]) terrainState.collidersByChunk[stepChunkKey] = [];
+          terrainState.collidersByChunk[stepChunkKey].push({ x: sx, z: sz, radius: Math.max(sw, sd) / 2 + 0.3 });
         }
       }
     }
@@ -4294,27 +4297,21 @@ export function launch3DGame(options) {
         }
       }
 
-      // === OBJECT COLLISION (BD-69, BD-169: chunk-indexed lookup) ===
-      if (terrainState && terrainState.collidersByChunk) {
+      // === OBJECT COLLISION (BD-69, BD-156: chunk-indexed) ===
+      if (terrainState) {
         const PR = 0.5; // player radius
-        const pcx = Math.floor(st.playerX / CHUNK_SIZE);
-        const pcz = Math.floor(st.playerZ / CHUNK_SIZE);
-        for (let cdx = -1; cdx <= 1; cdx++) {
-          for (let cdz = -1; cdz <= 1; cdz++) {
-            const chunkColliders = terrainState.collidersByChunk[getChunkKey(pcx + cdx, pcz + cdz)];
-            if (!chunkColliders) continue;
-            for (const c of chunkColliders) {
-              const dx = st.playerX - c.x;
-              const dz = st.playerZ - c.z;
-              const dist = Math.sqrt(dx * dx + dz * dz);
-              const minDist = PR + c.radius;
-              if (dist < minDist && dist > 0.001) {
-                // Push player out
-                const pushDist = minDist - dist;
-                st.playerX += (dx / dist) * pushDist;
-                st.playerZ += (dz / dist) * pushDist;
-              }
-            }
+        const nearby = getNearbyColliders(st.playerX, st.playerZ, terrainState);
+        for (let ci = 0; ci < nearby.length; ci++) {
+          const c = nearby[ci];
+          const dx = st.playerX - c.x;
+          const dz = st.playerZ - c.z;
+          const dist = Math.sqrt(dx * dx + dz * dz);
+          const minDist = PR + c.radius;
+          if (dist < minDist && dist > 0.001) {
+            // Push player out
+            const pushDist = minDist - dist;
+            st.playerX += (dx / dist) * pushDist;
+            st.playerZ += (dz / dist) * pushDist;
           }
         }
       }
@@ -5166,51 +5163,23 @@ export function launch3DGame(options) {
           e.group.position.x = Math.max(-MAP_HALF + 0.5, Math.min(MAP_HALF - 0.5, e.group.position.x));
           e.group.position.z = Math.max(-MAP_HALF + 0.5, Math.min(MAP_HALF - 0.5, e.group.position.z));
 
-          // === ENEMY-TERRAIN COLLISION (BD-103) ===
-          if (terrainState && terrainState.colliders) {
-            const ER = 0.4; // enemy radius (slightly smaller than player)
-            const ex = e.group.position.x;
-            const ez = e.group.position.z;
-            for (const c of terrainState.colliders) {
-              const cdx = ex - c.x;
-              const cdz = ez - c.z;
-              // Quick pre-check: skip colliders far away (>5 units)
-              if (cdx > 5 || cdx < -5 || cdz > 5 || cdz < -5) continue;
-              const cDist = Math.sqrt(cdx * cdx + cdz * cdz);
-              const minDist = ER + c.radius;
-              if (cDist < minDist && cDist > 0.001) {
-                const pushDist = minDist - cDist;
-                e.group.position.x += (cdx / cDist) * pushDist;
-                e.group.position.z += (cdz / cDist) * pushDist;
-              }
-            }
-          }
-
           e.group.rotation.y = Math.atan2(nx, nz);
         }
 
-        // BD-113: Chunk-aware enemy terrain collision
-        if (terrainState && terrainState.collidersByChunk) {
-          const CHUNK_SZ = 16; // must match terrain.js CHUNK_SIZE
-          const ecx = Math.floor(e.group.position.x / CHUNK_SZ);
-          const ecz = Math.floor(e.group.position.z / CHUNK_SZ);
+        // === ENEMY-TERRAIN COLLISION (BD-156: chunk-indexed via getNearbyColliders) ===
+        if (terrainState) {
           const ER = 0.4; // enemy radius
-          // Check enemy's chunk and 8 neighbors
-          for (let dcx = -1; dcx <= 1; dcx++) {
-            for (let dcz = -1; dcz <= 1; dcz++) {
-              const chunkColliders = terrainState.collidersByChunk[(ecx + dcx) + ',' + (ecz + dcz)];
-              if (!chunkColliders) continue;
-              for (const c of chunkColliders) {
-                const cdx = e.group.position.x - c.x;
-                const cdz = e.group.position.z - c.z;
-                const cDist = Math.sqrt(cdx * cdx + cdz * cdz);
-                const minDist = ER + c.r;
-                if (cDist < minDist && cDist > 0.001) {
-                  const pushDist = minDist - cDist;
-                  e.group.position.x += (cdx / cDist) * pushDist;
-                  e.group.position.z += (cdz / cDist) * pushDist;
-                }
-              }
+          const nearby = getNearbyColliders(e.group.position.x, e.group.position.z, terrainState);
+          for (let ci = 0; ci < nearby.length; ci++) {
+            const c = nearby[ci];
+            const cdx = e.group.position.x - c.x;
+            const cdz = e.group.position.z - c.z;
+            const cDist = Math.sqrt(cdx * cdx + cdz * cdz);
+            const minDist = ER + c.radius;
+            if (cDist < minDist && cDist > 0.001) {
+              const pushDist = minDist - cDist;
+              e.group.position.x += (cdx / cDist) * pushDist;
+              e.group.position.z += (cdz / cDist) * pushDist;
             }
           }
         }
