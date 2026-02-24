@@ -767,76 +767,61 @@ export function drawHUD(ctx, s, deps) {
     // --- Stats Panel ---
     ctx.fillStyle = '#ffcc00'; ctx.font = 'bold 24px "Courier New"';
     ctx.fillText(`SCORE: ${s.score}`, W / 2, 95);
-    ctx.fillStyle = '#ffffff'; ctx.font = '14px "Courier New"';
+    ctx.fillStyle = '#ffffff'; ctx.font = 'bold 14px "Courier New"';
     ctx.fillText(`${animalData.name} | Level ${s.level} | Wave ${s.wave - 1}`, W / 2, 118);
 
     // Time survived
     const goMins = Math.floor(s.gameTime / 60);
     const goSecs = Math.floor(s.gameTime % 60);
-    ctx.fillStyle = '#88ccff'; ctx.font = '14px "Courier New"';
+    ctx.fillStyle = '#88ccff'; ctx.font = 'bold 14px "Courier New"';
     ctx.fillText(`Time: ${String(goMins).padStart(2, '0')}:${String(goSecs).padStart(2, '0')}`, W / 2, 138);
 
-    // Total kills
-    ctx.fillStyle = '#ff8844'; ctx.font = 'bold 14px "Courier New"';
-    ctx.fillText(`Total Kills: ${s.totalKills}`, W / 2, 158);
+    // --- Big total kills line ---
+    ctx.fillStyle = '#ffcc44'; ctx.font = 'bold 28px "Courier New"';
+    ctx.fillText(`YOU DEFEATED ${s.totalKills} ZOMBIES!`, W / 2, 175);
 
-    // Kill breakdown by tier (only show tiers with kills)
-    let tierY = 174;
-    let highestTierName = '';
-    const tierEntries = [];
-    for (let t = 0; t < s.killsByTier.length; t++) {
-      if (s.killsByTier[t] > 0) {
-        const tierName = (ZOMBIE_TIERS[t] && ZOMBIE_TIERS[t].name) || `Tier ${t + 1}`;
-        tierEntries.push({ name: tierName, count: s.killsByTier[t], tier: t });
-        highestTierName = tierName;
+    // Kid-friendly tier breakdown (max 4 groups)
+    let tierY = 205;
+    const kidGroups = [
+      { label: 'Tiny', from: 0, to: 1 },
+      { label: 'Big', from: 2, to: 3 },
+      { label: 'Huge', from: 4, to: 5 },
+      { label: 'MEGA', from: 6, to: 9 },
+    ];
+    for (const grp of kidGroups) {
+      let count = 0;
+      for (let t = grp.from; t <= grp.to && t < s.killsByTier.length; t++) {
+        count += s.killsByTier[t] || 0;
       }
-    }
-    if (tierEntries.length > 0) {
-      ctx.fillStyle = '#aa6633'; ctx.font = '11px "Courier New"';
-      // Show tier kills in a compact row format
-      const tierParts = tierEntries.map(te => `${te.name}: ${te.count}`);
-      // Split into rows of 3 to fit the screen
-      for (let r = 0; r < tierParts.length; r += 3) {
-        const rowText = tierParts.slice(r, r + 3).join('  |  ');
-        ctx.fillText(rowText, W / 2, tierY);
-        tierY += 14;
+      if (count > 0) {
+        ctx.fillStyle = '#ffaa44'; ctx.font = 'bold 16px "Courier New"';
+        ctx.fillText(`${grp.label}: ${count}`, W / 2, tierY);
+        tierY += 22;
       }
-    }
-    // Highest tier killed
-    if (highestTierName) {
-      ctx.fillStyle = '#ff6644'; ctx.font = 'bold 12px "Courier New"';
-      ctx.fillText(`Strongest Kill: ${highestTierName}`, W / 2, tierY);
-      tierY += 18;
-    } else {
-      tierY += 4;
     }
 
     // --- Feedback Section ---
-    const feedbackY = tierY + 2;
-    ctx.fillStyle = '#aaaacc'; ctx.font = 'bold 13px "Courier New"';
-    ctx.fillText('Would you play again?', W / 2, feedbackY);
+    const feedbackY = tierY + 8;
+    ctx.fillStyle = '#aaaacc'; ctx.font = 'bold 20px "Courier New"';
+    ctx.fillText('Was that FUN?', W / 2, feedbackY);
 
-    const fbOptions = ['Yes', 'Maybe', 'No'];
+    const fbOptions = ['YES', 'KINDA', 'NAH'];
     const fbColors = ['#44ff44', '#ffaa44', '#ff4444'];
-    const fbGap = 80;
+    const fbGap = 100;
     const fbStartX = W / 2 - fbGap;
     for (let fi = 0; fi < 3; fi++) {
       const fx = fbStartX + fi * fbGap;
       const isSelected = fi === s.feedbackSelection;
       if (isSelected) {
-        ctx.fillStyle = fbColors[fi]; ctx.font = 'bold 14px "Courier New"';
-        ctx.fillText(`[${fbOptions[fi]}]`, fx, feedbackY + 18);
+        ctx.fillStyle = fbColors[fi]; ctx.font = 'bold 18px "Courier New"';
+        ctx.fillText(`[${fbOptions[fi]}]`, fx, feedbackY + 26);
       } else {
-        ctx.fillStyle = '#555'; ctx.font = '12px "Courier New"';
-        ctx.fillText(fbOptions[fi], fx, feedbackY + 18);
+        ctx.fillStyle = '#555'; ctx.font = 'bold 16px "Courier New"';
+        ctx.fillText(fbOptions[fi], fx, feedbackY + 26);
       }
     }
-    ctx.fillStyle = '#555'; ctx.font = '10px "Courier New"';
-    ctx.fillText('<  Arrow Keys to select  >', W / 2, feedbackY + 34);
-
-    // "Most fun moment?" display question
-    ctx.fillStyle = '#666'; ctx.font = '11px "Courier New"';
-    ctx.fillText('What was your most fun moment? (Tell us on Discord!)', W / 2, feedbackY + 50);
+    ctx.fillStyle = '#777'; ctx.font = 'bold 14px "Courier New"';
+    ctx.fillText('<  Arrow Keys to pick  >', W / 2, feedbackY + 48);
 
     // --- Name Entry / Leaderboard (below feedback) ---
     const entryY = feedbackY + 70;
@@ -850,31 +835,29 @@ export function drawHUD(ctx, s, deps) {
       ctx.fillStyle = '#ffffff'; ctx.font = 'bold 20px "Courier New"';
       const cursor = Math.sin(Date.now() * 0.005) > 0 ? '_' : '';
       ctx.fillText(s.nameEntry + cursor, W / 2, entryY + 30);
-      ctx.fillStyle = '#666'; ctx.font = '14px "Courier New"';
+      ctx.fillStyle = '#888'; ctx.font = 'bold 14px "Courier New"';
       ctx.fillText('Type name, then ENTER to save', W / 2, entryY + 55);
     } else {
-      // Leaderboard
-      ctx.fillStyle = '#ffcc00'; ctx.font = 'bold 16px "Courier New"';
+      // Leaderboard (simplified: 3 columns, top 5)
+      ctx.fillStyle = '#ffcc00'; ctx.font = 'bold 18px "Courier New"';
       ctx.fillText('LEADERBOARD', W / 2, entryY);
       const lb = s.leaderboard3d;
       if (lb.length > 0) {
-        ctx.font = '14px "Courier New"';
-        ctx.fillStyle = '#888';
-        ctx.fillText('RANK   NAME        SCORE   ANIMAL    LVL  WAVE  TIME', W / 2, entryY + 18);
-        for (let i = 0; i < Math.min(lb.length, 10); i++) {
+        ctx.font = 'bold 16px "Courier New"';
+        ctx.fillStyle = '#aaa';
+        ctx.fillText('RANK     NAME        SCORE', W / 2, entryY + 22);
+        const rankColors = ['#ffd700', '#c0c0c0', '#cd7f32', '#888888', '#888888'];
+        for (let i = 0; i < Math.min(lb.length, 5); i++) {
           const e = lb[i];
           const rank = String(i + 1).padStart(2);
           const name = (e.name || '???').padEnd(10);
           const score = String(e.score).padStart(6);
-          const animal = (e.animal || '').padEnd(8).slice(0, 8);
-          const lvl = String(e.level || 1).padStart(3);
-          const wave = String(e.wave || 0).padStart(4);
-          const lbTime = e.time ? `${String(Math.floor(e.time/60)).padStart(2,'0')}:${String(Math.floor(e.time%60)).padStart(2,'0')}` : '--:--';
-          ctx.fillStyle = i === 0 ? '#ffcc00' : i < 3 ? '#ccaa44' : '#888888';
-          ctx.fillText(`${rank}.  ${name}  ${score}   ${animal} ${lvl}  ${wave}  ${lbTime}`, W / 2, entryY + 34 + i * 16);
+          ctx.fillStyle = rankColors[i] || '#888888';
+          ctx.font = 'bold 18px "Courier New"';
+          ctx.fillText(`${rank}.  ${name}  ${score}`, W / 2, entryY + 44 + i * 24);
         }
       } else {
-        ctx.fillStyle = '#666'; ctx.font = '13px "Courier New"';
+        ctx.fillStyle = '#888'; ctx.font = 'bold 14px "Courier New"';
         ctx.fillText('No scores yet', W / 2, entryY + 34);
       }
 
