@@ -73,52 +73,58 @@ export function drawHUD(ctx, s, deps) {
     ctx.shadowOffsetY = 1;
 
     // --- HP Bar (top-left) ---
-    ctx.fillStyle = '#222'; ctx.fillRect(20, 20, 200, 24);
+    ctx.fillStyle = '#222'; ctx.fillRect(20, 20, 220, 30);
     const hpRatio = Math.max(0, s.hp / s.maxHp);
     ctx.fillStyle = hpRatio > 0.5 ? '#44ff44' : hpRatio > 0.25 ? '#ffaa00' : '#ff4444';
-    ctx.fillRect(20, 20, 200 * hpRatio, 24);
-    ctx.strokeStyle = '#fff'; ctx.lineWidth = 1; ctx.strokeRect(20, 20, 200, 24);
-    ctx.fillStyle = '#fff'; ctx.font = 'bold 16px "Courier New"'; ctx.textAlign = 'left';
-    ctx.fillText(`HP: ${Math.ceil(s.hp)}/${s.maxHp}`, 25, 37);
+    ctx.fillRect(20, 20, 220 * hpRatio, 30);
+    ctx.strokeStyle = '#fff'; ctx.lineWidth = 1; ctx.strokeRect(20, 20, 220, 30);
+    // Pulsing red border when HP below 25%
+    if (hpRatio < 0.25) {
+      ctx.strokeStyle = `rgba(255,0,0, ${0.4 + 0.4 * Math.sin(Date.now() * 0.008)})`;
+      ctx.lineWidth = 3;
+      ctx.strokeRect(18, 18, 224, 34);
+    }
+    ctx.fillStyle = '#fff'; ctx.font = 'bold 20px "Courier New"'; ctx.textAlign = 'left';
+    ctx.fillText(`HP: ${Math.ceil(s.hp)}/${s.maxHp}`, 25, 41);
 
     // --- XP Bar (below HP) ---
-    ctx.fillStyle = '#222'; ctx.fillRect(20, 50, 200, 18);
+    ctx.fillStyle = '#222'; ctx.fillRect(20, 56, 200, 22);
     const xpRatio = s.xp / s.xpToNext;
     ctx.fillStyle = '#44aaff';
-    ctx.fillRect(20, 50, 200 * xpRatio, 18);
-    ctx.strokeStyle = '#fff'; ctx.strokeRect(20, 50, 200, 18);
-    ctx.fillStyle = '#fff'; ctx.font = 'bold 14px "Courier New"';
-    ctx.fillText(`XP: ${s.xp}/${s.xpToNext}`, 25, 63);
+    ctx.fillRect(20, 56, 200 * xpRatio, 22);
+    ctx.strokeStyle = '#fff'; ctx.strokeRect(20, 56, 200, 22);
+    ctx.fillStyle = '#fff'; ctx.font = 'bold 16px "Courier New"';
+    ctx.fillText(`XP: ${s.xp}/${s.xpToNext}`, 25, 72);
 
     // --- Level + Animal Name ---
     ctx.fillStyle = '#ffcc00'; ctx.font = 'bold 20px "Courier New"';
-    ctx.fillText(`LVL ${s.level}`, 20, 88);
+    ctx.fillText(`LVL ${s.level}`, 20, 98);
     ctx.fillStyle = animalData.color; ctx.font = 'bold 16px "Courier New"';
-    ctx.fillText(animalData.name, 20, 106);
+    ctx.fillText(animalData.name, 20, 116);
 
     // --- Weapon Slot Bars (left side, below level) ---
-    let wy = 125;
+    let wy = 135;
     for (let wi = 0; wi < s.weapons.length; wi++) {
       const w = s.weapons[wi];
       const def = WEAPON_TYPES[w.typeId];
       const cdRatio = Math.max(0, w.cooldownTimer / getWeaponCooldown(w));
       // Background
-      ctx.fillStyle = '#222'; ctx.fillRect(20, wy, 140, 20);
+      ctx.fillStyle = '#222'; ctx.fillRect(20, wy, 160, 24);
       // Cooldown fill
-      ctx.fillStyle = def.color + '88'; ctx.fillRect(20, wy, 140 * (1 - cdRatio), 20);
-      ctx.strokeStyle = '#555'; ctx.lineWidth = 1; ctx.strokeRect(20, wy, 140, 20);
+      ctx.fillStyle = def.color + '88'; ctx.fillRect(20, wy, 160 * (1 - cdRatio), 24);
+      ctx.strokeStyle = '#555'; ctx.lineWidth = 1; ctx.strokeRect(20, wy, 160, 24);
       // Name
-      ctx.fillStyle = def.color; ctx.font = 'bold 14px "Courier New"'; ctx.textAlign = 'left';
-      ctx.fillText(`${def.name} Lv${w.level}`, 24, wy + 14);
-      wy += 24;
+      ctx.fillStyle = def.color; ctx.font = 'bold 16px "Courier New"'; ctx.textAlign = 'left';
+      ctx.fillText(`${def.name} Lv${w.level}`, 24, wy + 17);
+      wy += 28;
     }
     // Empty slots
     for (let wi = s.weapons.length; wi < s.maxWeaponSlots; wi++) {
-      ctx.fillStyle = '#1a1a1a'; ctx.fillRect(20, wy, 140, 20);
-      ctx.strokeStyle = '#333'; ctx.lineWidth = 1; ctx.strokeRect(20, wy, 140, 20);
-      ctx.fillStyle = '#444'; ctx.font = '14px "Courier New"'; ctx.textAlign = 'left';
-      ctx.fillText('[EMPTY SLOT]', 24, wy + 14);
-      wy += 24;
+      ctx.fillStyle = '#1a1a1a'; ctx.fillRect(20, wy, 160, 24);
+      ctx.strokeStyle = '#333'; ctx.lineWidth = 1; ctx.strokeRect(20, wy, 160, 24);
+      ctx.fillStyle = '#666'; ctx.font = 'bold 16px "Courier New"'; ctx.textAlign = 'left';
+      ctx.fillText('[EMPTY SLOT]', 24, wy + 17);
+      wy += 28;
     }
 
     // --- Wave + Score + Timer (top-right) ---
@@ -156,14 +162,14 @@ export function drawHUD(ctx, s, deps) {
     // --- Active Powerup Indicator (top-center) ---
     if (s.activePowerup) {
       const pw = s.activePowerup;
-      ctx.fillStyle = pw.def.color; ctx.font = 'bold 14px "Courier New"';
+      ctx.fillStyle = pw.def.color; ctx.font = 'bold 20px "Courier New"';
       ctx.textAlign = 'center';
-      ctx.fillText(`${pw.def.name} (${Math.ceil(pw.timer)}s)`, W / 2, 25);
+      ctx.fillText(`${pw.def.name} (${Math.ceil(pw.timer)}s)`, W / 2, 40);
       // Timer bar
-      const barW = 120, barH = 6;
-      ctx.fillStyle = '#222'; ctx.fillRect(W / 2 - barW / 2, 30, barW, barH);
+      const barW = 150, barH = 12;
+      ctx.fillStyle = '#222'; ctx.fillRect(W / 2 - barW / 2, 46, barW, barH);
       ctx.fillStyle = pw.def.color;
-      ctx.fillRect(W / 2 - barW / 2, 30, barW * (pw.timer / pw.def.duration), barH);
+      ctx.fillRect(W / 2 - barW / 2, 46, barW * (pw.timer / pw.def.duration), barH);
     }
 
     // --- Equipped Items (bottom-left) ---
@@ -314,14 +320,12 @@ export function drawHUD(ctx, s, deps) {
     {
       const audioMuted = deps.audioMuted || false;
       const audioVolume = deps.audioVolume != null ? deps.audioVolume : 0.3;
-      const vx = W - 90, vy = H - 28;
-      ctx.fillStyle = audioMuted ? 'rgba(255,68,68,0.5)' : 'rgba(255,255,255,0.35)';
-      ctx.font = 'bold 12px "Courier New"'; ctx.textAlign = 'left';
+      const vx = W - 100, vy = H - 28;
+      ctx.fillStyle = audioMuted ? 'rgba(255,68,68,0.7)' : 'rgba(255,255,255,0.7)';
+      ctx.font = 'bold 16px "Courier New"'; ctx.textAlign = 'left';
       const volPct = Math.round(audioVolume * 100);
       const icon = audioMuted ? 'MUTED' : `VOL ${volPct}%`;
       ctx.fillText(icon, vx, vy);
-      ctx.fillStyle = 'rgba(255,255,255,0.2)'; ctx.font = '9px "Courier New"';
-      ctx.fillText('[M] mute', vx, vy + 12);
     }
 
     // --- Charge Shrine Progress Bar ---
@@ -357,18 +361,11 @@ export function drawHUD(ctx, s, deps) {
       ctx.textAlign = 'left';
     }
 
-    // --- Controls Hint (bottom-center) ---
-    {
-      const hintText = 'WASD: Move | SPACE: Jump | HOLD B: Power Attack | ESC: Pause';
+    // --- Controls Hint (bottom-center, auto-hide after 30s) ---
+    if (s.gameTime < 30) {
       ctx.textAlign = 'center';
-      ctx.font = '14px "Courier New"';
-      // Background strip for readability
-      const hintW = ctx.measureText(hintText).width + 20;
-      ctx.fillStyle = 'rgba(0,0,0,0.4)';
-      ctx.fillRect(W / 2 - hintW / 2, H - 24, hintW, 20);
-      // Text with bumped opacity (0.3 -> 0.5)
-      ctx.fillStyle = 'rgba(255,255,255,0.5)';
-      ctx.fillText(hintText, W / 2, H - 10);
+      ctx.fillStyle = 'rgba(255,255,255,0.85)'; ctx.font = 'bold 20px "Courier New"';
+      ctx.fillText('WASD Move | SPACE Jump | B Attack', W / 2, H - 10);
     }
 
     // === MINIMAP (BD-76 + BD-97 fog-of-war) ===
@@ -466,7 +463,7 @@ export function drawHUD(ctx, s, deps) {
           const ex = cx + (e.x - s.playerX) * scale;
           const ez = cy + (e.z - s.playerZ) * scale;
           if (ex >= mmX && ex <= mmX + mmSize && ez >= mmY && ez <= mmY + mmSize) {
-            const dotSize = Math.max(1.5, (e.tier || 1) * 0.8);
+            const dotSize = Math.max(2.5, (e.tier || 1) * 0.8);
             ctx.beginPath();
             ctx.arc(ex, ez, dotSize, 0, Math.PI * 2);
             ctx.fill();
@@ -522,9 +519,9 @@ export function drawHUD(ctx, s, deps) {
       // Draw player as green triangle (pointing up = north)
       ctx.fillStyle = '#44ff44';
       ctx.beginPath();
-      ctx.moveTo(cx, cy - 4);
-      ctx.lineTo(cx - 3, cy + 3);
-      ctx.lineTo(cx + 3, cy + 3);
+      ctx.moveTo(cx, cy - 6);
+      ctx.lineTo(cx - 4.5, cy + 4.5);
+      ctx.lineTo(cx + 4.5, cy + 4.5);
       ctx.closePath();
       ctx.fill();
 
@@ -532,7 +529,7 @@ export function drawHUD(ctx, s, deps) {
 
       // Label
       ctx.fillStyle = '#aaffaa';
-      ctx.font = 'bold 10px monospace';
+      ctx.font = 'bold 14px monospace';
       ctx.textAlign = 'right';
       ctx.fillText(s.showFullMap ? '[TAB] Close Map' : '[TAB] Map', mmX + mmSize, mmY - 4);
       ctx.textAlign = 'left';
@@ -640,7 +637,7 @@ export function drawHUD(ctx, s, deps) {
 
     const pauseOpts = ['RESUME', 'RESTART', 'MAIN MENU'];
     const pauseColors = ['#44ff44', '#ffaa44', '#ff4444'];
-    const cardW = 160, cardH = 80, gap = 25;
+    const cardW = 180, cardH = 90, gap = 25;
     const totalW = pauseOpts.length * cardW + (pauseOpts.length - 1) * gap;
     const startX = (W - totalW) / 2;
     const cardY = H / 2 - 20;
@@ -656,7 +653,7 @@ export function drawHUD(ctx, s, deps) {
       ctx.fillStyle = isSelected ? '#1a1a2a' : '#111118';
       ctx.fillRect(cx, cardY, cardW, cardH);
 
-      ctx.fillStyle = pauseColors[i]; ctx.font = 'bold 16px "Courier New"';
+      ctx.fillStyle = pauseColors[i]; ctx.font = 'bold 24px "Courier New"';
       ctx.fillText(pauseOpts[i], cx + cardW / 2, cardY + cardH / 2 + 6);
 
       if (isSelected) {
@@ -671,7 +668,7 @@ export function drawHUD(ctx, s, deps) {
       }
     }
 
-    ctx.fillStyle = '#666'; ctx.font = '14px "Courier New"';
+    ctx.fillStyle = '#aaa'; ctx.font = 'bold 18px "Courier New"';
     ctx.fillText('<  ARROW KEYS  >', W / 2, cardY + cardH + 25);
   }
 
