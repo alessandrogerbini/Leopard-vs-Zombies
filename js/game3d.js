@@ -374,6 +374,7 @@ export function launch3DGame(options) {
     charging: false,
     chargeTime: 0,
     chargeGlow: null,
+    chargeGlowTimer: 0,
     // Weapon slots
     weapons: [],
     maxWeaponSlots: 1,
@@ -3964,10 +3965,10 @@ export function launch3DGame(options) {
     if (weaponPool.length > 0 && pool.length >= 3) {
       // Guarantee 1 weapon option, fill remaining 2 from the rest
       const weaponPick = weaponPool[Math.floor(Math.random() * weaponPool.length)];
-      const remaining = pool.filter(p => p !== weaponPick).sort(() => Math.random() - 0.5);
-      choices = [weaponPick, ...remaining.slice(0, 2)].sort(() => Math.random() - 0.5);
+      const remaining = shuffle(pool.filter(p => p !== weaponPick));
+      choices = shuffle([weaponPick, ...remaining.slice(0, 2)]);
     } else {
-      choices = pool.sort(() => Math.random() - 0.5).slice(0, 3);
+      choices = shuffle(pool).slice(0, 3);
     }
     st.upgradeChoices = choices;
   }
@@ -5212,19 +5213,25 @@ export function launch3DGame(options) {
         if (st.chargeGlow) {
           st.chargeGlow.material.opacity = 0.8;
           st.chargeGlow.scale.set(range * 2, range * 2, range * 2);
-          setTimeout(() => {
-            if (st.chargeGlow) {
-              scene.remove(st.chargeGlow);
-              st.chargeGlow.geometry.dispose();
-              st.chargeGlow.material.dispose();
-              st.chargeGlow = null;
-            }
-          }, 100);
+          st.chargeGlowTimer = 0.1;
         }
         st.chargeTime = 0;
       }
+      // Charge glow flash timer countdown
+      if (st.chargeGlowTimer > 0) {
+        st.chargeGlowTimer -= dt;
+        if (st.chargeGlowTimer <= 0) {
+          st.chargeGlowTimer = 0;
+          if (st.chargeGlow) {
+            scene.remove(st.chargeGlow);
+            st.chargeGlow.geometry.dispose();
+            st.chargeGlow.material.dispose();
+            st.chargeGlow = null;
+          }
+        }
+      }
       // Remove charge glow if not charging
-      if (!st.charging && !st.powerAttackReady && st.chargeGlow) {
+      if (!st.charging && !st.powerAttackReady && st.chargeGlowTimer <= 0 && st.chargeGlow) {
         scene.remove(st.chargeGlow);
         st.chargeGlow.geometry.dispose();
         st.chargeGlow.material.dispose();
@@ -5358,7 +5365,7 @@ export function launch3DGame(options) {
         if (!g.alive) { st.mapGems.splice(i, 1); continue; }
         // Rotate and bob
         g.mesh.rotation.y += dt * 2;
-        g.mesh.position.y = terrainHeight(g.x, g.z) + 0.6 + Math.sin(Date.now() * 0.003 + g.x) * 0.15;
+        g.mesh.position.y = terrainHeight(g.x, g.z) + 0.6 + Math.sin(st.gameTime * 3 + g.x) * 0.15;
         // Pickup check (squared distance)
         const dx = st.playerX - g.x;
         const dz = st.playerZ - g.z;
@@ -5607,7 +5614,7 @@ export function launch3DGame(options) {
             // Charge complete! Roll 3 upgrades from this shrine's tier
             const tierUpgrades = CHARGE_SHRINE_UPGRADES[nearestShrine.rarity] || CHARGE_SHRINE_UPGRADES.common;
             // Pick 3 random unique upgrades
-            const shuffled = [...tierUpgrades].sort(() => Math.random() - 0.5);
+            const shuffled = shuffle(tierUpgrades);
             st.chargeShrineChoices = shuffled.slice(0, Math.min(3, shuffled.length));
             st.selectedChargeShrineUpgrade = 0;
             st.chargeShrineMenu = true;
@@ -5640,12 +5647,12 @@ export function launch3DGame(options) {
         // Rune orbiting
         if (cs.rune) {
           cs.rune.rotation.y += dt * 3;
-          cs.rune.position.x = Math.sin(Date.now() * 0.002) * 0.4;
-          cs.rune.position.z = Math.cos(Date.now() * 0.002) * 0.4;
+          cs.rune.position.x = Math.sin(st.gameTime * 2) * 0.4;
+          cs.rune.position.z = Math.cos(st.gameTime * 2) * 0.4;
         }
         // Pulse glow when player is charging
         if (cs === st.chargeShrineCurrent && !cs.charged) {
-          const pulse = 0.6 + Math.sin(Date.now() * 0.01) * 0.3;
+          const pulse = 0.6 + Math.sin(st.gameTime * 10) * 0.3;
           if (cs.crystal) cs.crystal.material.opacity = pulse;
           if (cs.groundRing) cs.groundRing.material.opacity = 0.15 + pulse * 0.15;
         }
