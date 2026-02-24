@@ -271,6 +271,8 @@ export function launch3DGame(options) {
     attackTimer: 0, // legacy, kept for crate proximity check
     playerX: 0, playerY: terrainHeight(0, 0) + 0.01, playerZ: 0,
     playerVY: 0,
+    playerPrevX: 0, playerPrevZ: 0, // BD-211: Previous frame position for velocity calc
+    playerVelX: 0, playerVelZ: 0,   // BD-211: Player velocity for boss target leading
     onGround: true,
     onPlatformY: null, // Y of the platform we're standing on
     moveDir: { x: 0, z: 0 },
@@ -1729,8 +1731,8 @@ export function launch3DGame(options) {
 
   // BD-145: Per-tier special attack cooldown (seconds between attacks)
   function getTierAttackCooldown(tier) {
-    if (tier >= 10) return 4;
-    if (tier >= 9) return 5;
+    if (tier >= 10) return 1.5; // BD-211: reduced from 4
+    if (tier >= 9) return 2.5;  // BD-211: reduced from 5
     if (tier >= 6) return 8;
     if (tier >= 5) return 8;
     if (tier >= 4) return 7;
@@ -1872,6 +1874,26 @@ export function launch3DGame(options) {
     const th = terrainHeight(x, z);
     group.position.set(x, th + 0.01, z);
     scene.add(group);
+
+    // BD-211: Boss visual intimidation — 1.5x scale + persistent red aura for tier 9/10
+    let bossAuraMesh = null;
+    if (tier >= 9) {
+      group.scale.setScalar(1.5); // 1.5x larger than base tier scale
+      // Persistent semi-transparent red aura sphere
+      const auraSize = s * 1.8;
+      const auraGeo = new THREE.SphereGeometry(auraSize, 12, 8);
+      const auraMat = new THREE.MeshBasicMaterial({
+        color: tier >= 10 ? 0xff0000 : 0xcc2200,
+        transparent: true,
+        opacity: 0.08,
+        side: THREE.DoubleSide,
+        depthWrite: false,
+      });
+      bossAuraMesh = new THREE.Mesh(auraGeo, auraMat);
+      bossAuraMesh.position.set(0, 0.8 * s, 0);
+      group.add(bossAuraMesh);
+    }
+
     return {
       group, body: eBody, head: eHead, armL, armR, legL, legR,
       hp: totalHp,
@@ -1900,6 +1922,8 @@ export function launch3DGame(options) {
       specialAttackBurstIndex: 0,
       specialAttackBurstTimer: 0,
       specialAttackMarkers: [],
+      specialAttackCount: 0, // BD-211: counts attacks for tier 9 slam/shockwave alternation
+      bossAuraMesh: bossAuraMesh, // BD-211: persistent aura sphere for tier 9/10
     };
   }
 
@@ -3903,6 +3927,30 @@ export function launch3DGame(options) {
         }
       }
 
+      // BD-211: Boss shockwave — expanding ring that damages player on contact
+      if (eff.type === 'bossShockwave') {
+        // Expand the ring outward
+        const expandSpeed = eff.maxRadius / eff.maxLife;
+        eff.radius += expandSpeed * dt;
+        const scale = eff.radius;
+        eff.mesh.scale.set(scale, 1, scale);
+        // Fade out as it expands
+        if (eff.mesh.material) {
+          eff.mesh.material.opacity = 0.6 * (eff.life / eff.maxLife);
+        }
+        // Check if player is near the ring edge (within 2 units of the ring radius)
+        if (!eff.hasHitPlayer) {
+          const pdx = st.playerX - eff.x;
+          const pdz = st.playerZ - eff.z;
+          const playerDist = Math.sqrt(pdx * pdx + pdz * pdz);
+          // Hit if player is between (radius-2) and (radius+1) — the ring's "band"
+          if (playerDist >= eff.radius - 2 && playerDist <= eff.radius + 1) {
+            damagePlayer(eff.damage, '#ff6600');
+            eff.hasHitPlayer = true;
+          }
+        }
+      }
+
       if (eff.type === 'bee') {
         // Bee chases nearest enemy and deals damage on contact
         let nearestE = null, nearDistSq = Infinity;
@@ -4990,6 +5038,14 @@ export function launch3DGame(options) {
         chunkUpdateTimer = 0.5;
       }
 
+      // BD-211: Track player velocity for boss target-leading
+      if (dt > 0) {
+        st.playerVelX = (st.playerX - st.playerPrevX) / dt;
+        st.playerVelZ = (st.playerZ - st.playerPrevZ) / dt;
+      }
+      st.playerPrevX = st.playerX;
+      st.playerPrevZ = st.playerZ;
+
       // === ENEMY AI ===
       // Each zombie: chases player, jumps to reach platforms, deals contact damage,
       // shows hurt flash, and is despawned if too far away (>60 units).
@@ -4999,7 +5055,7 @@ export function launch3DGame(options) {
         if (e.dying) {
           e.deathTimer -= dt;
           const t = Math.max(0, e.deathTimer / 0.3);
-          e.group.scale.setScalar(t * (e.isBoss ? 3 : 1));
+          e.group.scale.setScalar(t * (e.isBoss ? 3 : (e.tier >= 9 ? 1.5 : 1))); // BD-211: account for boss scale
           e.group.position.y -= dt * 2;
           if (e.deathTimer <= 0) {
             disposeEnemy(e);
@@ -5068,22 +5124,46 @@ export function launch3DGame(options) {
           e.specialAttackTimer -= dt;
           if (handleLowTierSpecialAttack(e, dt)) continue; // skip movement during telegraph
         }
+        // BD-211: Boss aura pulse animation for tier 9/10
+        if (e.tier >= 9 && e.bossAuraMesh) {
+          const auraPulse = 0.08 + 0.07 * Math.sin(performance.now() * 0.003);
+          e.bossAuraMesh.material.opacity = auraPulse;
+        }
+        // BD-211: Boss rumble — spawn subtle ground particles when boss is close
+        if (e.tier >= 9 && !e.dying) {
+          const rumbleDx = st.playerX - e.group.position.x;
+          const rumbleDz = st.playerZ - e.group.position.z;
+          const rumbleDistSq = rumbleDx * rumbleDx + rumbleDz * rumbleDz;
+          if (rumbleDistSq < 400 && Math.random() < 0.08) { // within 20 units, ~5/s
+            const pa = Math.random() * Math.PI * 2;
+            const pr = Math.random() * 1.5;
+            spawnFireParticle(
+              e.tier >= 10 ? 0xff0000 : 0xcc2200,
+              e.group.position.x + Math.cos(pa) * pr,
+              e.group.position.y + 0.1,
+              e.group.position.z + Math.sin(pa) * pr,
+              0.4,
+              { transparent: true, opacity: 0.5 }
+            );
+          }
+        }
         if (e.tier >= 9 && e.specialAttackTimer !== undefined) {
           e.specialAttackTimer -= dt;
 
           // BD-179: Chill mode telegraph duration multiplier
           const telegraphDurMult = st.difficulty === 'chill' ? 1.5 : 1.0;
-          // Range check: only start attack if player is close enough
+          // BD-211: Massively expanded trigger ranges (was 12/18, now 25/35)
           const atkDx = st.playerX - e.group.position.x;
           const atkDz = st.playerZ - e.group.position.z;
           const atkDist = Math.sqrt(atkDx * atkDx + atkDz * atkDz);
-          const triggerRange = e.tier >= 10 ? 18 : 12;
+          const triggerRange = e.tier >= 10 ? 35 : 25;
 
           if (e.specialAttackState === 'idle' && e.specialAttackTimer <= 0 && atkDist < triggerRange) {
             // Start telegraph phase
             e.specialAttackState = 'telegraph';
             e.specialAttackTargetX = st.playerX;
             e.specialAttackTargetZ = st.playerZ;
+            e.specialAttackCount = (e.specialAttackCount || 0) + 1;
 
             // BD-166: Universal body flash on telegraph start
             if (e.body) {
@@ -5093,32 +5173,71 @@ export function launch3DGame(options) {
               e._attackFlashTimer = 0.2;
             }
 
+            // BD-179: First-encounter floating label for tier 9/10
             if (e.tier >= 10) {
-              // Overlord: Death Bolt telegraph — flat aim strip (BD-166: replaced line)
+              const labelKey = 'tier10';
+              if (!st.attackFirstSeen[labelKey]) {
+                st.attackFirstSeen[labelKey] = true;
+                addFloatingText('DEATH BOLT!', '#ff0044', e.group.position.x, e.group.position.y + 4, e.group.position.z, 2.5, true);
+              }
+            } else if (e.tier === 9) {
+              // Alternate label based on attack type
+              const isShockwave = e.specialAttackCount % 2 === 0;
+              const labelKey = isShockwave ? 'tier9shockwave' : 'tier9slam';
+              if (!st.attackFirstSeen[labelKey]) {
+                st.attackFirstSeen[labelKey] = true;
+                addFloatingText(isShockwave ? 'SHOCKWAVE!' : 'TITAN SLAM!', isShockwave ? '#ff8800' : '#ff2200', e.group.position.x, e.group.position.y + 4, e.group.position.z, 2.5, true);
+              }
+            }
+
+            if (e.tier >= 10) {
+              // Overlord: Death Bolt telegraph — flat aim strip toward predicted position
               e.specialAttackTelegraphTimer = 1.0 * telegraphDurMult;
-              const stripDx = st.playerX - e.group.position.x;
-              const stripDz = st.playerZ - e.group.position.z;
+              // BD-211: Lead the target — predict player position 0.5s ahead
+              const leadTime = 0.5;
+              const predX = st.playerX + (st.playerVelX || 0) * leadTime;
+              const predZ = st.playerZ + (st.playerVelZ || 0) * leadTime;
+              e.specialAttackTargetX = predX;
+              e.specialAttackTargetZ = predZ;
+              const stripDx = predX - e.group.position.x;
+              const stripDz = predZ - e.group.position.z;
               const stripLen = Math.sqrt(stripDx * stripDx + stripDz * stripDz) || 1;
               const stripGeo = new THREE.BoxGeometry(0.3, 0.1, stripLen);
               const stripMat = new THREE.MeshBasicMaterial({ color: 0xff0000, transparent: true, opacity: 0.6 });
               const strip = new THREE.Mesh(stripGeo, stripMat);
               strip.position.set(
-                (e.group.position.x + st.playerX) / 2, 0.15,
-                (e.group.position.z + st.playerZ) / 2
+                (e.group.position.x + predX) / 2, 0.15,
+                (e.group.position.z + predZ) / 2
               );
               strip.rotation.y = Math.atan2(stripDx, stripDz);
               scene.add(strip);
               e.specialAttackMesh = strip;
             } else {
-              // Titan: Shockwave telegraph — expanding red ring on ground
-              e.specialAttackTelegraphTimer = 1.5 * telegraphDurMult;
-              const ringGeo = new THREE.RingGeometry(0.5, 1.0, 24);
-              ringGeo.rotateX(-Math.PI / 2);
-              const ringMat = new THREE.MeshBasicMaterial({ color: 0xff2200, transparent: true, opacity: 0.5, side: THREE.DoubleSide });
-              const ring = new THREE.Mesh(ringGeo, ringMat);
-              ring.position.set(e.group.position.x, 0.1, e.group.position.z);
-              scene.add(ring);
-              e.specialAttackMesh = ring;
+              // Titan: Alternate between slam (odd) and shockwave (even)
+              const isShockwave = e.specialAttackCount % 2 === 0;
+              if (isShockwave) {
+                // Shockwave telegraph — orange expanding ring on ground
+                e.specialAttackTelegraphTimer = 1.0 * telegraphDurMult;
+                const ringGeo = new THREE.RingGeometry(0.3, 0.8, 24);
+                ringGeo.rotateX(-Math.PI / 2);
+                const ringMat = new THREE.MeshBasicMaterial({ color: 0xff8800, transparent: true, opacity: 0.5, side: THREE.DoubleSide });
+                const ring = new THREE.Mesh(ringGeo, ringMat);
+                ring.position.set(e.group.position.x, 0.1, e.group.position.z);
+                scene.add(ring);
+                e.specialAttackMesh = ring;
+                e._isShockwave = true;
+              } else {
+                // Slam telegraph — expanding red ring on ground (original)
+                e.specialAttackTelegraphTimer = 1.5 * telegraphDurMult;
+                const ringGeo = new THREE.RingGeometry(0.5, 1.0, 24);
+                ringGeo.rotateX(-Math.PI / 2);
+                const ringMat = new THREE.MeshBasicMaterial({ color: 0xff2200, transparent: true, opacity: 0.5, side: THREE.DoubleSide });
+                const ring = new THREE.Mesh(ringGeo, ringMat);
+                ring.position.set(e.group.position.x, 0.1, e.group.position.z);
+                scene.add(ring);
+                e.specialAttackMesh = ring;
+                e._isShockwave = false;
+              }
             }
             playSound('sfx_player_growl');
           }
@@ -5133,20 +5252,29 @@ export function launch3DGame(options) {
                 // Pulse the death bolt strip opacity
                 e.specialAttackMesh.material.opacity = 0.3 + 0.4 * Math.sin(t);
               } else if (e.tier === 9) {
-                // Expand the shockwave ring outward
-                const baseDur = 1.5 * telegraphDurMult;
-                const progress = 1 - (e.specialAttackTelegraphTimer / baseDur);
-                const ringScale = 1 + progress * 7;
-                e.specialAttackMesh.scale.set(ringScale, 1, ringScale);
-                e.specialAttackMesh.material.opacity = 0.5 * (1 - progress * 0.5);
+                if (e._isShockwave) {
+                  // Shockwave: rapid expansion to show the ring will travel far
+                  const baseDur = 1.0 * telegraphDurMult;
+                  const progress = 1 - (e.specialAttackTelegraphTimer / baseDur);
+                  const ringScale = 1 + progress * 12;
+                  e.specialAttackMesh.scale.set(ringScale, 1, ringScale);
+                  e.specialAttackMesh.material.opacity = 0.5 * (1 - progress * 0.3);
+                } else {
+                  // Slam: expand ring outward to show AoE radius
+                  const baseDur = 1.5 * telegraphDurMult;
+                  const progress = 1 - (e.specialAttackTelegraphTimer / baseDur);
+                  const ringScale = 1 + progress * 7;
+                  e.specialAttackMesh.scale.set(ringScale, 1, ringScale);
+                  e.specialAttackMesh.material.opacity = 0.5 * (1 - progress * 0.5);
+                }
               }
             }
 
             if (e.specialAttackTelegraphTimer <= 0) {
               // Telegraph finished — fire the attack
               if (e.tier >= 10) {
-                // Overlord: Fire death bolt projectile toward saved target position
-                const boltGeo = new THREE.SphereGeometry(0.4, 6, 6);
+                // BD-211: Overlord Death Bolt — fires toward PREDICTED position (target leading)
+                const boltGeo = new THREE.SphereGeometry(0.5, 8, 6);
                 const boltMat = new THREE.MeshBasicMaterial({ color: 0xff0044, emissive: 0xff0022 });
                 const bolt = new THREE.Mesh(boltGeo, boltMat);
                 bolt.position.set(e.group.position.x, 1.5, e.group.position.z);
@@ -5157,22 +5285,57 @@ export function launch3DGame(options) {
                 st.weaponProjectiles.push({
                   mesh: bolt,
                   x: e.group.position.x, y: 1.5, z: e.group.position.z,
-                  vx: (bdx / bDist) * 15, vy: 0, vz: (bdz / bDist) * 15,
-                  damage: 30 * diffDmgMult,
-                  range: 1.2,
+                  vx: (bdx / bDist) * 18, vy: 0, vz: (bdz / bDist) * 18, // BD-211: faster bolt (was 15)
+                  damage: 45 * diffDmgMult, // BD-211: increased from 30
+                  range: 1.5, // BD-211: slightly larger hit radius
                   life: 3,
                   type: 'deathBolt',
                   isEnemyProjectile: true,
                 });
               } else if (e.tier === 9) {
-                // Titan: Shockwave damage check — hits player if within 8 units
-                const sdx = st.playerX - e.group.position.x;
-                const sdz = st.playerZ - e.group.position.z;
-                const distSq = sdx * sdx + sdz * sdz;
-                if (distSq < 64) {
-                  damagePlayer(20 * diffDmgMult, '#ff2200');
+                if (e._isShockwave) {
+                  // BD-211: Titan Shockwave — expanding ring that damages on contact
+                  const swGeo = new THREE.TorusGeometry(1.0, 0.3, 6, 24);
+                  swGeo.rotateX(Math.PI / 2); // lay flat
+                  const swMat = new THREE.MeshBasicMaterial({ color: 0xff6600, transparent: true, opacity: 0.6, side: THREE.DoubleSide });
+                  const swMesh = new THREE.Mesh(swGeo, swMat);
+                  swMesh.position.set(e.group.position.x, 0.3, e.group.position.z);
+                  scene.add(swMesh);
+                  // Track shockwave as a weapon effect with custom expansion logic
+                  st.weaponEffects.push({
+                    mesh: swMesh,
+                    x: e.group.position.x,
+                    z: e.group.position.z,
+                    life: 1.5,
+                    maxLife: 1.5,
+                    type: 'bossShockwave',
+                    radius: 1.0,        // current radius (expands)
+                    maxRadius: 20,       // max expansion radius
+                    damage: 20 * diffDmgMult, // BD-211: shockwave damage
+                    hasHitPlayer: false, // only hit once per shockwave
+                  });
+                  playSound('sfx_explosion');
+                } else {
+                  // Titan: Slam damage check — hits player if within 8 units
+                  const sdx = st.playerX - e.group.position.x;
+                  const sdz = st.playerZ - e.group.position.z;
+                  const distSq = sdx * sdx + sdz * sdz;
+                  if (distSq < 64) {
+                    damagePlayer(35 * diffDmgMult, '#ff2200'); // BD-211: increased from 20
+                  }
+                  playSound('sfx_explosion');
+                  // Visual: ground slam impact particles
+                  for (let i = 0; i < 12; i++) {
+                    const pa = (i / 12) * Math.PI * 2;
+                    spawnFireParticle(
+                      0xff2200,
+                      e.group.position.x + Math.cos(pa) * 2,
+                      e.group.position.y + 0.3,
+                      e.group.position.z + Math.sin(pa) * 2,
+                      0.5
+                    );
+                  }
                 }
-                playSound('sfx_explosion');
               }
 
               // Remove telegraph mesh
@@ -5191,9 +5354,9 @@ export function launch3DGame(options) {
                 e.specialAttackMesh = null;
               }
 
-              // Reset timer and return to idle (higher tiers get longer cooldowns)
-              const cooldowns = { 9: 5, 10: 4 };
-              e.specialAttackTimer = (cooldowns[e.tier] || 5) + Math.random() * 2;
+              // BD-211: Reset timer with reduced cooldowns
+              const cooldowns = { 9: 2.5, 10: 1.5 };
+              e.specialAttackTimer = (cooldowns[e.tier] || 2.5) + Math.random() * 1;
               e.specialAttackState = 'idle';
             } else {
               // Still telegraphing — skip normal movement (enemy stands still)
@@ -5299,7 +5462,7 @@ export function launch3DGame(options) {
         // Merge bounce effect: brief scale-up then back to normal on tier upgrade
         if (e.mergeBounce > 0) {
           e.mergeBounce -= dt;
-          const baseScale = e.isBoss ? BOSS_SCALE : 1; // BD-77: preserve boss scale
+          const baseScale = e.isBoss ? BOSS_SCALE : (e.tier >= 9 ? 1.5 : 1); // BD-77+BD-211: preserve boss scale
           const bouncePhase = e.mergeBounce / 0.4; // 0->1 normalized (1 at start)
           const bounceScale = baseScale * (1 + Math.sin(bouncePhase * Math.PI) * 0.35);
           e.group.scale.set(bounceScale, bounceScale, bounceScale);
