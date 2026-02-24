@@ -154,11 +154,11 @@ export function drawHUD(ctx, s, deps) {
       ctx.fillRect(0, 0, W, H);
       ctx.textAlign = 'center';
       ctx.fillStyle = '#ff2222';
-      ctx.font = 'bold 28px "Courier New"';
-      ctx.fillText(`WAVE ${s.wave + 1} INCOMING`, W / 2, 90);
-      ctx.fillStyle = '#ffcc00';
       ctx.font = 'bold 36px "Courier New"';
-      ctx.fillText(Math.ceil(s.waveWarning).toString(), W / 2, 125);
+      ctx.fillText(`WAVE ${s.wave + 1} INCOMING`, W / 2, H * 0.35);
+      ctx.fillStyle = '#ffcc00';
+      ctx.font = 'bold 48px "Courier New"';
+      ctx.fillText(Math.ceil(s.waveWarning).toString(), W / 2, H * 0.45);
       ctx.textAlign = 'left';
     }
 

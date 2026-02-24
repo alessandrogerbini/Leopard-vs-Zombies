@@ -135,16 +135,6 @@ export const WEAPON_TYPES = {
 };
 
 /**
- * Per-class scaling multipliers applied when upgrading weapons.
- * These scale the weapon's base stats when the player picks weapon upgrades.
- */
-export const WEAPON_CLASS_SCALING = {
-  aoe:        { damageMult: 1.3, cooldownMult: 0.9, rangeMult: 1.2 },
-  projectile: { damageMult: 1.1, cooldownMult: 0.85, rangeMult: 1.0 },
-  mine:       { damageMult: 1.2, cooldownMult: 0.95, rangeMult: 1.5 },
-};
-
-/**
  * Howl type definitions — passive global buffs selected during level-up.
  * Howls stack multiplicatively and affect all weapons simultaneously.
  *
