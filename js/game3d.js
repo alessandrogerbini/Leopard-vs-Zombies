@@ -394,6 +394,7 @@ export function launch3DGame(options) {
     // Leaderboard
     nameEntry: '',
     nameEntryActive: false,
+    nameEntryInputCooldown: 0,
     leaderboard3d: [],
     // Kill tracking
     killsByTier: new Array(10).fill(0),
@@ -505,13 +506,17 @@ export function launch3DGame(options) {
 
     if (st.gameOver && !st.upgradeMenu && st.enterReleasedSinceGameOver) {
       if (st.nameEntryActive) {
+        // BD-107: Block input during cooldown to prevent WASD leaking into name
+        if (st.nameEntryInputCooldown > 0) return;
+        // BD-107: Block movement/action keys from being captured as name characters
+        const BLOCKED_NAME_KEYS = new Set(['w','a','s','d','b','r','e',' ']);
         // Name entry text input
         if (e.key === 'Backspace') {
           st.nameEntry = st.nameEntry.slice(0, -1);
         } else if (e.key === 'Enter' && st.nameEntry.length > 0) {
           saveScore3d();
           st.nameEntryActive = false;
-        } else if (e.key.length === 1 && st.nameEntry.length < 10) {
+        } else if (e.key.length === 1 && st.nameEntry.length < 10 && !BLOCKED_NAME_KEYS.has(e.key.toLowerCase())) {
           st.nameEntry += e.key.toUpperCase();
         }
       } else {
@@ -543,6 +548,7 @@ export function launch3DGame(options) {
         choice.apply(st);
         st.upgradeMenu = false;
         st.paused = false;
+        st.invincible = 1.0; // BD-112: Post-upgrade invulnerability
         st._menuDismissedAt = performance.now();
         st.enterReleasedSinceGameOver = false; // prevent accidental restart
         keys3d['Enter'] = false; // clear held key state
@@ -599,6 +605,7 @@ export function launch3DGame(options) {
         // Close menu
         st.chargeShrineMenu = false;
         st.paused = false;
+        st.invincible = 1.0; // BD-112: Post-shrine invulnerability
         st.chargeShrineCurrent = null;
         st.chargeShrineProgress = 0;
         st.chargeShrineChoices = [];
@@ -3508,6 +3515,8 @@ export function launch3DGame(options) {
 
       // Invincibility timer
       if (st.invincible > 0) st.invincible -= dt;
+      // BD-107: Name entry input cooldown timer
+      if (st.nameEntryInputCooldown > 0) st.nameEntryInputCooldown -= dt;
 
       // === ACTIVE POWERUP TIMER ===
       if (st.activePowerup) {
@@ -4899,6 +4908,7 @@ export function launch3DGame(options) {
         st.enterReleasedSinceGameOver = false;
         st.nameEntryActive = true;
         st.nameEntry = '';
+        st.nameEntryInputCooldown = 0.3;
         // BD-86: Clear Enter key state and charging on death.
         // Prevents held-Enter (from power attack) from immediately interacting
         // with the game-over screen.
