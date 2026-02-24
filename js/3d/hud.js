@@ -157,10 +157,10 @@ export function drawHUD(ctx, s, deps) {
       ctx.textAlign = 'center';
       ctx.fillStyle = '#ff2222';
       ctx.font = 'bold 36px ' + GAME_FONT;
-      ctx.fillText(`WAVE ${s.wave + 1} INCOMING`, W / 2, H * 0.35);
+      ctx.fillText(`WAVE ${s.wave + 1} INCOMING`, W / 2, H * 0.15);
       ctx.fillStyle = '#ffcc00';
       ctx.font = 'bold 48px ' + GAME_FONT;
-      ctx.fillText(Math.ceil(s.waveWarning).toString(), W / 2, H * 0.45);
+      ctx.fillText(Math.ceil(s.waveWarning).toString(), W / 2, H * 0.22);
       ctx.textAlign = 'left';
     }
     // --- Kill Milestone Celebration (BD-195) ---
