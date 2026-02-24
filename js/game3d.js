@@ -1471,6 +1471,19 @@ export function launch3DGame(options) {
    * @returns {Enemy} Enemy object with group, body parts, stats, and animation state.
    * @see ZOMBIE_TIERS
    */
+
+  // BD-145: Per-tier special attack cooldown (seconds between attacks)
+  function getTierAttackCooldown(tier) {
+    if (tier >= 10) return 4;
+    if (tier >= 9) return 5;
+    if (tier >= 6) return 8;
+    if (tier >= 5) return 8;
+    if (tier >= 4) return 7;
+    if (tier >= 3) return 7;
+    if (tier >= 2) return 6;
+    return 0;
+  }
+
   function createEnemy(x, z, baseHp, tier) {
     tier = Math.max(1, Math.min(10, tier || 1));
     const td = ZOMBIE_TIERS[tier - 1];
@@ -1617,13 +1630,17 @@ export function launch3DGame(options) {
       walkPhase: Math.random() * Math.PI * 2,
       mergeCount: 0,       // Tracks absorbed same-tier zombies toward next tier
       mergeBounce: 0,      // Visual bounce timer after successful tier-up merge
-      // BD-84: Special attack state for Titan (tier 9) and Overlord (tier 10)
-      specialAttackTimer: (tier >= 9) ? 3 + Math.random() * 2 : 0,
+      // BD-84/BD-145: Special attack state for tiers 2+ (each tier has unique attack)
+      specialAttackTimer: (tier >= 2) ? getTierAttackCooldown(tier) + Math.random() * 2 : 0,
       specialAttackState: 'idle', // 'idle', 'telegraph', 'fire'
       specialAttackTelegraphTimer: 0,
       specialAttackTargetX: 0,
       specialAttackTargetZ: 0,
       specialAttackMesh: null,
+      // BD-145: Extra fields for Grave Burst (tier 6) sequential explosions
+      specialAttackBurstIndex: 0,
+      specialAttackBurstTimer: 0,
+      specialAttackMarkers: [],
     };
   }
 
@@ -1640,6 +1657,15 @@ export function launch3DGame(options) {
       if (e.specialAttackMesh.geometry) e.specialAttackMesh.geometry.dispose();
       if (e.specialAttackMesh.material) e.specialAttackMesh.material.dispose();
       e.specialAttackMesh = null;
+    }
+    // BD-145: Clean up Grave Burst markers and any other special attack markers
+    if (e.specialAttackMarkers && e.specialAttackMarkers.length > 0) {
+      for (const m of e.specialAttackMarkers) {
+        scene.remove(m);
+        if (m.geometry) m.geometry.dispose();
+        if (m.material) m.material.dispose();
+      }
+      e.specialAttackMarkers = [];
     }
     scene.remove(e.group);
     e.group.traverse(c => { if (c.geometry) c.geometry.dispose(); if (c.material) c.material.dispose(); });
@@ -2634,6 +2660,30 @@ export function launch3DGame(options) {
         continue; // Skip normal projectile logic (enemy projectiles don't hit enemies)
       }
 
+      // BD-145: Bone Spit enemy projectile (tier 4 Brute) — slow spinning bone
+      if (p.type === 'boneSpit' && p.isEnemyProjectile) {
+        p.x += p.vx * dt;
+        p.z += p.vz * dt;
+        p.mesh.position.set(p.x, p.y, p.z);
+        p.mesh.rotation.y += dt * 8; // spin
+        p.mesh.rotation.x += dt * 4;
+        // Check hit on player
+        const bsdx = st.playerX - p.x;
+        const bsdz = st.playerZ - p.z;
+        if (bsdx * bsdx + bsdz * bsdz < p.range * p.range) {
+          damagePlayer(p.damage, '#ccbb88');
+          disposeSceneObject(p.mesh);
+          st.weaponProjectiles.splice(i, 1);
+          playSound('sfx_melee_hit');
+          continue;
+        }
+        if (p.life <= 0) {
+          disposeSceneObject(p.mesh);
+          st.weaponProjectiles.splice(i, 1);
+        }
+        continue;
+      }
+
       if (p.type === 'turdMine') {
         // TURD MINE: Stationary mine — check if any enemy walks within detonation range.
         // On detonation: deal AoE damage, apply slow debuff, show explosion effect.
@@ -2902,6 +2952,382 @@ export function launch3DGame(options) {
     }
   }
 
+  // ==========================================================================
+  // BD-145: TIERED ZOMBIE SPECIAL ATTACKS (Tiers 2-6)
+  // Each tier has a unique telegraphed attack with idle/telegraph/fire states.
+  // ==========================================================================
+
+  /** Apply damage to the player with armor/augment reduction and floating text. */
+  function damagePlayer(baseDmg, color) {
+    if (st.invincible > 0) return;
+    // Dodge check (Turbo Sneakers)
+    if (st.dodgeChance > 0 && Math.random() < st.dodgeChance) {
+      st.floatingTexts3d.push({ text: 'DODGE!', color: '#00ffaa', x: st.playerX, y: st.playerY + 2, z: st.playerZ, life: 0.8 });
+      st.invincible = 0.2;
+      return;
+    }
+    let dmg = baseDmg * (1 - (st.augmentArmor || 0));
+    if (st.items.armor === 'leather') dmg *= 0.75;
+    else if (st.items.armor === 'chainmail') dmg *= 0.6;
+    if (st.berserkVulnerable) dmg *= 1.25;
+    // Shield Bracelet
+    if (st.items.bracelet && st.shieldBraceletReady) {
+      dmg = 0;
+      st.shieldBraceletReady = false;
+      st.shieldBraceletTimer = 30;
+      st.floatingTexts3d.push({ text: 'BLOCKED!', color: '#4488ff', x: st.playerX, y: st.playerY + 2, z: st.playerZ, life: 1.5 });
+    }
+    dmg = Math.max(1, dmg);
+    st.hp -= dmg;
+    if (st.hp < 0) st.hp = 0;
+    st.floatingTexts3d.push({ text: '-' + Math.round(dmg), color: color || '#ff2200', x: st.playerX, y: st.playerY + 2, z: st.playerZ, life: 1 });
+  }
+
+  /** Remove a telegraph mesh from the scene and dispose its resources. */
+  function disposeTelegraph(e) {
+    if (e.specialAttackMesh) {
+      scene.remove(e.specialAttackMesh);
+      if (e.specialAttackMesh.geometry) e.specialAttackMesh.geometry.dispose();
+      if (e.specialAttackMesh.material) e.specialAttackMesh.material.dispose();
+      e.specialAttackMesh = null;
+    }
+    if (e.specialAttackMarkers && e.specialAttackMarkers.length > 0) {
+      for (const m of e.specialAttackMarkers) {
+        scene.remove(m);
+        if (m.geometry) m.geometry.dispose();
+        if (m.material) m.material.dispose();
+      }
+      e.specialAttackMarkers = [];
+    }
+  }
+
+  /**
+   * Main state machine for tiers 2-6 special attacks.
+   * Returns true if the enemy should skip normal movement (during telegraph).
+   */
+  function handleLowTierSpecialAttack(e, dt) {
+    if (!e.alive) return false;
+    if (e.isBoss) return false;
+
+    // Distance check — only attack if player is within 12 units
+    const dx = st.playerX - e.group.position.x;
+    const dz = st.playerZ - e.group.position.z;
+    const distSq = dx * dx + dz * dz;
+    if (distSq > 144) return false; // 12^2
+
+    if (e.specialAttackState === 'idle') {
+      if (e.specialAttackTimer <= 0) {
+        // Start telegraph
+        e.specialAttackState = 'telegraph';
+        e.specialAttackTargetX = st.playerX;
+        e.specialAttackTargetZ = st.playerZ;
+        if (e.tier === 2) startLurcherTelegraph(e);
+        else if (e.tier === 3) startBruiserTelegraph(e);
+        else if (e.tier === 4) startBruteTelegraph(e);
+        else if (e.tier === 5) startRavagerTelegraph(e);
+        else if (e.tier === 6) startHorrorTelegraph(e);
+      }
+      return false; // still moving normally during idle
+    }
+
+    if (e.specialAttackState === 'telegraph') {
+      e.specialAttackTelegraphTimer -= dt;
+      // Animate telegraph visuals
+      if (e.specialAttackMesh) {
+        if (e.tier === 3 && e.specialAttackMesh.material) {
+          // Bruiser: expand ring outward toward 3u radius
+          const progress = 1 - (e.specialAttackTelegraphTimer / 1.0);
+          const ringScale = 1 + progress * 4;
+          e.specialAttackMesh.scale.set(ringScale, 1, ringScale);
+          e.specialAttackMesh.material.opacity = 0.5 * (1 - progress * 0.3);
+        } else if (e.specialAttackMesh.material) {
+          e.specialAttackMesh.material.opacity = 0.3 + 0.3 * Math.sin(performance.now() * 0.012);
+        }
+      }
+      // Pulse markers for Horror tier 6
+      if (e.specialAttackMarkers) {
+        for (const m of e.specialAttackMarkers) {
+          if (m && m.children) {
+            m.children.forEach(c => { if (c.material) c.material.opacity = 0.3 + 0.4 * Math.sin(performance.now() * 0.012); });
+          }
+        }
+      }
+
+      if (e.specialAttackTelegraphTimer <= 0) {
+        // Fire!
+        e.specialAttackState = 'fire';
+        if (e.tier === 2) fireLurcherAttack(e);
+        else if (e.tier === 3) fireBruiserAttack(e);
+        else if (e.tier === 4) fireBruteAttack(e);
+        else if (e.tier === 5) fireRavagerAttack(e);
+        else if (e.tier === 6) fireHorrorAttack(e);
+        // Reset state (Grave Burst uses burst timer so stays in 'fire' until done)
+        if (e.tier !== 6) {
+          disposeTelegraph(e);
+          e.specialAttackState = 'idle';
+          e.specialAttackTimer = getTierAttackCooldown(e.tier) + Math.random() * 2;
+        }
+      }
+      return true; // freeze during telegraph
+    }
+
+    if (e.specialAttackState === 'fire') {
+      // Only tier 6 (Horror) has a multi-step fire phase
+      if (e.tier === 6) {
+        e.specialAttackBurstTimer -= dt;
+        if (e.specialAttackBurstTimer <= 0 && e.specialAttackBurstIndex < 3) {
+          fireHorrorBurst(e, e.specialAttackBurstIndex);
+          e.specialAttackBurstIndex++;
+          e.specialAttackBurstTimer = 0.4; // 0.4s between each burst
+        }
+        if (e.specialAttackBurstIndex >= 3 && e.specialAttackBurstTimer <= 0) {
+          disposeTelegraph(e);
+          e.specialAttackState = 'idle';
+          e.specialAttackTimer = getTierAttackCooldown(e.tier) + Math.random() * 2;
+          e.specialAttackBurstIndex = 0;
+        }
+        return true; // freeze during fire phase too
+      }
+      return false;
+    }
+
+    return false;
+  }
+
+  // --- Tier 2: Lurcher — Lunge Snap ---
+  function startLurcherTelegraph(e) {
+    e.specialAttackTelegraphTimer = 0.6;
+    const dx = e.specialAttackTargetX - e.group.position.x;
+    const dz = e.specialAttackTargetZ - e.group.position.z;
+    const angle = Math.atan2(dx, dz);
+    // Yellow arrow on ground pointing toward player
+    const arrowGeo = new THREE.BufferGeometry();
+    const len = 3;
+    const pts = [
+      new THREE.Vector3(-0.4, 0, 0),
+      new THREE.Vector3(0, 0, len),
+      new THREE.Vector3(0.4, 0, 0),
+    ];
+    arrowGeo.setFromPoints(pts);
+    const arrowMat = new THREE.MeshBasicMaterial({ color: 0xffdd00, transparent: true, opacity: 0.5, side: THREE.DoubleSide });
+    const arrow = new THREE.Mesh(arrowGeo, arrowMat);
+    arrow.position.set(e.group.position.x, 0.15, e.group.position.z);
+    arrow.rotation.y = -angle;
+    scene.add(arrow);
+    e.specialAttackMesh = arrow;
+    playSound('sfx_player_growl');
+  }
+
+  function fireLurcherAttack(e) {
+    if (!e.alive) return;
+    // Dash 3 units toward saved target
+    const dx = e.specialAttackTargetX - e.group.position.x;
+    const dz = e.specialAttackTargetZ - e.group.position.z;
+    const dist = Math.sqrt(dx * dx + dz * dz) || 1;
+    const dashDist = Math.min(3, dist);
+    e.group.position.x += (dx / dist) * dashDist;
+    e.group.position.z += (dz / dist) * dashDist;
+    e.group.position.y = terrainHeight(e.group.position.x, e.group.position.z) + 0.01;
+    // Damage check — hit player if within 1.5 units after lunge
+    const pdx = st.playerX - e.group.position.x;
+    const pdz = st.playerZ - e.group.position.z;
+    if (pdx * pdx + pdz * pdz < 2.25) { // 1.5^2
+      damagePlayer(5, '#ffdd00');
+    }
+    playSound('sfx_melee_hit');
+  }
+
+  // --- Tier 3: Bruiser — Ground Pound ---
+  function startBruiserTelegraph(e) {
+    e.specialAttackTelegraphTimer = 1.0;
+    // Red-orange expanding ring on ground at zombie's position
+    const ringGeo = new THREE.RingGeometry(0.3, 0.6, 20);
+    ringGeo.rotateX(-Math.PI / 2);
+    const ringMat = new THREE.MeshBasicMaterial({ color: 0xff4400, transparent: true, opacity: 0.5, side: THREE.DoubleSide });
+    const ring = new THREE.Mesh(ringGeo, ringMat);
+    ring.position.set(e.group.position.x, 0.12, e.group.position.z);
+    scene.add(ring);
+    e.specialAttackMesh = ring;
+    // Animate ring expansion during telegraph
+    e._groundPoundOriginX = e.group.position.x;
+    e._groundPoundOriginZ = e.group.position.z;
+    playSound('sfx_player_growl');
+  }
+
+  function fireBruiserAttack(e) {
+    if (!e.alive) return;
+    const ox = e._groundPoundOriginX || e.group.position.x;
+    const oz = e._groundPoundOriginZ || e.group.position.z;
+    // AoE damage check — 3 unit radius
+    const pdx = st.playerX - ox;
+    const pdz = st.playerZ - oz;
+    if (pdx * pdx + pdz * pdz < 9) { // 3^2
+      damagePlayer(8, '#ff4400');
+    }
+    // Visual: brief expanding shockwave ring effect
+    const explGeo = new THREE.RingGeometry(0.5, 3, 20);
+    explGeo.rotateX(-Math.PI / 2);
+    const explMat = new THREE.MeshBasicMaterial({ color: 0xff4400, transparent: true, opacity: 0.4, side: THREE.DoubleSide });
+    const expl = new THREE.Mesh(explGeo, explMat);
+    expl.position.set(ox, 0.15, oz);
+    scene.add(expl);
+    st.weaponEffects.push({ mesh: expl, life: 0.3, type: 'explosion' });
+    playSound('sfx_explosion');
+  }
+
+  // --- Tier 4: Brute — Bone Spit ---
+  function startBruteTelegraph(e) {
+    e.specialAttackTelegraphTimer = 0.8;
+    // Yellow aim line from zombie to player
+    const lineGeo = new THREE.BufferGeometry().setFromPoints([
+      new THREE.Vector3(e.group.position.x, 1.2, e.group.position.z),
+      new THREE.Vector3(st.playerX, 1.2, st.playerZ)
+    ]);
+    const lineMat = new THREE.LineBasicMaterial({ color: 0xffdd00, transparent: true, opacity: 0.6 });
+    const line = new THREE.Line(lineGeo, lineMat);
+    scene.add(line);
+    e.specialAttackMesh = line;
+    playSound('sfx_player_growl');
+  }
+
+  function fireBruteAttack(e) {
+    if (!e.alive) return;
+    // Fire bone projectile toward saved target
+    const boneGeo = new THREE.BoxGeometry(0.25, 0.25, 0.5);
+    const boneMat = new THREE.MeshLambertMaterial({ color: 0xccbb88 });
+    const bone = new THREE.Mesh(boneGeo, boneMat);
+    bone.position.set(e.group.position.x, 1.2, e.group.position.z);
+    scene.add(bone);
+    const dx = e.specialAttackTargetX - e.group.position.x;
+    const dz = e.specialAttackTargetZ - e.group.position.z;
+    const dist = Math.sqrt(dx * dx + dz * dz) || 1;
+    st.weaponProjectiles.push({
+      mesh: bone,
+      x: e.group.position.x, y: 1.2, z: e.group.position.z,
+      vx: (dx / dist) * 8, vy: 0, vz: (dz / dist) * 8,
+      damage: 10,
+      range: 1.0,
+      life: 2.5,
+      type: 'boneSpit',
+      isEnemyProjectile: true,
+    });
+    playSound('sfx_weapon_projectile');
+  }
+
+  // --- Tier 5: Ravager — Poison Pool ---
+  function startRavagerTelegraph(e) {
+    e.specialAttackTelegraphTimer = 0.7;
+    // Green circle on ground at target position
+    const ringGeo = new THREE.RingGeometry(0.2, 2.0, 16);
+    ringGeo.rotateX(-Math.PI / 2);
+    const ringMat = new THREE.MeshBasicMaterial({ color: 0x44ff44, transparent: true, opacity: 0.4, side: THREE.DoubleSide });
+    const ring = new THREE.Mesh(ringGeo, ringMat);
+    ring.position.set(e.specialAttackTargetX, 0.12, e.specialAttackTargetZ);
+    scene.add(ring);
+    e.specialAttackMesh = ring;
+    playSound('sfx_weapon_poison');
+  }
+
+  function fireRavagerAttack(e) {
+    if (!e.alive) return;
+    const tx = e.specialAttackTargetX;
+    const tz = e.specialAttackTargetZ;
+    // Spawn persistent poison pool as a weaponEffect
+    const poolGeo = new THREE.RingGeometry(0.1, 2.0, 16);
+    poolGeo.rotateX(-Math.PI / 2);
+    const poolMat = new THREE.MeshBasicMaterial({ color: 0x33cc33, transparent: true, opacity: 0.45, side: THREE.DoubleSide });
+    const pool = new THREE.Mesh(poolGeo, poolMat);
+    const gh = getGroundAt(tx, tz);
+    pool.position.set(tx, gh + 0.08, tz);
+    scene.add(pool);
+    st.weaponEffects.push({
+      mesh: pool, x: tx, z: tz, radius: 2.0,
+      life: 4, maxLife: 4, type: 'poisonPool',
+      dmgPerSec: 4, dmgTickTimer: 0,
+    });
+    playSound('sfx_weapon_poison');
+  }
+
+  // --- Tier 6: Horror — Grave Burst ---
+  function startHorrorTelegraph(e) {
+    e.specialAttackTelegraphTimer = 1.2;
+    e.specialAttackBurstIndex = 0;
+    e.specialAttackBurstTimer = 0;
+    // Place 3 red X markers along line toward player
+    const dx = e.specialAttackTargetX - e.group.position.x;
+    const dz = e.specialAttackTargetZ - e.group.position.z;
+    const dist = Math.sqrt(dx * dx + dz * dz) || 1;
+    const nx = dx / dist;
+    const nz = dz / dist;
+    e.specialAttackMarkers = [];
+    e._burstPositions = [];
+    for (let i = 0; i < 3; i++) {
+      const d = 2 + i * 2.5; // 2, 4.5, 7 units out
+      const bx = e.group.position.x + nx * d;
+      const bz = e.group.position.z + nz * d;
+      e._burstPositions.push({ x: bx, z: bz });
+      // X marker: two crossed lines
+      const xSize = 0.8;
+      const geo1 = new THREE.BufferGeometry().setFromPoints([
+        new THREE.Vector3(-xSize, 0, -xSize),
+        new THREE.Vector3(xSize, 0, xSize),
+      ]);
+      const geo2 = new THREE.BufferGeometry().setFromPoints([
+        new THREE.Vector3(-xSize, 0, xSize),
+        new THREE.Vector3(xSize, 0, -xSize),
+      ]);
+      const xMat = new THREE.LineBasicMaterial({ color: 0xff2222, transparent: true, opacity: 0.6 });
+      const xGroup = new THREE.Group();
+      xGroup.add(new THREE.Line(geo1, xMat));
+      xGroup.add(new THREE.Line(geo2, xMat.clone()));
+      xGroup.position.set(bx, 0.15, bz);
+      scene.add(xGroup);
+      e.specialAttackMarkers.push(xGroup);
+    }
+    playSound('sfx_player_growl');
+  }
+
+  function fireHorrorAttack(e) {
+    // Kick off sequential burst — first one fires immediately
+    e.specialAttackBurstIndex = 0;
+    e.specialAttackBurstTimer = 0;
+    fireHorrorBurst(e, 0);
+    e.specialAttackBurstIndex = 1;
+    e.specialAttackBurstTimer = 0.4;
+  }
+
+  function fireHorrorBurst(e, index) {
+    if (!e.alive || !e._burstPositions || index >= e._burstPositions.length) return;
+    const pos = e._burstPositions[index];
+    // Damage check — 1.5 unit radius
+    const pdx = st.playerX - pos.x;
+    const pdz = st.playerZ - pos.z;
+    if (pdx * pdx + pdz * pdz < 2.25) { // 1.5^2
+      damagePlayer(6, '#ff2222');
+    }
+    // Visual explosion at this position
+    const explMesh = new THREE.Mesh(
+      new THREE.BoxGeometry(2.5, 0.8, 2.5),
+      new THREE.MeshBasicMaterial({ color: 0xff2222, transparent: true, opacity: 0.5 })
+    );
+    const gh = getGroundAt(pos.x, pos.z);
+    explMesh.position.set(pos.x, gh + 0.4, pos.z);
+    scene.add(explMesh);
+    st.weaponEffects.push({ mesh: explMesh, life: 0.3, type: 'explosion' });
+    // Remove the corresponding marker if it still exists
+    if (e.specialAttackMarkers && e.specialAttackMarkers[index]) {
+      const m = e.specialAttackMarkers[index];
+      scene.remove(m);
+      m.traverse(c => { if (c.geometry) c.geometry.dispose(); if (c.material) c.material.dispose(); });
+      e.specialAttackMarkers[index] = null;
+    }
+    playSound('sfx_explosion');
+  }
+
+  // ==========================================================================
+  // END BD-145
+  // ==========================================================================
+
   /**
    * Update weapon visual effects (clouds, explosions, slashes, bolts).
    * Each effect type has custom behavior:
@@ -3083,6 +3509,25 @@ export function launch3DGame(options) {
         }
         // Slight color shift toward yellow-green as it ages
         eff.mesh.rotation.y += dt * 0.5;
+      }
+
+      // BD-145: Poison Pool (Ravager tier 5) — DPS to player standing in radius
+      if (eff.type === 'poisonPool') {
+        eff.dmgTickTimer -= dt;
+        if (eff.dmgTickTimer <= 0) {
+          eff.dmgTickTimer = 0.5; // tick every 0.5s
+          const pdx = st.playerX - eff.x;
+          const pdz = st.playerZ - eff.z;
+          if (pdx * pdx + pdz * pdz < eff.radius * eff.radius) {
+            damagePlayer(eff.dmgPerSec * 0.5, '#33cc33'); // 4 dps * 0.5s = 2 per tick
+          }
+        }
+        // Fade out opacity near end of life, and pulse
+        if (eff.mesh.material) {
+          const lifeRatio = eff.life / eff.maxLife;
+          eff.mesh.material.opacity = Math.min(0.45, lifeRatio * 0.45) + 0.05 * Math.sin(performance.now() * 0.005);
+        }
+        eff.mesh.rotation.y += dt * 0.8;
       }
 
       if (eff.life <= 0) {
@@ -3978,9 +4423,14 @@ export function launch3DGame(options) {
             if (!e.alive) continue;
           }
         }
-        // === ELITE ZOMBIE SPECIAL ATTACKS (BD-84) ===
-        // Titan (tier 9): Shockwave Slam — telegraphed AoE ground pound
-        // Overlord (tier 10): Death Bolt — telegraphed ranged projectile
+        // === ZOMBIE SPECIAL ATTACKS (BD-84 / BD-145) ===
+        // Tiers 2-6: Unique telegraphed attacks (BD-145)
+        // Titan (tier 9): Shockwave Slam — telegraphed AoE ground pound (BD-84)
+        // Overlord (tier 10): Death Bolt — telegraphed ranged projectile (BD-84)
+        if (e.tier >= 2 && e.tier <= 6 && e.specialAttackTimer !== undefined) {
+          e.specialAttackTimer -= dt;
+          if (handleLowTierSpecialAttack(e, dt)) continue; // skip movement during telegraph
+        }
         if (e.tier >= 9 && e.specialAttackTimer !== undefined) {
           e.specialAttackTimer -= dt;
 
