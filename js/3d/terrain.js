@@ -113,6 +113,9 @@ export function getChunkKey(cx, cz) { return `${cx},${cz}`; }
  * @property {Set.<string>} loadedChunks - Set of chunk keys currently loaded.
  * @property {Object.<string, THREE.Mesh>} chunkMeshes - Map of chunk key to ground mesh.
  * @property {Array.<{meshes: THREE.Mesh[], x: number, z: number}>} decorations - Decoration objects (trees, rocks, logs, mushrooms, stumps).
+ * @property {Object.<string, Array>} decorationsByChunk - Decorations indexed by chunk key for O(1) unload.
+ * @property {THREE.Mesh[]} canopyMeshes - Flat array of all canopy meshes for wind animation.
+ * @property {Object.<string, THREE.Mesh[]>} canopyMeshesByChunk - Canopy meshes indexed by chunk key for cleanup.
  * @property {Array.<{x: number, z: number, radius: number}>} colliders - Collision circles for solid objects (trees, rocks).
  */
 
@@ -127,8 +130,11 @@ export function createTerrainState() {
     loadedChunks: new Set(),
     chunkMeshes: {},
     decorations: [],
-    colliders: [],    // Array of { x, z, radius } for solid objects (trees, rocks)
-    collidersByChunk: {},  // BD-113: chunk-indexed colliders for enemy collision lookups
+    decorationsByChunk: {},   // Chunk key -> decoration[] for O(1) unload (BD-172)
+    canopyMeshes: [],         // Flat array of canopy meshes for wind animation (BD-173)
+    canopyMeshesByChunk: {},  // Chunk key -> canopy mesh[] for cleanup (BD-173)
+    colliders: [],            // Array of { x, z, radius } for solid objects (trees, rocks)
+    collidersByChunk: {},     // BD-113: chunk-indexed colliders for enemy collision lookups
   };
 }
 
@@ -145,7 +151,7 @@ export function createTerrainState() {
  * @param {number} dz - World Z position.
  * @param {number} h - Terrain height at (dx, dz).
  * @param {THREE.Scene} scene - Scene to add meshes to.
- * @returns {THREE.Mesh[]} Array of meshes composing this decoration.
+ * @returns {{meshes: THREE.Mesh[], canopyMeshes: THREE.Mesh[]}} All meshes and canopy-only meshes.
  */
 function createTree(dx, dz, h, scene) {
   // Vary tree size slightly using noise
@@ -153,6 +159,7 @@ function createTree(dx, dz, h, scene) {
   const trunkH = 2 * sizeVar;
   const canopyBase = h + trunkH;
   const meshes = [];
+  const canopyMeshes = [];
   const s = sizeVar;
 
   // Trunk (unchanged)
@@ -181,6 +188,7 @@ function createTree(dx, dz, h, scene) {
     m.userData.windSeed = dx * 0.1 + dz * 0.07;
     scene.add(m);
     meshes.push(m);
+    canopyMeshes.push(m);
   };
 
   // Multi-box rounded canopy
@@ -194,7 +202,7 @@ function createTree(dx, dz, h, scene) {
   addBox(1.0 * s, 0.8 * s, 0.7 * s, 0, 0.5 * s,  0.5 * s);
   addBox(1.0 * s, 0.8 * s, 0.7 * s, 0, 0.5 * s, -0.5 * s);
 
-  return meshes;
+  return { meshes, canopyMeshes };
 }
 
 /**
@@ -560,6 +568,12 @@ export function generateChunk(cx, cz, scene, ts) {
   // === FOREST DECORATIONS ===
   // Generate a variety of decoration types per chunk.
   // Use different noise seeds per decoration type so their placement is independent.
+
+  // BD-172: Initialize chunk-indexed arrays for O(1) unload
+  ts.decorationsByChunk[key] = [];
+  // BD-173: Initialize canopy mesh tracking for this chunk
+  ts.canopyMeshesByChunk[key] = [];
+
   // BD-89: Track occupied positions to prevent decorations overlapping each other.
   const occupiedPositions = []; // {x, z} of each placed decoration in this chunk
   const MIN_DECO_SPACING = 2.5; // minimum distance between any two decorations
@@ -583,11 +597,18 @@ export function generateChunk(cx, cz, scene, ts) {
     if (!isDecoPositionClear(dx, dz)) continue;
     occupiedPositions.push({ x: dx, z: dz });
     const h = terrainHeight(dx, dz);
-    const meshes = createTree(dx, dz, h, scene);
-    ts.decorations.push({ meshes, x: dx, z: dz });
+    const tree = createTree(dx, dz, h, scene);
+    const dec = { meshes: tree.meshes, x: dx, z: dz };
+    ts.decorations.push(dec);
+    ts.decorationsByChunk[key].push(dec);
     const treeCollider = { x: dx, z: dz, radius: 1.2, r: 1.2 };
     ts.colliders.push(treeCollider);
     (ts.collidersByChunk[key] = ts.collidersByChunk[key] || []).push(treeCollider);
+    // BD-173: Track canopy meshes for wind animation
+    for (const cm of tree.canopyMeshes) {
+      ts.canopyMeshes.push(cm);
+      ts.canopyMeshesByChunk[key].push(cm);
+    }
   }
 
   // Rocks: 0-2 per chunk
@@ -599,7 +620,9 @@ export function generateChunk(cx, cz, scene, ts) {
     occupiedPositions.push({ x: dx, z: dz });
     const h = terrainHeight(dx, dz);
     const meshes = createRock(dx, dz, h, scene);
-    ts.decorations.push({ meshes, x: dx, z: dz });
+    const rockDec = { meshes, x: dx, z: dz };
+    ts.decorations.push(rockDec);
+    ts.decorationsByChunk[key].push(rockDec);
     const rockCollider = { x: dx, z: dz, radius: 1.0, r: 1.0 };
     ts.colliders.push(rockCollider);
     (ts.collidersByChunk[key] = ts.collidersByChunk[key] || []).push(rockCollider);
@@ -614,7 +637,9 @@ export function generateChunk(cx, cz, scene, ts) {
     occupiedPositions.push({ x: dx, z: dz });
     const h = terrainHeight(dx, dz);
     const meshes = createFallenLog(dx, dz, h, scene);
-    ts.decorations.push({ meshes, x: dx, z: dz });
+    const logDec = { meshes, x: dx, z: dz };
+    ts.decorations.push(logDec);
+    ts.decorationsByChunk[key].push(logDec);
   }
 
   // Mushroom clusters: 0-2 per chunk
@@ -626,7 +651,9 @@ export function generateChunk(cx, cz, scene, ts) {
     occupiedPositions.push({ x: dx, z: dz });
     const h = terrainHeight(dx, dz);
     const meshes = createMushroomCluster(dx, dz, h, scene);
-    ts.decorations.push({ meshes, x: dx, z: dz });
+    const mushDec = { meshes, x: dx, z: dz };
+    ts.decorations.push(mushDec);
+    ts.decorationsByChunk[key].push(mushDec);
   }
 
   // Stumps: 0-2 per chunk
@@ -638,7 +665,9 @@ export function generateChunk(cx, cz, scene, ts) {
     occupiedPositions.push({ x: dx, z: dz });
     const h = terrainHeight(dx, dz);
     const meshes = createStump(dx, dz, h, scene);
-    ts.decorations.push({ meshes, x: dx, z: dz });
+    const stumpDec = { meshes, x: dx, z: dz };
+    ts.decorations.push(stumpDec);
+    ts.decorationsByChunk[key].push(stumpDec);
   }
 
   // Grass patches: 3-6 per chunk (walk-through, no collision)
@@ -648,7 +677,9 @@ export function generateChunk(cx, cz, scene, ts) {
     const gdz = oz + Math.abs(noise2D(cx + d * 67 + 51, cz + d * 71 + 53)) * CHUNK_SIZE;
     const gh = terrainHeight(gdx, gdz);
     const meshes = createGrassPatch(gdx, gdz, gh, scene);
-    ts.decorations.push({ meshes, x: gdx, z: gdz });
+    const grassDec = { meshes, x: gdx, z: gdz };
+    ts.decorations.push(grassDec);
+    ts.decorationsByChunk[key].push(grassDec);
   }
 
   // Flower patches: 1-3 per chunk (walk-through, no collision)
@@ -658,7 +689,9 @@ export function generateChunk(cx, cz, scene, ts) {
     const fdz = oz + Math.abs(noise2D(cx + d * 79 + 59, cz + d * 83 + 61)) * CHUNK_SIZE;
     const fh = terrainHeight(fdx, fdz);
     const meshes = createFlowerPatch(fdx, fdz, fh, scene);
-    ts.decorations.push({ meshes, x: fdx, z: fdz });
+    const flowerDec = { meshes, x: fdx, z: fdz };
+    ts.decorations.push(flowerDec);
+    ts.decorationsByChunk[key].push(flowerDec);
   }
 }
 
@@ -680,14 +713,23 @@ export function unloadChunk(cx, cz, scene, ts) {
     mesh.material.dispose();
     delete ts.chunkMeshes[key];
   }
-  // Remove decorations in this chunk
-  const ox = cx * CHUNK_SIZE, oz = cz * CHUNK_SIZE;
-  for (let i = ts.decorations.length - 1; i >= 0; i--) {
-    const d = ts.decorations[i];
-    if (d.x >= ox && d.x < ox + CHUNK_SIZE && d.z >= oz && d.z < oz + CHUNK_SIZE) {
+  // BD-172: O(1) decoration removal via chunk-key index
+  const chunkDecs = ts.decorationsByChunk[key];
+  if (chunkDecs) {
+    const decsToRemove = new Set(chunkDecs);
+    for (const d of chunkDecs) {
       d.meshes.forEach(m => { scene.remove(m); m.geometry.dispose(); m.material.dispose(); });
-      ts.decorations.splice(i, 1);
     }
+    // Remove from flat array in one pass
+    ts.decorations = ts.decorations.filter(d => !decsToRemove.has(d));
+    delete ts.decorationsByChunk[key];
+  }
+  // BD-173: Remove canopy meshes for this chunk
+  const chunkCanopies = ts.canopyMeshesByChunk[key];
+  if (chunkCanopies) {
+    const canopySet = new Set(chunkCanopies);
+    ts.canopyMeshes = ts.canopyMeshes.filter(m => !canopySet.has(m));
+    delete ts.canopyMeshesByChunk[key];
   }
   // Remove colliders in this chunk
   ts.colliders = ts.colliders.filter(c => {
