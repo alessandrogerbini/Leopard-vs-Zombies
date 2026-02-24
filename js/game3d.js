@@ -1663,7 +1663,7 @@ export function launch3DGame(options) {
     const h = terrainHeight(x, z);
     mesh.position.set(x, h + 0.5, z);
     scene.add(mesh);
-    return { mesh, bobPhase: Math.random() * Math.PI * 2 };
+    return { mesh, bobPhase: Math.random() * Math.PI * 2, baseScale: 1.0, xpValue: 1 };
   }
 
   // (mapGemGeo, mapGemMat, createMapGem moved above generateMapGems)
@@ -4499,29 +4499,79 @@ export function launch3DGame(options) {
         }
       }
 
+      // === XP GEM MERGE ===
+      // Nearby XP gems merge together: absorbed gem is removed, survivor grows in xpValue and scale.
+      // Merge radius 1.2 units. Merged gems get their own material clone for individual glow.
+      for (let i = 0; i < st.xpGems.length; i++) {
+        const a = st.xpGems[i];
+        if (!a.mesh) continue;
+        for (let j = st.xpGems.length - 1; j > i; j--) {
+          const b = st.xpGems[j];
+          if (!b.mesh) continue;
+          const mdx = a.mesh.position.x - b.mesh.position.x;
+          const mdz = a.mesh.position.z - b.mesh.position.z;
+          const mdist2 = mdx * mdx + mdz * mdz;
+          if (mdist2 < 1.44) { // 1.2^2
+            // Absorb b into a
+            a.xpValue += b.xpValue;
+            if (b.mesh.material !== gemMat) b.mesh.material.dispose();
+            scene.remove(b.mesh);
+            st.xpGems.splice(j, 1);
+            // Update a's scale and glow
+            const targetScale = Math.min(1.0 + a.xpValue * 0.15, 3.5);
+            a.baseScale = targetScale;
+            // Clone material for individual emissive glow if still shared
+            if (a.mesh.material === gemMat) {
+              a.mesh.material = gemMat.clone();
+            }
+            const brightness = Math.min(0.3 + a.xpValue * 0.05, 1.0);
+            a.mesh.material.emissiveIntensity = brightness;
+          }
+        }
+      }
+
       // === XP GEMS ===
-      // XP gems bob, spin, and are magnetically pulled toward the player when within 2x collectRadius.
-      // Collection grants XP scaled by augmentXpMult, Fortune Howl, and totem bonuses.
-      // Reaching xpToNext triggers level-up with upgrade menu.
+      // XP gems bob, spin, breathe (baseScale), magnet-pull with speed trail, and collect.
+      // Collection grants XP (xpValue * multipliers). Merged gems worth 3+ play a whoosh.
       for (let i = st.xpGems.length - 1; i >= 0; i--) {
         const gem = st.xpGems[i];
+        // Bob position + spin rotation
         gem.bobPhase += dt * 3;
         const gh = getGroundAt(gem.mesh.position.x, gem.mesh.position.z);
         gem.mesh.position.y = gh + 0.4 + Math.sin(gem.bobPhase) * 0.15;
         gem.mesh.rotation.y += dt * 2;
+        // Breathing scale (respects baseScale so merged gems stay big)
+        const breathe = gem.baseScale * (1 + Math.sin(gem.bobPhase) * 0.15);
+        gem.mesh.scale.setScalar(breathe);
+        // Distance to player
         const dx = st.playerX - gem.mesh.position.x;
         const dz = st.playerZ - gem.mesh.position.z;
         const dist = Math.sqrt(dx * dx + dz * dz);
-        // Magnet pull
+        // Magnet pull with speed trail stretch
         if (dist < st.collectRadius * 2 && dist > st.collectRadius) {
           const pull = 3 * dt;
           gem.mesh.position.x += (dx / dist) * pull;
           gem.mesh.position.z += (dz / dist) * pull;
+          // Speed trail: stretch gem in pull direction (fun rubber-band feel)
+          const stretchFactor = 1.8;
+          gem.mesh.scale.set(
+            gem.baseScale / stretchFactor,
+            gem.baseScale * stretchFactor,
+            gem.baseScale / stretchFactor
+          );
+          // Point stretch toward player
+          gem.mesh.lookAt(st.playerX, gem.mesh.position.y, st.playerZ);
+          gem.mesh.rotateX(Math.PI / 2); // align stretch along pull axis
         }
+        // Collection
         if (dist < st.collectRadius) {
-          st.xp += Math.max(1, Math.round(st.augmentXpMult * getHowlXpMult() * (st.totemXpMult || 1)));
+          st.xp += Math.max(1, Math.round(gem.xpValue * st.augmentXpMult * getHowlXpMult() * (st.totemXpMult || 1)));
           scene.remove(gem.mesh);
+          if (gem.mesh.material !== gemMat) gem.mesh.material.dispose(); // dispose cloned material
           st.xpGems.splice(i, 1);
+          if (gem.xpValue >= 3) {
+            playSound('sfx_weapon_boomerang'); // whoosh for big merged gems!
+          }
           playSound('sfx_xp_pickup');
           if (st.xp >= st.xpToNext) {
             st.xp -= st.xpToNext;
@@ -4533,6 +4583,7 @@ export function launch3DGame(options) {
         } else if (dist > 50) {
           // Cleanup far-away XP gems to prevent unbounded accumulation
           scene.remove(gem.mesh);
+          if (gem.mesh.material !== gemMat) gem.mesh.material.dispose();
           st.xpGems.splice(i, 1);
         }
       }
