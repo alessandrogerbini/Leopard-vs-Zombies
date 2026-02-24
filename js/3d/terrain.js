@@ -438,6 +438,69 @@ function createStump(dx, dz, h, scene) {
   return meshes;
 }
 
+/**
+ * Create a grass patch at the given position.
+ * Small thin blades of varying green shades. Walk-through, no collision.
+ *
+ * @param {number} dx - World X position.
+ * @param {number} dz - World Z position.
+ * @param {number} h - Terrain height at (dx, dz).
+ * @param {THREE.Scene} scene - Scene to add meshes to.
+ * @returns {THREE.Mesh[]} Array of meshes composing this decoration.
+ */
+function createGrassPatch(dx, dz, h, scene) {
+  const meshes = [];
+  const bladeCount = 3 + Math.floor(Math.random() * 6);
+  const greens = [0x3a7a2f, 0x4a8c3f, 0x5a9c4f, 0x2a6a1f, 0x3a8a35];
+  for (let i = 0; i < bladeCount; i++) {
+    const bh = 0.2 + Math.random() * 0.2;
+    const m = new THREE.Mesh(
+      new THREE.BoxGeometry(0.02, bh, 0.02),
+      new THREE.MeshLambertMaterial({ color: greens[Math.floor(Math.random() * greens.length)] })
+    );
+    m.position.set(dx + (Math.random() - 0.5) * 0.8, h + bh / 2, dz + (Math.random() - 0.5) * 0.8);
+    scene.add(m);
+    meshes.push(m);
+  }
+  return meshes;
+}
+
+/**
+ * Create a flower patch at the given position.
+ * Small stems with colorful caps on top. Walk-through, no collision.
+ *
+ * @param {number} dx - World X position.
+ * @param {number} dz - World Z position.
+ * @param {number} h - Terrain height at (dx, dz).
+ * @param {THREE.Scene} scene - Scene to add meshes to.
+ * @returns {THREE.Mesh[]} Array of meshes composing this decoration.
+ */
+function createFlowerPatch(dx, dz, h, scene) {
+  const meshes = [];
+  const count = 2 + Math.floor(Math.random() * 3);
+  const colors = [0xcc3333, 0xddcc33, 0xeeeedd, 0x4466cc, 0xdd66aa, 0xdd8833];
+  for (let i = 0; i < count; i++) {
+    const stemH = 0.15 + Math.random() * 0.1;
+    const stem = new THREE.Mesh(
+      new THREE.BoxGeometry(0.02, stemH, 0.02),
+      new THREE.MeshLambertMaterial({ color: 0x3a7a2f })
+    );
+    const fx = dx + (Math.random() - 0.5) * 0.6;
+    const fz = dz + (Math.random() - 0.5) * 0.6;
+    stem.position.set(fx, h + stemH / 2, fz);
+    scene.add(stem);
+    meshes.push(stem);
+    const cap = new THREE.Mesh(
+      new THREE.BoxGeometry(0.06, 0.04, 0.06),
+      new THREE.MeshLambertMaterial({ color: colors[Math.floor(Math.random() * colors.length)] })
+    );
+    cap.position.set(fx, h + stemH + 0.02, fz);
+    scene.add(cap);
+    meshes.push(cap);
+  }
+  return meshes;
+}
+
 // === CHUNK MANAGEMENT ===
 
 /**
@@ -574,6 +637,26 @@ export function generateChunk(cx, cz, scene, ts) {
     const h = terrainHeight(dx, dz);
     const meshes = createStump(dx, dz, h, scene);
     ts.decorations.push({ meshes, x: dx, z: dz });
+  }
+
+  // Grass patches: 3-6 per chunk (walk-through, no collision)
+  const numGrass = 3 + Math.floor(Math.abs(noise2D(cx * 15 + 61, cz * 15 + 67)) * 4);
+  for (let d = 0; d < numGrass; d++) {
+    const gdx = ox + Math.abs(noise2D(cx + d * 61 + 45, cz + d * 67 + 47)) * CHUNK_SIZE;
+    const gdz = oz + Math.abs(noise2D(cx + d * 67 + 51, cz + d * 71 + 53)) * CHUNK_SIZE;
+    const gh = terrainHeight(gdx, gdz);
+    const meshes = createGrassPatch(gdx, gdz, gh, scene);
+    ts.decorations.push({ meshes, x: gdx, z: gdz });
+  }
+
+  // Flower patches: 1-3 per chunk (walk-through, no collision)
+  const numFlowers = 1 + Math.floor(Math.abs(noise2D(cx * 17 + 73, cz * 17 + 79)) * 3);
+  for (let d = 0; d < numFlowers; d++) {
+    const fdx = ox + Math.abs(noise2D(cx + d * 73 + 55, cz + d * 79 + 57)) * CHUNK_SIZE;
+    const fdz = oz + Math.abs(noise2D(cx + d * 79 + 59, cz + d * 83 + 61)) * CHUNK_SIZE;
+    const fh = terrainHeight(fdx, fdz);
+    const meshes = createFlowerPatch(fdx, fdz, fh, scene);
+    ts.decorations.push({ meshes, x: fdx, z: fdz });
   }
 }
 

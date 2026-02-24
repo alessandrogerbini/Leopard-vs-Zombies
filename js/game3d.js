@@ -356,6 +356,7 @@ export function launch3DGame(options) {
     // Power attack + interaction (BD-102: auto-attack removed)
     autoAttackTimer: 0, // kept for compatibility, no longer used
     interactionTimer: 0, // cooldown for shrine/totem hits
+    attackAnimTimer: 0, // BD-126: attack lunge animation timer
     charging: false,
     chargeTime: 0,
     chargeGlow: null,
@@ -2623,20 +2624,24 @@ export function launch3DGame(options) {
           if (dx * dx + dz * dz > 0.01) {
             fireWeapon(w);
             w.cooldownTimer = getWeaponCooldown(w);
+            st.attackAnimTimer = 0.15;
           }
         } else if (w.typeId === 'snowballTurret') {
           // Snowball Turret spawns orbiting turrets, doesn't need direct target
           fireWeapon(w);
           w.cooldownTimer = getWeaponCooldown(w);
+          st.attackAnimTimer = 0.15;
         } else if (w.typeId === 'turdMine') {
           // Turd Mine drops at player position, no target needed
           fireWeapon(w);
           w.cooldownTimer = getWeaponCooldown(w);
+          st.attackAnimTimer = 0.15;
         } else {
           const hasTarget = findNearestEnemy(getWeaponRange(w));
           if (hasTarget) {
             fireWeapon(w);
             w.cooldownTimer = getWeaponCooldown(w);
+            st.attackAnimTimer = 0.15;
           } else {
             w.cooldownTimer = 0.1; // retry soon
           }
@@ -3593,6 +3598,8 @@ export function launch3DGame(options) {
       if (st.invincible > 0) st.invincible -= dt;
       // BD-107: Name entry input cooldown timer
       if (st.nameEntryInputCooldown > 0) st.nameEntryInputCooldown -= dt;
+      // BD-126: Attack lunge animation timer
+      if (st.attackAnimTimer > 0) st.attackAnimTimer -= dt;
 
       // === ACTIVE POWERUP TIMER ===
       if (st.activePowerup) {

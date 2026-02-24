@@ -419,8 +419,18 @@ export function animatePlayer(model, st, clock, len, mx, mz) {
     // Body bob when walking
     if (len > 0) {
       group.position.y = st.playerY + Math.abs(Math.sin(walkPhase * 2)) * 0.04;
+    } else {
+      // Idle breathing
+      const breathe = Math.sin(clock.elapsedTime * 2) * 0.02;
+      group.position.y = st.playerY + breathe;
     }
   }
+  // Attack lunge
+  if (st.attackAnimTimer > 0) {
+    const t = st.attackAnimTimer / 0.15;
+    group.rotation.x = -0.2 * t;
+  }
+
   // Tail wag always plays
   if (tail) tail.rotation.y = Math.sin(clock.elapsedTime * 3) * 0.4;
 
