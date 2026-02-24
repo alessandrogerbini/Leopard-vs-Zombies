@@ -1647,8 +1647,8 @@ export function launch3DGame(options) {
 
   // === XP GEM ===
   // NOTE: Shared geometry and material for all XP gems to reduce draw calls.
-  const gemGeo = new THREE.BoxGeometry(0.25, 0.25, 0.25);
-  const gemMat = new THREE.MeshLambertMaterial({ color: 0x44ff44, emissive: 0x22aa22 });
+  const gemGeo = new THREE.BoxGeometry(0.35, 0.35, 0.35);
+  const gemMat = new THREE.MeshLambertMaterial({ color: 0x7744ff, emissive: 0x5533bb });
 
   /**
    * Create an XP gem pickup at the given world position.
@@ -3231,9 +3231,19 @@ export function launch3DGame(options) {
       });
     }
 
-    // Shuffle and pick 3
-    const shuffled = pool.sort(() => Math.random() - 0.5);
-    st.upgradeChoices = shuffled.slice(0, 3);
+    // BD-110: Category-aware selection — guarantee at least 1 weapon option
+    const weaponPool = pool.filter(p => p.category === 'NEW WEAPON' || p.category === 'UPGRADE');
+    const otherPool = pool.filter(p => p.category !== 'NEW WEAPON' && p.category !== 'UPGRADE');
+    let choices;
+    if (weaponPool.length > 0 && pool.length >= 3) {
+      // Guarantee 1 weapon option, fill remaining 2 from the rest
+      const weaponPick = weaponPool[Math.floor(Math.random() * weaponPool.length)];
+      const remaining = pool.filter(p => p !== weaponPick).sort(() => Math.random() - 0.5);
+      choices = [weaponPick, ...remaining.slice(0, 2)].sort(() => Math.random() - 0.5);
+    } else {
+      choices = pool.sort(() => Math.random() - 0.5).slice(0, 3);
+    }
+    st.upgradeChoices = choices;
   }
 
   // === PRE-GENERATE LOOT CRATES ===
@@ -4509,6 +4519,9 @@ export function launch3DGame(options) {
         const gh = getGroundAt(gem.mesh.position.x, gem.mesh.position.z);
         gem.mesh.position.y = gh + 0.4 + Math.sin(gem.bobPhase) * 0.15;
         gem.mesh.rotation.y += dt * 2;
+        // BD-111: Breathing scale effect for visibility
+        const breathe = 1 + Math.sin(gem.bobPhase) * 0.15;
+        gem.mesh.scale.setScalar(breathe);
         const dx = st.playerX - gem.mesh.position.x;
         const dz = st.playerZ - gem.mesh.position.z;
         const dist = Math.sqrt(dx * dx + dz * dz);
