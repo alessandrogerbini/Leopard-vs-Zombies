@@ -398,8 +398,6 @@ export function launch3DGame(options) {
     // Kill tracking
     killsByTier: new Array(10).fill(0),
     totalKills: 0,
-    // Game timer
-    gameTime: 0,
     // Randomized weapon/howl pools (6 of 10 each per run)
     availableWeapons: [],
     availableHowls: [],

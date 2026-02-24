@@ -18,6 +18,7 @@
 
 import {
   WEAPON_TYPES, HOWL_TYPES, ITEMS_3D, ITEM_RARITIES, SHRINE_AUGMENTS, ZOMBIE_TIERS,
+  CHARGE_SHRINE_TIME,
 } from './constants.js';
 
 /**
@@ -319,8 +320,7 @@ export function drawHUD(ctx, s, deps) {
 
     // --- Charge Shrine Progress Bar ---
     if (s.chargeShrineCurrent && !s.chargeShrineMenu && !s.chargeShrineCurrent.charged) {
-      const CHARGE_TIME = 4; // Must match CHARGE_SHRINE_TIME constant
-      const ratio = Math.min(s.chargeShrineProgress / CHARGE_TIME, 1);
+      const ratio = Math.min(s.chargeShrineProgress / CHARGE_SHRINE_TIME, 1);
       const rarityColors = { common: '#ffffff', uncommon: '#44ff44', rare: '#4488ff', legendary: '#ff8800' };
       const shrineColor = rarityColors[s.chargeShrineCurrent.rarity] || '#ffffff';
       const barW = 200, barH = 20;
