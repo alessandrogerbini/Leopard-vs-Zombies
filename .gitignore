@@ -30,6 +30,9 @@ npm-debug.log*
 .env
 .env.*
 
+# AI-generated screenshots
+screenshot-ai/*.png
+
 # Temporary files
 *.tmp
 *.bak

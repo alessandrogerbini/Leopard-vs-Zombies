@@ -1,3 +1,5 @@
+# SUPERSEDED
+
 # Wildfang — Current Status
 
 **Date:** 2026-02-22

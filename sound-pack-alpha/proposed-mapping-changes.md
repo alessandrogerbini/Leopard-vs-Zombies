@@ -1,3 +1,5 @@
+# STALE - DO NOT USE
+
 # Sound Pack Alpha -- Proposed Mapping Changes
 
 > **Date:** 2026-02-22
