@@ -202,30 +202,174 @@ export function drawHUD(ctx, s, deps) {
       ctx.fillRect(W / 2 - barW / 2, 46, barW * (pw.timer / pw.def.duration), barH);
     }
 
-    // --- Equipped Items (bottom-left, BD-160: capped to 5 most recent) ---
-    ctx.textAlign = 'left';
-    let iy = H - 40;
+    // --- Equipped Items (bottom-left) ---
+    // Layout: Regular items as compact text list above, wearable equipment panel below.
+
+    // === WEARABLE EQUIPMENT PANEL (bottom-left) ===
     {
-      // Collect all equipped items with their display info
-      const allEquipped = [];
-      // Special slots: armor, glasses, boots
-      if (s.items.armor) {
-        const armorDef = ITEMS_3D.find(i => i.id === s.items.armor);
-        if (armorDef) allEquipped.push({ key: 'armor', label: `[${armorDef.name}]`, color: (ITEM_RARITIES[armorDef.rarity] || ITEM_RARITIES.common).color });
+      const SLOT_SIZE = 55;
+      const SLOT_GAP = 8;
+      const PANEL_PAD = 8;
+      const PANEL_X = 14;
+      const PANEL_W = PANEL_PAD * 2 + SLOT_SIZE * 3 + SLOT_GAP * 2;
+      const PANEL_H = PANEL_PAD + SLOT_SIZE + 34 + PANEL_PAD; // slot + name + effect + padding
+      const PANEL_Y = H - PANEL_H - 26; // above controls hint
+      const BORDER_W = 3;
+
+      // Wearable slot definitions: key in s.items, label, silhouette drawer
+      const wearSlots = [
+        {
+          key: 'glasses', label: 'HEAD', flashKey: 'glasses',
+          getId: () => s.items.glasses ? 'glasses' : null,
+          drawSilhouette: (cx, cy) => {
+            // Hat/triangle shape
+            ctx.beginPath();
+            ctx.moveTo(cx, cy - 12);
+            ctx.lineTo(cx - 14, cy + 6);
+            ctx.lineTo(cx + 14, cy + 6);
+            ctx.closePath();
+            ctx.fill();
+            // Brim
+            ctx.fillRect(cx - 16, cy + 6, 32, 4);
+          }
+        },
+        {
+          key: 'armor', label: 'BODY', flashKey: 'armor',
+          getId: () => s.items.armor || null,
+          drawSilhouette: (cx, cy) => {
+            // T-shirt/body shape (single path, no clearRect)
+            ctx.beginPath();
+            ctx.moveTo(cx - 4, cy - 12);   // left of neckline
+            ctx.lineTo(cx - 10, cy - 12);  // left shoulder inner
+            ctx.lineTo(cx - 16, cy - 10);  // left shoulder outer
+            ctx.lineTo(cx - 16, cy - 2);   // left arm bottom
+            ctx.lineTo(cx - 10, cy - 2);   // left arm inner
+            ctx.lineTo(cx - 10, cy + 12);  // left body bottom
+            ctx.lineTo(cx + 10, cy + 12);  // right body bottom
+            ctx.lineTo(cx + 10, cy - 2);   // right arm inner
+            ctx.lineTo(cx + 16, cy - 2);   // right arm bottom
+            ctx.lineTo(cx + 16, cy - 10);  // right shoulder outer
+            ctx.lineTo(cx + 10, cy - 12);  // right shoulder inner
+            ctx.lineTo(cx + 4, cy - 12);   // right of neckline
+            ctx.quadraticCurveTo(cx, cy - 8, cx - 4, cy - 12); // neckline curve
+            ctx.closePath();
+            ctx.fill();
+          }
+        },
+        {
+          key: 'boots', label: 'FEET', flashKey: 'boots',
+          getId: () => s.items.boots || null,
+          drawSilhouette: (cx, cy) => {
+            // Boot shape (left)
+            ctx.fillRect(cx - 14, cy - 8, 8, 16);
+            ctx.fillRect(cx - 16, cy + 4, 14, 6);
+            // Boot shape (right)
+            ctx.fillRect(cx + 6, cy - 8, 8, 16);
+            ctx.fillRect(cx + 4, cy + 4, 14, 6);
+          }
+        }
+      ];
+
+      // Semi-transparent panel background
+      const cornerR = 6;
+      ctx.fillStyle = 'rgba(0,0,0,0.5)';
+      ctx.beginPath();
+      ctx.moveTo(PANEL_X + cornerR, PANEL_Y);
+      ctx.lineTo(PANEL_X + PANEL_W - cornerR, PANEL_Y);
+      ctx.quadraticCurveTo(PANEL_X + PANEL_W, PANEL_Y, PANEL_X + PANEL_W, PANEL_Y + cornerR);
+      ctx.lineTo(PANEL_X + PANEL_W, PANEL_Y + PANEL_H - cornerR);
+      ctx.quadraticCurveTo(PANEL_X + PANEL_W, PANEL_Y + PANEL_H, PANEL_X + PANEL_W - cornerR, PANEL_Y + PANEL_H);
+      ctx.lineTo(PANEL_X + cornerR, PANEL_Y + PANEL_H);
+      ctx.quadraticCurveTo(PANEL_X, PANEL_Y + PANEL_H, PANEL_X, PANEL_Y + PANEL_H - cornerR);
+      ctx.lineTo(PANEL_X, PANEL_Y + cornerR);
+      ctx.quadraticCurveTo(PANEL_X, PANEL_Y, PANEL_X + cornerR, PANEL_Y);
+      ctx.closePath();
+      ctx.fill();
+
+      // Draw each wearable slot
+      for (let si = 0; si < wearSlots.length; si++) {
+        const ws = wearSlots[si];
+        const slotX = PANEL_X + PANEL_PAD + si * (SLOT_SIZE + SLOT_GAP);
+        const slotY = PANEL_Y + PANEL_PAD;
+        const itemId = ws.getId();
+        const itemDef = itemId ? ITEMS_3D.find(it => it.id === itemId) : null;
+        const rarityColor = itemDef ? (ITEM_RARITIES[itemDef.rarity] || ITEM_RARITIES.common).color : '#333333';
+        const flashTimer = s.wearableFlash ? s.wearableFlash[ws.flashKey] || 0 : 0;
+
+        // Slot background
+        ctx.fillStyle = '#111118';
+        ctx.fillRect(slotX, slotY, SLOT_SIZE, SLOT_SIZE);
+
+        // Equip flash overlay (bright rarity-colored, fading)
+        if (flashTimer > 0) {
+          const flashAlpha = (flashTimer / 0.8) * 0.6;
+          ctx.fillStyle = rarityColor;
+          ctx.globalAlpha = flashAlpha;
+          ctx.fillRect(slotX, slotY, SLOT_SIZE, SLOT_SIZE);
+          ctx.globalAlpha = 1;
+        }
+
+        if (itemDef) {
+          // Filled slot: show colored item indicator
+          ctx.fillStyle = rarityColor;
+          ctx.globalAlpha = 0.25;
+          ctx.fillRect(slotX + 4, slotY + 4, SLOT_SIZE - 8, SLOT_SIZE - 8);
+          ctx.globalAlpha = 1;
+
+          // Item icon silhouette in rarity color
+          ctx.fillStyle = rarityColor;
+          ws.drawSilhouette(slotX + SLOT_SIZE / 2, slotY + SLOT_SIZE / 2);
+
+          // Item name below slot
+          ctx.textAlign = 'center';
+          ctx.fillStyle = rarityColor;
+          ctx.font = 'bold 12px "Courier New"';
+          const displayName = itemDef.name.length > 12 ? itemDef.name.slice(0, 11) + '.' : itemDef.name;
+          ctx.fillText(displayName, slotX + SLOT_SIZE / 2, slotY + SLOT_SIZE + 14);
+
+          // Effect text below name
+          ctx.fillStyle = '#aaaaaa';
+          ctx.font = '10px "Courier New"';
+          ctx.fillText(itemDef.desc, slotX + SLOT_SIZE / 2, slotY + SLOT_SIZE + 26);
+        } else {
+          // Empty slot: draw silhouette placeholder
+          ctx.fillStyle = 'rgba(255,255,255,0.12)';
+          ws.drawSilhouette(slotX + SLOT_SIZE / 2, slotY + SLOT_SIZE / 2);
+
+          // Slot label below
+          ctx.textAlign = 'center';
+          ctx.fillStyle = '#444444';
+          ctx.font = 'bold 12px "Courier New"';
+          ctx.fillText(ws.label, slotX + SLOT_SIZE / 2, slotY + SLOT_SIZE + 14);
+
+          // Empty hint
+          ctx.fillStyle = '#333333';
+          ctx.font = '10px "Courier New"';
+          ctx.fillText('empty', slotX + SLOT_SIZE / 2, slotY + SLOT_SIZE + 26);
+        }
+
+        // Rarity-colored border (thick)
+        ctx.strokeStyle = rarityColor;
+        ctx.lineWidth = BORDER_W;
+        ctx.strokeRect(slotX, slotY, SLOT_SIZE, SLOT_SIZE);
       }
-      if (s.items.glasses) {
-        allEquipped.push({ key: 'glasses', label: '[AVIATOR GLASSES]', color: ITEM_RARITIES.common.color });
-      }
-      if (s.items.boots) {
-        const bootDef = ITEMS_3D.find(i => i.id === s.items.boots);
-        if (bootDef) allEquipped.push({ key: 'boots', label: `[${bootDef.name}]`, color: (ITEM_RARITIES[bootDef.rarity] || ITEM_RARITIES.common).color });
-      }
+
+      ctx.textAlign = 'left';
+
+      // === REGULAR ITEMS (compact text list above wearable panel) ===
+      let iy = PANEL_Y - 8;
+
       // Boolean-slot items (non-stackable)
       const boolSlots = ['ring', 'charm', 'vest', 'pendant', 'bracelet', 'gloves', 'cushion', 'turboshoes', 'goldenbone', 'crown', 'zombiemagnet', 'scarf'];
       for (const slot of boolSlots) {
         if (s.items[slot]) {
           const itemDef = ITEMS_3D.find(i => i.slot === slot);
-          if (itemDef) allEquipped.push({ key: slot, label: `[${itemDef.name}]`, color: (ITEM_RARITIES[itemDef.rarity] || ITEM_RARITIES.common).color });
+          if (itemDef) {
+            const rarityColor = (ITEM_RARITIES[itemDef.rarity] || ITEM_RARITIES.common).color;
+            ctx.fillStyle = rarityColor; ctx.font = '15px "Courier New"';
+            ctx.fillText(`[${itemDef.name}]`, 20, iy);
+            iy -= 18;
+          }
         }
       }
       // Stackable items (show count)
@@ -233,80 +377,22 @@ export function drawHUD(ctx, s, deps) {
       for (const id of stackableIds) {
         if (s.items[id] > 0) {
           const itemDef = ITEMS_3D.find(i => i.id === id);
-          if (itemDef) allEquipped.push({ key: id, label: `[${itemDef.name} x${s.items[id]}]`, color: (ITEM_RARITIES[itemDef.rarity] || ITEM_RARITIES.common).color });
+          if (itemDef) {
+            const rarityColor = (ITEM_RARITIES[itemDef.rarity] || ITEM_RARITIES.common).color;
+            ctx.fillStyle = rarityColor; ctx.font = '15px "Courier New"';
+            ctx.fillText(`[${itemDef.name} x${s.items[id]}]`, 20, iy);
+            iy -= 18;
+          }
         }
       }
-      // Sort by acquisition order (most recent last in array = displayed first)
-      const order = s.itemAcquireOrder || [];
-      allEquipped.sort((a, b) => {
-        const ai = order.indexOf(a.key);
-        const bi = order.indexOf(b.key);
-        // Items not in order go first (oldest), items in order sorted by position
-        return (ai === -1 ? -1 : ai) - (bi === -1 ? -1 : bi);
-      });
-      // Cap to 5 most recent
-      const displayItems = allEquipped.slice(-5);
-      const totalCount = allEquipped.length;
-      // Render (most recent at bottom)
-      for (const item of displayItems) {
-        ctx.fillStyle = item.color; ctx.font = 'bold 16px ' + GAME_FONT;
-        ctx.fillText(item.label, 20, iy);
-        iy -= 20;
+      // Shield bracelet cooldown indicator
+      if (s.items.bracelet && !s.shieldBraceletReady) {
+        ctx.fillStyle = '#4488ff'; ctx.font = '15px "Courier New"';
+        ctx.fillText(`Shield: ${Math.ceil(s.shieldBraceletTimer)}s`, 20, iy);
+        iy -= 18;
       }
-      // Show overflow indicator if more than 5
-      if (totalCount > 5) {
-        ctx.fillStyle = '#888888'; ctx.font = '14px ' + GAME_FONT;
-        ctx.fillText(`+${totalCount - 5} more...`, 20, iy);
-        iy -= 20;
-      }
-    }
-    // Shield bracelet cooldown indicator
-    if (s.items.bracelet && !s.shieldBraceletReady) {
-      ctx.fillStyle = '#4488ff'; ctx.font = 'bold 16px ' + GAME_FONT;
-      ctx.fillText(`Shield: ${Math.ceil(s.shieldBraceletTimer)}s`, 20, iy);
-      iy -= 20;
     }
 
-    // --- Wearable Equipment Slots (3 squares: H/B/F) ---
-    if (s.wearables) {
-      const slotLabels = ['H', 'B', 'F'];
-      const slotKeys = ['head', 'body', 'feet'];
-      const slotSize = 30;
-      const slotGap = 4;
-      const slotStartX = 20;
-      const slotStartY = iy - slotSize - 8;
-      for (let si = 0; si < 3; si++) {
-        const sx = slotStartX + si * (slotSize + slotGap);
-        const sy = slotStartY;
-        const wId = s.wearables[slotKeys[si]];
-        const wData = wId ? WEARABLES_3D[wId] : null;
-        if (wData) {
-          // Filled slot: colored background
-          const rarityColor = (ITEM_RARITIES[wData.rarity] || ITEM_RARITIES.common).color;
-          const hexColor = '#' + wData.color.toString(16).padStart(6, '0');
-          ctx.fillStyle = hexColor;
-          ctx.fillRect(sx, sy, slotSize, slotSize);
-          ctx.strokeStyle = rarityColor; ctx.lineWidth = 2;
-          ctx.strokeRect(sx, sy, slotSize, slotSize);
-          // Slot label
-          ctx.fillStyle = '#ffffff'; ctx.font = 'bold 10px ' + GAME_FONT; ctx.textAlign = 'center';
-          ctx.fillText(slotLabels[si], sx + slotSize / 2, sy + 10);
-          // Wearable name below slot
-          ctx.fillStyle = rarityColor; ctx.font = '9px ' + GAME_FONT;
-          ctx.fillText(wData.name, sx + slotSize / 2, sy + slotSize + 10);
-          ctx.textAlign = 'left';
-        } else {
-          // Empty slot: gray outline
-          ctx.fillStyle = 'rgba(40,40,40,0.6)';
-          ctx.fillRect(sx, sy, slotSize, slotSize);
-          ctx.strokeStyle = '#555'; ctx.lineWidth = 1;
-          ctx.strokeRect(sx, sy, slotSize, slotSize);
-          ctx.fillStyle = '#666'; ctx.font = 'bold 12px ' + GAME_FONT; ctx.textAlign = 'center';
-          ctx.fillText(slotLabels[si], sx + slotSize / 2, sy + slotSize / 2 + 4);
-          ctx.textAlign = 'left';
-        }
-      }
-    }
 
     // --- Floating 3D Texts (projected to screen space) ---
     for (const ft of s.floatingTexts3d) {
