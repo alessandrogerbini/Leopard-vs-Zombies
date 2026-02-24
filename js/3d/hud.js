@@ -216,11 +216,11 @@ export function drawHUD(ctx, s, deps) {
       const PANEL_Y = H - PANEL_H - 26; // above controls hint
       const BORDER_W = 3;
 
-      // Wearable slot definitions: key in s.items, label, silhouette drawer
+      // Wearable slot definitions: reads from s.wearables (head/body/feet)
       const wearSlots = [
         {
-          key: 'glasses', label: 'HEAD', flashKey: 'glasses',
-          getId: () => s.items.glasses ? 'glasses' : null,
+          key: 'head', label: 'HEAD', flashKey: 'head',
+          getId: () => s.wearables ? s.wearables.head : null,
           drawSilhouette: (cx, cy) => {
             // Hat/triangle shape
             ctx.beginPath();
@@ -234,8 +234,8 @@ export function drawHUD(ctx, s, deps) {
           }
         },
         {
-          key: 'armor', label: 'BODY', flashKey: 'armor',
-          getId: () => s.items.armor || null,
+          key: 'body', label: 'BODY', flashKey: 'body',
+          getId: () => s.wearables ? s.wearables.body : null,
           drawSilhouette: (cx, cy) => {
             // T-shirt/body shape (single path, no clearRect)
             ctx.beginPath();
@@ -257,8 +257,8 @@ export function drawHUD(ctx, s, deps) {
           }
         },
         {
-          key: 'boots', label: 'FEET', flashKey: 'boots',
-          getId: () => s.items.boots || null,
+          key: 'feet', label: 'FEET', flashKey: 'feet',
+          getId: () => s.wearables ? s.wearables.feet : null,
           drawSilhouette: (cx, cy) => {
             // Boot shape (left)
             ctx.fillRect(cx - 14, cy - 8, 8, 16);
@@ -292,7 +292,7 @@ export function drawHUD(ctx, s, deps) {
         const slotX = PANEL_X + PANEL_PAD + si * (SLOT_SIZE + SLOT_GAP);
         const slotY = PANEL_Y + PANEL_PAD;
         const itemId = ws.getId();
-        const itemDef = itemId ? ITEMS_3D.find(it => it.id === itemId) : null;
+        const itemDef = itemId ? WEARABLES_3D[itemId] || null : null;
         const rarityColor = itemDef ? (ITEM_RARITIES[itemDef.rarity] || ITEM_RARITIES.common).color : '#333333';
         const flashTimer = s.wearableFlash ? s.wearableFlash[ws.flashKey] || 0 : 0;
 
@@ -323,13 +323,13 @@ export function drawHUD(ctx, s, deps) {
           // Item name below slot
           ctx.textAlign = 'center';
           ctx.fillStyle = rarityColor;
-          ctx.font = 'bold 12px "Courier New"';
+          ctx.font = 'bold 12px ' + GAME_FONT;
           const displayName = itemDef.name.length > 12 ? itemDef.name.slice(0, 11) + '.' : itemDef.name;
           ctx.fillText(displayName, slotX + SLOT_SIZE / 2, slotY + SLOT_SIZE + 14);
 
           // Effect text below name
           ctx.fillStyle = '#aaaaaa';
-          ctx.font = '10px "Courier New"';
+          ctx.font = '10px ' + GAME_FONT;
           ctx.fillText(itemDef.desc, slotX + SLOT_SIZE / 2, slotY + SLOT_SIZE + 26);
         } else {
           // Empty slot: draw silhouette placeholder
@@ -339,12 +339,12 @@ export function drawHUD(ctx, s, deps) {
           // Slot label below
           ctx.textAlign = 'center';
           ctx.fillStyle = '#444444';
-          ctx.font = 'bold 12px "Courier New"';
+          ctx.font = 'bold 12px ' + GAME_FONT;
           ctx.fillText(ws.label, slotX + SLOT_SIZE / 2, slotY + SLOT_SIZE + 14);
 
           // Empty hint
           ctx.fillStyle = '#333333';
-          ctx.font = '10px "Courier New"';
+          ctx.font = '10px ' + GAME_FONT;
           ctx.fillText('empty', slotX + SLOT_SIZE / 2, slotY + SLOT_SIZE + 26);
         }
 
@@ -357,8 +357,8 @@ export function drawHUD(ctx, s, deps) {
       ctx.textAlign = 'left';
 
       // === REGULAR ITEMS (compact text list above wearable panel) ===
-      let iy = PANEL_Y - 8;
-
+      // Collect all visible items first, then render with overflow cap
+      const visibleItems = [];
       // Boolean-slot items (non-stackable)
       const boolSlots = ['ring', 'charm', 'vest', 'pendant', 'bracelet', 'gloves', 'cushion', 'turboshoes', 'goldenbone', 'crown', 'zombiemagnet', 'scarf'];
       for (const slot of boolSlots) {
@@ -366,9 +366,7 @@ export function drawHUD(ctx, s, deps) {
           const itemDef = ITEMS_3D.find(i => i.slot === slot);
           if (itemDef) {
             const rarityColor = (ITEM_RARITIES[itemDef.rarity] || ITEM_RARITIES.common).color;
-            ctx.fillStyle = rarityColor; ctx.font = '15px "Courier New"';
-            ctx.fillText(`[${itemDef.name}]`, 20, iy);
-            iy -= 18;
+            visibleItems.push({ text: `[${itemDef.name}]`, color: rarityColor });
           }
         }
       }
@@ -379,17 +377,28 @@ export function drawHUD(ctx, s, deps) {
           const itemDef = ITEMS_3D.find(i => i.id === id);
           if (itemDef) {
             const rarityColor = (ITEM_RARITIES[itemDef.rarity] || ITEM_RARITIES.common).color;
-            ctx.fillStyle = rarityColor; ctx.font = '15px "Courier New"';
-            ctx.fillText(`[${itemDef.name} x${s.items[id]}]`, 20, iy);
-            iy -= 18;
+            visibleItems.push({ text: `[${itemDef.name} x${s.items[id]}]`, color: rarityColor });
           }
         }
       }
       // Shield bracelet cooldown indicator
       if (s.items.bracelet && !s.shieldBraceletReady) {
-        ctx.fillStyle = '#4488ff'; ctx.font = '15px "Courier New"';
-        ctx.fillText(`Shield: ${Math.ceil(s.shieldBraceletTimer)}s`, 20, iy);
-        iy -= 18;
+        visibleItems.push({ text: `Shield: ${Math.ceil(s.shieldBraceletTimer)}s`, color: '#4488ff' });
+      }
+      // Render items with overflow cap (max 6 visible)
+      const MAX_VISIBLE_ITEMS = 6;
+      const itemLineH = 18;
+      let iy = PANEL_Y - 8;
+      const displayCount = Math.min(visibleItems.length, MAX_VISIBLE_ITEMS);
+      for (let ii = 0; ii < displayCount; ii++) {
+        const item = visibleItems[ii];
+        ctx.fillStyle = item.color; ctx.font = '14px ' + GAME_FONT;
+        ctx.fillText(item.text, 20, iy);
+        iy -= itemLineH;
+      }
+      if (visibleItems.length > MAX_VISIBLE_ITEMS) {
+        ctx.fillStyle = '#888888'; ctx.font = '13px ' + GAME_FONT;
+        ctx.fillText(`+${visibleItems.length - MAX_VISIBLE_ITEMS} more`, 20, iy);
       }
     }
 
