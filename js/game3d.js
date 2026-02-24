@@ -260,8 +260,8 @@ export function launch3DGame(options) {
   // === STATE ===
   const st = {
     // Player stats (scaled by animal + difficulty)
-    hp: Math.floor(animalData.hp * diffData.hpMult),
-    maxHp: Math.floor(animalData.hp * diffData.hpMult),
+    hp: Math.floor(animalData.hp * diffData.hpMult * 1.25),   // BD-194: +25% starting HP for kid-friendly early game
+    maxHp: Math.floor(animalData.hp * diffData.hpMult * 1.25), // BD-194: +25% starting HP for kid-friendly early game
     playerSpeed: 5 * animalData.speed,
     attackSpeed: 1.2,
     attackDamage: 15 * animalData.damage,
@@ -4239,7 +4239,14 @@ export function launch3DGame(options) {
 
     // BD-189: Tick name-entry cooldown even during gameOver so the game-over
     // screen becomes responsive after the 300ms guard expires.
-    if (st.nameEntryInputCooldown > 0) st.nameEntryInputCooldown -= dt;
+    if (st.nameEntryInputCooldown > 0) {
+      st.nameEntryInputCooldown -= dt;
+      // BD-193: Auto-unlock game-over input when cooldown expires,
+      // instead of requiring a specific Enter key release
+      if (st.nameEntryInputCooldown <= 0) {
+        st.enterReleasedSinceGameOver = true;
+      }
+    }
 
     if (!st.paused && !st.gameOver) {
       st.gameTime += dt;
