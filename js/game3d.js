@@ -2711,16 +2711,19 @@ export function launch3DGame(options) {
       st.shieldBraceletTimer = 30;
       addFloatingText('BLOCKED!', '#4488ff', st.playerX, st.playerY + 2, st.playerZ, 0.5);
     }
-    dmg = Math.max(1, dmg);
-    st.hp -= dmg;
-    if (st.hp < 0) st.hp = 0;
-    st.invincible = 0.5; // BD-192: 0.5s iframes (was 0.2 — too short for swarm game)
-    // BD-208: Only trigger flash if cooldown has expired (max once per second)
-    if (st.playerHurtFlashCooldown <= 0) {
-      st.playerHurtFlash = 0.5;
-      st.playerHurtFlashCooldown = 1.0;
+    // BD-212: Allow 0 damage (Shield Bracelet block, full armor mitigation) — was Math.max(1, dmg) which made player unkillable
+    dmg = Math.max(0, Math.round(dmg));
+    if (dmg > 0) {
+      st.hp -= dmg;
+      if (st.hp < 0) st.hp = 0;
+      st.invincible = 0.5; // BD-192: 0.5s iframes (was 0.2 — too short for swarm game)
+      // BD-208: Only trigger flash if cooldown has expired (max once per second)
+      if (st.playerHurtFlashCooldown <= 0) {
+        st.playerHurtFlash = 0.5;
+        st.playerHurtFlashCooldown = 1.0;
+      }
+      addFloatingText('-' + dmg, color || '#ff2200', st.playerX, st.playerY + 2, st.playerZ, 0.5);
     }
-    addFloatingText('-' + Math.round(dmg), color || '#ff2200', st.playerX, st.playerY + 2, st.playerZ, 0.5);
     return dmg;
   }
   /**
