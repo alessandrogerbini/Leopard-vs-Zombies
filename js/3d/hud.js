@@ -885,5 +885,51 @@ export function drawHUD(ctx, s, deps) {
     }
   }
 
+  // BD-147: Item pickup screen flash
+  if (s.itemFlashTimer > 0) {
+    const flashAlpha = Math.min(0.2, s.itemFlashTimer / 0.2 * 0.2);
+    ctx.fillStyle = s.itemFlashColor;
+    ctx.globalAlpha = flashAlpha;
+    ctx.fillRect(0, 0, W, H);
+    ctx.globalAlpha = 1.0;
+  }
+
+  // BD-147: Item pickup center-screen announcement
+  if (s.itemAnnouncement) {
+    const ann = s.itemAnnouncement;
+    const fadeIn = Math.min(1, (2.5 - ann.timer) / 0.2); // fade in over 0.2s
+    const fadeOut = Math.min(1, ann.timer / 0.3); // fade out over 0.3s
+    const alpha = Math.min(fadeIn, fadeOut);
+
+    ctx.save();
+    ctx.globalAlpha = alpha;
+
+    // Background banner
+    const bannerW = 320;
+    const bannerH = 60;
+    const bx = (W - bannerW) / 2;
+    const by = H * 0.3;
+    ctx.fillStyle = 'rgba(0,0,0,0.7)';
+    ctx.fillRect(bx, by, bannerW, bannerH);
+
+    // Border in rarity color
+    ctx.strokeStyle = ann.color;
+    ctx.lineWidth = 2;
+    ctx.strokeRect(bx, by, bannerW, bannerH);
+
+    // Item name (large)
+    ctx.fillStyle = ann.color;
+    ctx.font = 'bold 18px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText(ann.name, W / 2, by + 24);
+
+    // Item description (smaller, white)
+    ctx.fillStyle = '#cccccc';
+    ctx.font = '13px monospace';
+    ctx.fillText(ann.desc, W / 2, by + 46);
+
+    ctx.restore();
+  }
+
   ctx.textAlign = 'left';
 }

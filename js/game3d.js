@@ -337,6 +337,11 @@ export function launch3DGame(options) {
     sillyStrawKills: 0,
     // Turbo Sneakers dodge state
     dodgeChance: 0,
+    // BD-147: Item pickup event feedback
+    itemFlashTimer: 0,
+    itemFlashColor: '#ffffff',
+    itemAnnouncement: null, // { name, desc, color, timer }
+    itemSlowTimer: 0,
     // UI
     gameOver: false,
     paused: false,
@@ -3324,7 +3329,13 @@ export function launch3DGame(options) {
     animId = requestAnimationFrame(tick);
 
     // NOTE: dt is capped at 0.05s (20fps minimum) to prevent physics tunneling on lag spikes
-    const dt = Math.min(clock.getDelta(), 0.05);
+    let dt = Math.min(clock.getDelta(), 0.05);
+
+    // Item pickup time-dilation (BD-147)
+    if (st.itemSlowTimer > 0) {
+      st.itemSlowTimer -= dt;
+      dt *= 0.5; // half speed for dramatic moment
+    }
 
     if (!st.paused && !st.gameOver) {
       st.gameTime += dt;
@@ -4671,6 +4682,17 @@ export function launch3DGame(options) {
           st.floatingTexts3d.push({ text: it.name, color: rarityColor, x: item.x, y: st.playerY + 2.5, z: item.z, life: 2 });
           st.floatingTexts3d.push({ text: it.desc, color: '#ffffff', x: item.x, y: st.playerY + 2, z: item.z, life: 2 });
           playSound('sfx_item_pickup');
+          // BD-147: Item pickup event feedback
+          st.itemFlashTimer = 0.2;
+          st.itemFlashColor = rarityColor;
+          st.itemSlowTimer = 0.3;
+          st.itemAnnouncement = {
+            name: it.name,
+            desc: it.desc,
+            color: rarityColor,
+            timer: 2.5
+          };
+          playSound('sfx_level_up'); // celebration sound until Julian records a proper pickup sound
           updateItemVisuals(playerModel, st.items, animalData.id);
           item.alive = false;
           scene.remove(item.mesh);
@@ -4884,6 +4906,13 @@ export function launch3DGame(options) {
           st.floatingTexts3d.push({ text: 'SHIELD READY!', color: '#4488ff', x: st.playerX, y: st.playerY + 2, z: st.playerZ, life: 1.5 });
         }
       }
+
+      // === BD-147: Item pickup feedback timers ===
+      if (st.itemAnnouncement) {
+        st.itemAnnouncement.timer -= dt;
+        if (st.itemAnnouncement.timer <= 0) st.itemAnnouncement = null;
+      }
+      if (st.itemFlashTimer > 0) st.itemFlashTimer -= dt;
 
       // === CLEANUP + DEATH CHECK ===
       // Clean dead enemies
