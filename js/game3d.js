@@ -277,7 +277,7 @@ export function launch3DGame(options) {
     scoreMult: diffData.scoreMult,
     enemySpeedMult: diffData.enemySpeedMult || 1.0,
     powerupFreqMult: diffData.powerupFreqMult || 1.0,
-    zombieDmgMult: 2,
+    zombieDmgMult: 1,
     score: 0,
     wave: 1,
     ambientSpawnTimer: 1.36,
@@ -363,6 +363,7 @@ export function launch3DGame(options) {
     selectedUpgrade: 0,
     running: true,
     invincible: 0,
+    playerHurtFlash: 0, // BD-192: player body flash timer on damage
     enterReleasedSinceGameOver: false,
     _enterCooldown: 0,
     _menuDismissedAt: 0,
@@ -2615,7 +2616,7 @@ export function launch3DGame(options) {
     // Turbo Sneakers: dodge chance
     if (st.dodgeChance > 0 && Math.random() < st.dodgeChance) {
       addFloatingText('DODGE!', '#00ffaa', st.playerX, st.playerY + 2, st.playerZ, 0.8);
-      st.invincible = 0.2;
+      st.invincible = 0.5; // BD-192: match damage iframes
       return 0;
     }
     let dmg = baseDmg;
@@ -2641,7 +2642,8 @@ export function launch3DGame(options) {
     dmg = Math.max(1, dmg);
     st.hp -= dmg;
     if (st.hp < 0) st.hp = 0;
-    st.invincible = 0.2;
+    st.invincible = 0.5; // BD-192: 0.5s iframes (was 0.2 — too short for swarm game)
+    st.playerHurtFlash = 0.5; // BD-192: match invincibility for visible flash
     addFloatingText('-' + Math.round(dmg), color || '#ff2200', st.playerX, st.playerY + 2, st.playerZ, 0.5);
     return dmg;
   }
@@ -4235,6 +4237,10 @@ export function launch3DGame(options) {
       st._fpsTime = 0;
     }
 
+    // BD-189: Tick name-entry cooldown even during gameOver so the game-over
+    // screen becomes responsive after the 300ms guard expires.
+    if (st.nameEntryInputCooldown > 0) st.nameEntryInputCooldown -= dt;
+
     if (!st.paused && !st.gameOver) {
       st.gameTime += dt;
 
@@ -4455,8 +4461,32 @@ export function launch3DGame(options) {
 
       // Invincibility timer
       if (st.invincible > 0) st.invincible -= dt;
-      // BD-107: Name entry input cooldown timer
-      if (st.nameEntryInputCooldown > 0) st.nameEntryInputCooldown -= dt;
+
+      // BD-192: Player hurt flash — blink model white/normal at ~10Hz while taking damage
+      if (st.playerHurtFlash > 0) {
+        st.playerHurtFlash -= dt;
+        const flashOn = Math.sin(st.playerHurtFlash * 10 * Math.PI * 2) > 0;
+        playerGroup.traverse(child => {
+          if (child.isMesh && child.material) {
+            if (!child.userData._origColor) {
+              child.userData._origColor = child.material.color.getHex();
+            }
+            child.material.color.setHex(flashOn ? 0xffffff : child.userData._origColor);
+          }
+        });
+      } else if (playerGroup.userData._flashCleared !== true && st.playerHurtFlash <= 0) {
+        // Restore original colors once flash ends
+        playerGroup.traverse(child => {
+          if (child.isMesh && child.material && child.userData._origColor !== undefined) {
+            child.material.color.setHex(child.userData._origColor);
+            delete child.userData._origColor;
+          }
+        });
+        playerGroup.userData._flashCleared = true;
+      }
+      if (st.playerHurtFlash > 0) playerGroup.userData._flashCleared = false;
+
+      // BD-107: Name entry input cooldown timer (moved to BD-189 — ticks outside gameOver gate)
       // BD-126: Attack lunge animation timer
       if (st.attackAnimTimer > 0) st.attackAnimTimer -= dt;
 

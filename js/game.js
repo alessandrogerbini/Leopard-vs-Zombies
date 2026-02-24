@@ -296,9 +296,11 @@ function update() {
         state.selectedDifficulty = 0;
         state.gameState = 'difficulty';
       } else {
-        // 3D Survivor: go through difficulty select (BD-179)
-        state.selectedDifficulty = 0;
-        state.gameState = 'difficulty';
+        // BD-191: 3D Survivor skips difficulty — survivor roguelike handles its own ramp
+        state.difficulty = 'easy';
+        state.leaderboard = loadLeaderboard(state.difficulty);
+        state.selectedAnimal = 0;
+        state.gameState = 'select';
       }
     }
     if (!keys['Enter']) state._enterHeld = false;
@@ -407,8 +409,8 @@ function update() {
     if (!keys['Enter']) state._enterHeld = false;
     if (keys['Escape'] && !state._escHeld) {
       state._escHeld = true;
-      // Both modes go back to difficulty select (BD-179)
-      state.gameState = 'difficulty';
+      // BD-191: 3D goes back to mode select (no difficulty screen)
+      state.gameState = state.selectedMode === 0 ? 'difficulty' : 'modeSelect';
     }
     return;
   }
