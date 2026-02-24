@@ -32,7 +32,7 @@
 import {
   ARENA_SIZE, SHRINE_COUNT, CHUNK_SIZE, GRAVITY_3D, JUMP_FORCE, GROUND_Y, MAP_HALF,
   ANIMAL_PALETTES, WEAPON_TYPES, HOWL_TYPES, POWERUPS_3D, ITEMS_3D, ITEM_RARITIES,
-  SHRINE_AUGMENTS, TOTEM_EFFECT, ZOMBIE_TIERS, ANIMAL_WEAPONS,
+  SHRINE_AUGMENTS, TOTEM_EFFECT, ZOMBIE_TIERS, ANIMAL_WEAPONS, WEARABLES_3D,
   MAP_GEMS_PER_CHUNK, GEM_XP_MIN, GEM_XP_MAX, GEM_COLLECT_RADIUS,
   CHARGE_SHRINE_UPGRADES, CHARGE_SHRINE_WEIGHTS, CHARGE_SHRINE_COUNT,
   CHARGE_SHRINE_TIME, CHARGE_SHRINE_RADIUS,
@@ -46,7 +46,7 @@ import {
 } from './3d/terrain.js';
 
 import { box } from './3d/utils.js';
-import { buildPlayerModel, animatePlayer, updateMuscleGrowth, updateItemVisuals } from './3d/player-model.js';
+import { buildPlayerModel, animatePlayer, updateMuscleGrowth, updateItemVisuals, buildWearableMesh, updateWearableVisuals } from './3d/player-model.js';
 import { drawHUD } from './3d/hud.js';
 import { initAudio, playSound, toggleMute, isMuted, getVolume, disposeAudio } from './3d/audio.js';
 
@@ -341,6 +341,9 @@ export function launch3DGame(options) {
       rubberDucky: 0, thickFur: 0, sillyStraw: 0, bandana: 0,
       hotSauce: 0, bouncyBall: 0, luckyPenny: 0, alarmClock: 0,
     },
+    // Wearable equipment (3 slots: head, body, feet)
+    wearables: { head: null, body: null, feet: null },
+    wearablePickups: [],
     shieldBraceletTimer: 0,
     shieldBraceletReady: true,
     // Silly Straw kill counter (heals 1 HP per 10 kills)
@@ -2058,6 +2061,60 @@ export function launch3DGame(options) {
     return { mesh, itype, x: px, z: pz, bobPhase: Math.random() * Math.PI * 2, alive: true };
   }
 
+  // === WEARABLE PICKUP ===
+
+  /**
+   * Create a floating wearable pickup at the given position.
+   * Wearable pickups are colored cubes with a spinning ring indicator to distinguish
+   * them from regular item pickups. Uses rarity-weighted selection from WEARABLES_3D.
+   *
+   * @param {number} x - World X position.
+   * @param {number} z - World Z position.
+   * @returns {{mesh: THREE.Group, wearableId: string, wearableData: Object, x: number, z: number, bobPhase: number, alive: boolean, nearTimer: number}} Wearable pickup object.
+   */
+  function createWearablePickup(x, z) {
+    const wearableKeys = Object.keys(WEARABLES_3D);
+    // Rarity-weighted selection
+    let totalWeight = 0;
+    for (const key of wearableKeys) {
+      const w = WEARABLES_3D[key];
+      totalWeight += (ITEM_RARITIES[w.rarity] || ITEM_RARITIES.common).weight;
+    }
+    let roll = Math.random() * totalWeight;
+    let chosenId = wearableKeys[0];
+    for (const key of wearableKeys) {
+      const w = WEARABLES_3D[key];
+      roll -= (ITEM_RARITIES[w.rarity] || ITEM_RARITIES.common).weight;
+      if (roll <= 0) { chosenId = key; break; }
+    }
+    const wearableData = WEARABLES_3D[chosenId];
+    const rarityData = ITEM_RARITIES[wearableData.rarity] || ITEM_RARITIES.common;
+
+    // Place on terrain
+    const h = terrainHeight(x, z);
+    const group = new THREE.Group();
+    // Core cube
+    const cubeMat = new THREE.MeshLambertMaterial({
+      color: wearableData.color, emissive: wearableData.color, emissiveIntensity: 0.5,
+    });
+    const cube = new THREE.Mesh(new THREE.BoxGeometry(0.45, 0.45, 0.45), cubeMat);
+    group.add(cube);
+    // Ring indicator around the cube (distinguishes from item pickups)
+    const ringMat = new THREE.MeshBasicMaterial({
+      color: rarityData.colorHex, transparent: true, opacity: 0.5,
+    });
+    const ring = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.06, 0.7), ringMat);
+    ring.position.y = -0.1;
+    group.add(ring);
+
+    group.position.set(x, h + 0.8, z);
+    scene.add(group);
+    return {
+      mesh: group, wearableId: chosenId, wearableData, x, z,
+      bobPhase: Math.random() * Math.PI * 2, alive: true, nearTimer: 0,
+    };
+  }
+
   // === SHARED WEAPON EFFECT RESOURCES ===
   // Shared geometry and material for lightning bolt segments to avoid per-segment allocation.
   const boltSegGeo = new THREE.BoxGeometry(0.06, 0.06, 1);
@@ -2123,6 +2180,11 @@ export function launch3DGame(options) {
     let mult = (1 + (st.level - 1) * 0.12) * st.dmgBoost * st.augmentDmgMult;
     if (st.items.bandana > 0) mult *= (1 + st.items.bandana * 0.05); // Bandana: +5% per stack
     if (st.items.goldenbone) mult *= 1.30; // Golden Bone: +30% all weapon damage
+    // Wearable head damage bonus (e.g. Shark Fin: +10%)
+    if (st.wearables.head) {
+      const headEff = WEARABLES_3D[st.wearables.head].effect;
+      if (headEff.dmgMult) mult *= headEff.dmgMult;
+    }
     return mult;
   }
 
@@ -2210,6 +2272,15 @@ export function launch3DGame(options) {
   function getHowlBonusProj() { return Math.floor(st.howls.arcane * getHowlStrength()); }
   /** @returns {number} XP multiplier from Fortune Howls (+30% per stack, boosted by Rainbow Scarf). */
   function getHowlXpMult() { return 1 + st.howls.fortune * 0.3 * getHowlStrength(); }
+
+  /** Get XP multiplier from wearable head slot (e.g. Party Hat: +5%). */
+  function getWearableXpMult() {
+    if (st.wearables.head) {
+      const headEff = WEARABLES_3D[st.wearables.head].effect;
+      if (headEff.xpMult) return headEff.xpMult;
+    }
+    return 1;
+  }
 
   // === WEAPON FUNCTIONS ===
 
@@ -2466,6 +2537,11 @@ export function launch3DGame(options) {
         addFloatingText('+XP', '#aa88ff', dropX, terrainHeight(dropX, dropZ) + 2, dropZ, 0.5);
       }
     }
+    // Wearable drop roll — 15% chance, independent of regular loot
+    if (Math.random() < 0.15) {
+      const wp = createWearablePickup(e.group.position.x, e.group.position.z);
+      st.wearablePickups.push(wp);
+    }
     e.dying = true;
     e.deathTimer = 0.3;
   }
@@ -2519,6 +2595,11 @@ export function launch3DGame(options) {
     else if (st.items.armor === 'chainmail') dmg *= 0.6;
     // Augment armor reduction
     dmg *= (1 - st.augmentArmor);
+    // Wearable body damage reduction (e.g. Cardboard Box: -10%, Bumble Armor: -20%)
+    if (st.wearables.body) {
+      const bodyEff = WEARABLES_3D[st.wearables.body].effect;
+      if (bodyEff.dmgReduction) dmg *= (1 - bodyEff.dmgReduction);
+    }
     // Berserker Rage: +25% damage taken
     if (st.berserkVulnerable) dmg *= 1.25;
     // Shield Bracelet: absorb one hit every 30s
@@ -4144,6 +4225,11 @@ export function launch3DGame(options) {
       if (st.items.boots === 'soccerCleats') speed *= 1.15;
       if (st.items.rubberDucky > 0) speed *= (1 + st.items.rubberDucky * 0.10); // Rubber Ducky: +10% per stack
       if (st.items.turboshoes) speed *= 1.25; // Turbo Sneakers: +25% move speed
+      // Wearable feet speed bonus
+      if (st.wearables.feet) {
+        const feetEff = WEARABLES_3D[st.wearables.feet].effect;
+        if (feetEff.speedMult) speed *= feetEff.speedMult;
+      }
 
       st.playerX += mx * speed * dt;
       st.playerZ += mz * speed * dt;
@@ -4246,7 +4332,13 @@ export function launch3DGame(options) {
         }
       } else {
         if (keys3d['Space'] && st.onGround) {
-          st.playerVY = st.jumpForce * st.jumpBoost;
+          let jumpMult = st.jumpBoost;
+          // Wearable feet jump bonus (e.g. Spring Boots: +30%)
+          if (st.wearables.feet) {
+            const feetEff = WEARABLES_3D[st.wearables.feet].effect;
+            if (feetEff.jumpMult) jumpMult *= feetEff.jumpMult;
+          }
+          st.playerVY = st.jumpForce * jumpMult;
           st.onGround = false;
           st.onPlatformY = null;
           playSound('sfx_jump');
@@ -5423,7 +5515,7 @@ export function launch3DGame(options) {
         }
         // Collection
         if (dist < st.collectRadius) {
-          st.xp += Math.max(1, Math.round((gem.xpValue || 1) * st.augmentXpMult * getHowlXpMult() * (st.totemXpMult || 1)));
+          st.xp += Math.max(1, Math.round((gem.xpValue || 1) * st.augmentXpMult * getHowlXpMult() * getWearableXpMult() * (st.totemXpMult || 1)));
           scene.remove(gem.mesh);
           // Material is shared (gemMats) — do not dispose
           st.xpGems.splice(i, 1);
@@ -5463,7 +5555,7 @@ export function launch3DGame(options) {
           g.alive = false;
           scene.remove(g.mesh);
           // XP scaled by augments, Fortune Howl, and totem bonuses (same as drop gems)
-          const xpGain = Math.max(1, Math.round(g.xpValue * st.augmentXpMult * getHowlXpMult() * (st.totemXpMult || 1)));
+          const xpGain = Math.max(1, Math.round(g.xpValue * st.augmentXpMult * getHowlXpMult() * getWearableXpMult() * (st.totemXpMult || 1)));
           st.xp += xpGain;
           // Track as collected so it won't respawn when chunk reloads
           if (!st.collectedGemKeys[g.chunkKey]) st.collectedGemKeys[g.chunkKey] = new Set();
@@ -5599,6 +5691,85 @@ export function launch3DGame(options) {
           item.mesh.geometry.dispose();
           item.mesh.material.dispose();
           st.itemPickups.splice(i, 1);
+        }
+      }
+
+      // === WEARABLE PICKUPS ===
+      // Walk into floating wearables to equip them. Each wearable occupies one of 3 slots (head/body/feet).
+      // Auto-equips into empty slots. If occupied by lower rarity, auto-replaces.
+      // If same or higher rarity, must walk over twice within 5s to confirm replacement.
+      for (let i = st.wearablePickups.length - 1; i >= 0; i--) {
+        const wp = st.wearablePickups[i];
+        if (!wp.alive) continue;
+        wp.bobPhase += dt * 3;
+        const wh = getGroundAt(wp.x, wp.z);
+        wp.mesh.position.y = wh + 0.8 + Math.sin(wp.bobPhase) * 0.2;
+        // Rotate the cube inside the group
+        wp.mesh.children[0].rotation.y += dt * 2;
+        // Rotate the ring indicator
+        if (wp.mesh.children[1]) wp.mesh.children[1].rotation.y -= dt * 1.5;
+        // Decay nearTimer
+        if (wp.nearTimer > 0) wp.nearTimer -= dt;
+
+        const wdx = st.playerX - wp.x;
+        const wdz = st.playerZ - wp.z;
+        const wDistSq = wdx * wdx + wdz * wdz;
+        const wdy = Math.abs(st.playerY - wp.mesh.position.y);
+        if (wDistSq < 2.25 && wdy < 2.0) { // 1.5*1.5
+          const wd = wp.wearableData;
+          const slot = wd.slot;
+          const currentId = st.wearables[slot];
+          const currentData = currentId ? WEARABLES_3D[currentId] : null;
+          const rarityOrder = { common: 0, uncommon: 1, rare: 2, legendary: 3 };
+          const newRank = rarityOrder[wd.rarity] || 0;
+          const curRank = currentData ? (rarityOrder[currentData.rarity] || 0) : -1;
+
+          let shouldEquip = false;
+          if (!currentId) {
+            // Empty slot — auto-equip
+            shouldEquip = true;
+          } else if (newRank > curRank) {
+            // Higher rarity — auto-equip
+            shouldEquip = true;
+          } else if (wp.nearTimer > 0) {
+            // Same or lower rarity — second walk-over within 5s confirms
+            shouldEquip = true;
+          } else {
+            // First walk-over for same/higher rarity — start nearTimer
+            wp.nearTimer = 5;
+            addFloatingText(`${wd.name} (walk over again)`, '#ffcc00', wp.x, st.playerY + 2.5, wp.z, 2);
+          }
+
+          if (shouldEquip) {
+            // Unapply old wearable effects if replacing
+            if (currentData) {
+              const oldEff = currentData.effect;
+              if (oldEff.maxHpBonus) { st.maxHp -= oldEff.maxHpBonus; st.hp = Math.min(st.hp, st.maxHp); }
+            }
+            // Apply new wearable effects
+            const eff = wd.effect;
+            if (eff.maxHpBonus) { st.maxHp += eff.maxHpBonus; st.hp = Math.min(st.hp + eff.maxHpBonus, st.maxHp); }
+            // Set the slot
+            st.wearables[slot] = wp.wearableId;
+            // Floating text
+            const rarityColor = (ITEM_RARITIES[wd.rarity] || ITEM_RARITIES.common).color;
+            addFloatingText(wd.name, rarityColor, wp.x, st.playerY + 2.5, wp.z, 2, true);
+            addFloatingText(wd.desc, '#ffffff', wp.x, st.playerY + 2, wp.z, 2);
+            playSound('sfx_item_pickup');
+            updateWearableVisuals(playerModel, st.wearables);
+            wp.alive = false;
+            scene.remove(wp.mesh);
+            wp.mesh.traverse(c => { if (c.geometry) c.geometry.dispose(); if (c.material) c.material.dispose(); });
+            st.wearablePickups.splice(i, 1);
+            continue;
+          }
+        }
+        // Cleanup far pickups
+        if (wDistSq > 3600) { // 60*60
+          wp.alive = false;
+          scene.remove(wp.mesh);
+          wp.mesh.traverse(c => { if (c.geometry) c.geometry.dispose(); if (c.material) c.material.dispose(); });
+          st.wearablePickups.splice(i, 1);
         }
       }
 
@@ -5979,6 +6150,13 @@ export function launch3DGame(options) {
     st.bombTrailBombs.forEach(b => disposeSceneObject(b.mesh));
     // Dispose map gems (shared geo/mat disposed via scene.traverse below)
     st.mapGems.forEach(g => { if (g.mesh) scene.remove(g.mesh); });
+    // Dispose wearable pickups
+    st.wearablePickups.forEach(wp => {
+      if (wp.mesh) {
+        scene.remove(wp.mesh);
+        wp.mesh.traverse(c => { if (c.geometry) c.geometry.dispose(); if (c.material) c.material.dispose(); });
+      }
+    });
 
     // Dispose weapon projectiles and effects
     st.weaponProjectiles.forEach(p => disposeSceneObject(p.mesh));

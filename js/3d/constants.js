@@ -302,6 +302,46 @@ export const ITEMS_3D = [
 ];
 
 /**
+ * Wearable equipment definitions for the 3-slot wearable system (head, body, feet).
+ * Wearables are permanent equipment that provide passive stat bonuses when worn.
+ * Each wearable occupies one of 3 slots; only one item per slot. Higher rarity
+ * auto-replaces lower rarity in the same slot.
+ *
+ * 6 wearables across 2 rarity tiers (Phase 1):
+ *
+ * **HEAD slot:**
+ * - partyHat (common): +5% XP gain
+ * - sharkFin (uncommon): +10% damage
+ *
+ * **BODY slot:**
+ * - cardboardBox (common): -10% damage taken
+ * - bumbleArmor (uncommon): -20% damage taken, +15 max HP
+ *
+ * **FEET slot:**
+ * - clownShoes (common): +10% move speed
+ * - springBoots (uncommon): +15% move speed, +30% jump height
+ *
+ * @constant {Object.<string, {slot: string, name: string, rarity: string, color: number, desc: string, effect: Object}>}
+ */
+export const WEARABLES_3D = {
+  // HEAD slot
+  partyHat: { slot: 'head', name: 'Party Hat', rarity: 'common', color: 0xff4488,
+    desc: 'Fun hat!', effect: { xpMult: 1.05 } },
+  sharkFin: { slot: 'head', name: 'Shark Fin', rarity: 'uncommon', color: 0x4488cc,
+    desc: 'Look scary!', effect: { dmgMult: 1.10 } },
+  // BODY slot
+  cardboardBox: { slot: 'body', name: 'Cardboard Box', rarity: 'common', color: 0xbb8844,
+    desc: 'Tough box!', effect: { dmgReduction: 0.10 } },
+  bumbleArmor: { slot: 'body', name: 'Bumble Armor', rarity: 'uncommon', color: 0xffcc00,
+    desc: 'Bee strong!', effect: { dmgReduction: 0.20, maxHpBonus: 15 } },
+  // FEET slot
+  clownShoes: { slot: 'feet', name: 'Clown Shoes', rarity: 'common', color: 0xff2222,
+    desc: 'Go faster!', effect: { speedMult: 1.10 } },
+  springBoots: { slot: 'feet', name: 'Spring Boots', rarity: 'uncommon', color: 0x44ff44,
+    desc: 'Boing boing!', effect: { speedMult: 1.15, jumpMult: 1.3 } },
+};
+
+/**
  * Shrine augment types — permanent micro-buffs obtained by destroying shrines.
  * Each shrine grants a random augment. Augments stack indefinitely.
  *

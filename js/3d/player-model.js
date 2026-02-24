@@ -739,3 +739,113 @@ export function updateItemVisuals(model, items, animalId) {
     model.itemMeshes[visualKey] = meshes;
   }
 }
+
+// ============================================================================
+// WEARABLE VISUALS — BD-180: Display equipped wearables on the character model
+// ============================================================================
+
+/**
+ * Registry mapping wearable IDs to voxel box specifications for visual display.
+ * Each entry defines an array of box primitives with position/size/color.
+ * Coordinates are in model-local space (same as buildPlayerModel boxes).
+ *
+ * @type {Object.<string, Array.<{w: number, h: number, d: number, color: number, x: number, y: number, z: number}>>}
+ */
+const WEARABLE_VISUALS = {
+  partyHat: [
+    // Cone-like stack: wide base, narrow top
+    { w: 0.36, h: 0.12, d: 0.36, color: 0xff4488, x: 0, y: 1.82, z: 0 },
+    { w: 0.24, h: 0.14, d: 0.24, color: 0xff66aa, x: 0, y: 1.95, z: 0 },
+    { w: 0.12, h: 0.12, d: 0.12, color: 0xffaacc, x: 0, y: 2.06, z: 0 },
+  ],
+  sharkFin: [
+    // Single triangular-ish fin on top of head
+    { w: 0.06, h: 0.30, d: 0.20, color: 0x4488cc, x: 0, y: 1.92, z: -0.05 },
+    { w: 0.04, h: 0.18, d: 0.12, color: 0x66aadd, x: 0, y: 2.08, z: -0.02 },
+  ],
+  cardboardBox: [
+    // Slightly wider box around the torso
+    { w: 0.80, h: 0.60, d: 0.50, color: 0xbb8844, x: 0, y: 0.85, z: 0.02 },
+    // Flap lines (dark accents)
+    { w: 0.78, h: 0.03, d: 0.48, color: 0x886633, x: 0, y: 1.14, z: 0.02 },
+  ],
+  bumbleArmor: [
+    // Yellow box around torso
+    { w: 0.82, h: 0.58, d: 0.50, color: 0xffcc00, x: 0, y: 0.85, z: 0.02 },
+    // Black stripe
+    { w: 0.83, h: 0.10, d: 0.51, color: 0x222222, x: 0, y: 0.85, z: 0.02 },
+    // Second stripe
+    { w: 0.83, h: 0.06, d: 0.51, color: 0x222222, x: 0, y: 1.02, z: 0.02 },
+  ],
+  clownShoes: [
+    // Oversized red boxes at foot positions
+    { w: 0.30, h: 0.12, d: 0.40, color: 0xff2222, x: -0.18, y: 0.04, z: 0.08 },
+    { w: 0.30, h: 0.12, d: 0.40, color: 0xff2222, x: 0.18, y: 0.04, z: 0.08 },
+    // Round toe bumps
+    { w: 0.14, h: 0.14, d: 0.14, color: 0xff4444, x: -0.18, y: 0.06, z: 0.26 },
+    { w: 0.14, h: 0.14, d: 0.14, color: 0xff4444, x: 0.18, y: 0.06, z: 0.26 },
+  ],
+  springBoots: [
+    // Green boxes at foot positions
+    { w: 0.26, h: 0.14, d: 0.30, color: 0x44ff44, x: -0.18, y: 0.05, z: 0.04 },
+    { w: 0.26, h: 0.14, d: 0.30, color: 0x44ff44, x: 0.18, y: 0.05, z: 0.04 },
+    // Small coil underneath (silver)
+    { w: 0.14, h: 0.06, d: 0.14, color: 0xcccccc, x: -0.18, y: -0.02, z: 0.04 },
+    { w: 0.14, h: 0.06, d: 0.14, color: 0xcccccc, x: 0.18, y: -0.02, z: 0.04 },
+    // Second coil ring
+    { w: 0.10, h: 0.04, d: 0.10, color: 0xaaaaaa, x: -0.18, y: -0.06, z: 0.04 },
+    { w: 0.10, h: 0.04, d: 0.10, color: 0xaaaaaa, x: 0.18, y: -0.06, z: 0.04 },
+  ],
+};
+
+/**
+ * Build a Three.js Group containing the visual mesh for a wearable item.
+ * Uses the box() helper for consistent voxel-style construction.
+ *
+ * @param {string} wearableId - The wearable ID (key in WEARABLES_3D).
+ * @returns {THREE.Group|null} A group containing the wearable meshes, or null if no visual defined.
+ */
+export function buildWearableMesh(wearableId) {
+  const boxes = WEARABLE_VISUALS[wearableId];
+  if (!boxes) return null;
+
+  const group = new THREE.Group();
+  for (const b of boxes) {
+    box(group, b.w, b.h, b.d, b.color, b.x, b.y, b.z, true);
+  }
+  return group;
+}
+
+/**
+ * Update the visual wearable meshes on the player model to reflect current equipped wearables.
+ * Removes all existing wearable meshes, then re-creates meshes for each equipped wearable.
+ *
+ * @param {PlayerModel} model - The player model object returned by buildPlayerModel.
+ * @param {Object} wearables - The st.wearables object { head, body, feet } with wearable IDs or null.
+ */
+export function updateWearableVisuals(model, wearables) {
+  // Remove all existing wearable meshes
+  if (model.wearableMeshes) {
+    for (const slot in model.wearableMeshes) {
+      const grp = model.wearableMeshes[slot];
+      if (grp) {
+        model.group.remove(grp);
+        grp.traverse(c => {
+          if (c.geometry) c.geometry.dispose();
+          if (c.material) c.material.dispose();
+        });
+      }
+    }
+  }
+  model.wearableMeshes = {};
+
+  for (const slot of ['head', 'body', 'feet']) {
+    const wId = wearables[slot];
+    if (!wId) continue;
+    const grp = buildWearableMesh(wId);
+    if (grp) {
+      model.group.add(grp);
+      model.wearableMeshes[slot] = grp;
+    }
+  }
+}

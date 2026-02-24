@@ -17,7 +17,7 @@
  */
 
 import {
-  WEAPON_TYPES, HOWL_TYPES, ITEMS_3D, ITEM_RARITIES, SHRINE_AUGMENTS, ZOMBIE_TIERS,
+  WEAPON_TYPES, HOWL_TYPES, ITEMS_3D, ITEM_RARITIES, SHRINE_AUGMENTS, ZOMBIE_TIERS, WEARABLES_3D,
   MAP_HALF,
   CHARGE_SHRINE_TIME,
 } from './constants.js';
@@ -240,6 +240,47 @@ export function drawHUD(ctx, s, deps) {
       iy -= 20;
     }
 
+    // --- Wearable Equipment Slots (3 squares: H/B/F) ---
+    if (s.wearables) {
+      const slotLabels = ['H', 'B', 'F'];
+      const slotKeys = ['head', 'body', 'feet'];
+      const slotSize = 30;
+      const slotGap = 4;
+      const slotStartX = 20;
+      const slotStartY = iy - slotSize - 8;
+      for (let si = 0; si < 3; si++) {
+        const sx = slotStartX + si * (slotSize + slotGap);
+        const sy = slotStartY;
+        const wId = s.wearables[slotKeys[si]];
+        const wData = wId ? WEARABLES_3D[wId] : null;
+        if (wData) {
+          // Filled slot: colored background
+          const rarityColor = (ITEM_RARITIES[wData.rarity] || ITEM_RARITIES.common).color;
+          const hexColor = '#' + wData.color.toString(16).padStart(6, '0');
+          ctx.fillStyle = hexColor;
+          ctx.fillRect(sx, sy, slotSize, slotSize);
+          ctx.strokeStyle = rarityColor; ctx.lineWidth = 2;
+          ctx.strokeRect(sx, sy, slotSize, slotSize);
+          // Slot label
+          ctx.fillStyle = '#ffffff'; ctx.font = 'bold 10px "Courier New"'; ctx.textAlign = 'center';
+          ctx.fillText(slotLabels[si], sx + slotSize / 2, sy + 10);
+          // Wearable name below slot
+          ctx.fillStyle = rarityColor; ctx.font = '9px "Courier New"';
+          ctx.fillText(wData.name, sx + slotSize / 2, sy + slotSize + 10);
+          ctx.textAlign = 'left';
+        } else {
+          // Empty slot: gray outline
+          ctx.fillStyle = 'rgba(40,40,40,0.6)';
+          ctx.fillRect(sx, sy, slotSize, slotSize);
+          ctx.strokeStyle = '#555'; ctx.lineWidth = 1;
+          ctx.strokeRect(sx, sy, slotSize, slotSize);
+          ctx.fillStyle = '#666'; ctx.font = 'bold 12px "Courier New"'; ctx.textAlign = 'center';
+          ctx.fillText(slotLabels[si], sx + slotSize / 2, sy + slotSize / 2 + 4);
+          ctx.textAlign = 'left';
+        }
+      }
+    }
+
     // --- Floating 3D Texts (projected to screen space) ---
     for (const ft of s.floatingTexts3d) {
       _v.set(ft.x, ft.y, ft.z);
@@ -331,6 +372,21 @@ export function drawHUD(ctx, s, deps) {
         if (_v.z > 0 && _v.z < 1) {
           ctx.fillStyle = ip.itype.color; ctx.font = 'bold 14px "Courier New"'; ctx.textAlign = 'center';
           ctx.fillText(ip.itype.name, sx, sy);
+        }
+      }
+      // Wearable pickup labels (glasses reveal)
+      if (s.wearablePickups) {
+        for (const wp of s.wearablePickups) {
+          if (!wp.alive) continue;
+          _v.set(wp.x, getGroundAt(wp.x, wp.z) + 1.8, wp.z);
+          _v.project(camera);
+          const sx = (_v.x * 0.5 + 0.5) * W;
+          const sy = (-_v.y * 0.5 + 0.5) * H;
+          if (_v.z > 0 && _v.z < 1) {
+            const rarityColor = (ITEM_RARITIES[wp.wearableData.rarity] || ITEM_RARITIES.common).color;
+            ctx.fillStyle = rarityColor; ctx.font = 'bold 14px "Courier New"'; ctx.textAlign = 'center';
+            ctx.fillText(wp.wearableData.name, sx, sy);
+          }
         }
       }
     }
@@ -518,6 +574,23 @@ export function drawHUD(ctx, s, deps) {
             ctx.beginPath();
             ctx.arc(ix, iz, 2, 0, Math.PI * 2);
             ctx.fill();
+          }
+        }
+      }
+
+      // Draw wearable pickups as magenta diamonds
+      if (s.wearablePickups) {
+        ctx.fillStyle = '#ff44ff';
+        for (const wp of s.wearablePickups) {
+          if (!wp.alive) continue;
+          const wx = cx + (wp.x - s.playerX) * scale;
+          const wz = cy + (wp.z - s.playerZ) * scale;
+          if (wx >= mmX && wx <= mmX + mmSize && wz >= mmY && wz <= mmY + mmSize) {
+            ctx.save();
+            ctx.translate(wx, wz);
+            ctx.rotate(Math.PI / 4);
+            ctx.fillRect(-2, -2, 4, 4);
+            ctx.restore();
           }
         }
       }
