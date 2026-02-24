@@ -364,6 +364,7 @@ export function launch3DGame(options) {
     running: true,
     invincible: 0,
     playerHurtFlash: 0, // BD-192: player body flash timer on damage
+    playerHurtFlashCooldown: 0, // BD-208: cooldown to prevent flash spam
     enterReleasedSinceGameOver: false,
     _enterCooldown: 0,
     _menuDismissedAt: 0,
@@ -2690,7 +2691,11 @@ export function launch3DGame(options) {
     st.hp -= dmg;
     if (st.hp < 0) st.hp = 0;
     st.invincible = 0.5; // BD-192: 0.5s iframes (was 0.2 — too short for swarm game)
-    st.playerHurtFlash = 0.5; // BD-192: match invincibility for visible flash
+    // BD-208: Only trigger flash if cooldown has expired (max once per second)
+    if (st.playerHurtFlashCooldown <= 0) {
+      st.playerHurtFlash = 0.5;
+      st.playerHurtFlashCooldown = 1.0;
+    }
     addFloatingText('-' + Math.round(dmg), color || '#ff2200', st.playerX, st.playerY + 2, st.playerZ, 0.5);
     return dmg;
   }
@@ -4513,16 +4518,20 @@ export function launch3DGame(options) {
       if (st.wearableFlash.body > 0) st.wearableFlash.body = Math.max(0, st.wearableFlash.body - dt);
       if (st.wearableFlash.feet > 0) st.wearableFlash.feet = Math.max(0, st.wearableFlash.feet - dt);
 
-      // BD-192: Player hurt flash — blink model white/normal at ~10Hz while taking damage
+      // BD-208: Player hurt flash — constant 50% white tint (replaces BD-192 strobe)
+      if (st.playerHurtFlashCooldown > 0) st.playerHurtFlashCooldown -= dt;
       if (st.playerHurtFlash > 0) {
         st.playerHurtFlash -= dt;
-        const flashOn = Math.sin(st.playerHurtFlash * 10 * Math.PI * 2) > 0;
         playerGroup.traverse(child => {
           if (child.isMesh && child.material) {
             if (!child.userData._origColor) {
               child.userData._origColor = child.material.color.getHex();
             }
-            child.material.color.setHex(flashOn ? 0xffffff : child.userData._origColor);
+            const origColor = child.userData._origColor;
+            const r = ((origColor >> 16) & 0xff) * 0.5 + 255 * 0.5;
+            const g = ((origColor >> 8) & 0xff) * 0.5 + 255 * 0.5;
+            const b = (origColor & 0xff) * 0.5 + 255 * 0.5;
+            child.material.color.setHex((Math.round(r) << 16) | (Math.round(g) << 8) | Math.round(b));
           }
         });
       } else if (playerGroup.userData._flashCleared !== true && st.playerHurtFlash <= 0) {
