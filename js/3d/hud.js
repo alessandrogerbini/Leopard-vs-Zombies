@@ -885,5 +885,25 @@ export function drawHUD(ctx, s, deps) {
     }
   }
 
+  // FPS counter (toggle with backtick key) — BD-140
+  if (s.showFps && s._fpsDisplay) {
+    ctx.save();
+    ctx.font = 'bold 13px monospace';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'bottom';
+    // FPS number — color-coded: green (50+), yellow (30-49), red (<30)
+    const fpsColor = s._fpsDisplay >= 50 ? '#00ff00' : s._fpsDisplay >= 30 ? '#ffff00' : '#ff0000';
+    ctx.fillStyle = fpsColor;
+    ctx.fillText('FPS: ' + s._fpsDisplay, 10, H - 10);
+    // Entity counts for profiling
+    ctx.font = '11px monospace';
+    ctx.fillStyle = '#aaaaaa';
+    const enemies = s.enemies ? s.enemies.length : 0;
+    const gems = s.xpGems ? s.xpGems.length : 0;
+    const texts = s.floatingTexts3d ? s.floatingTexts3d.length : 0;
+    ctx.fillText('E:' + enemies + ' G:' + gems + ' T:' + texts, 10, H - 26);
+    ctx.restore();
+  }
+
   ctx.textAlign = 'left';
 }
