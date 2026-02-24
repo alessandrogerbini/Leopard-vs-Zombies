@@ -290,6 +290,7 @@ export function launch3DGame(options) {
     ambientCrateTimer: 30 / (diffData.powerupFreqMult || 1.0),
     ambientItemTimer: 20,   // first item at 20s, then 45-60s cycle
     gameTime: 0,          // total elapsed game time in seconds
+    mergeCheckTimer: 0,   // throttle zombie merge checks (BD-175)
     xp: 0, xpToNext: 10, level: 1,
     enemies: [],
     xpGems: [],
@@ -1847,24 +1848,45 @@ export function launch3DGame(options) {
   }
 
   // === XP GEM ===
-  // NOTE: Shared geometry and material for all XP gems to reduce draw calls.
-  const gemGeo = new THREE.BoxGeometry(0.2, 0.2, 0.2);
-  const gemMat = new THREE.MeshLambertMaterial({ color: 0x7744ff, emissive: 0x5533bb });
+  // NOTE: Shared geometry and tiered materials for all XP gems to reduce draw calls (BD-174).
+  const gemGeo = new THREE.BoxGeometry(0.25, 0.25, 0.25);
+  // 4 shared gem materials — small/medium/large/mega with increasing emissive intensity.
+  const gemMats = {
+    small:  new THREE.MeshLambertMaterial({ color: 0x44ff44, emissive: 0x22aa22, emissiveIntensity: 0.6 }),
+    medium: new THREE.MeshLambertMaterial({ color: 0x66ff66, emissive: 0x33cc33, emissiveIntensity: 0.9 }),
+    large:  new THREE.MeshLambertMaterial({ color: 0x88ffaa, emissive: 0x44ee44, emissiveIntensity: 1.2 }),
+    mega:   new THREE.MeshLambertMaterial({ color: 0xccffee, emissive: 0x66ff66, emissiveIntensity: 1.8 }),
+  };
+  // Keep backward compat alias
+  const gemMat = gemMats.small;
+
+  /** Pick the appropriate shared gem material by XP value. */
+  function getGemMaterial(xpValue) {
+    if (xpValue >= 10) return gemMats.mega;
+    if (xpValue >= 5)  return gemMats.large;
+    if (xpValue >= 3)  return gemMats.medium;
+    return gemMats.small;
+  }
 
   /**
    * Create an XP gem pickup at the given world position.
    * Gems bob up and down, spin, and are attracted toward the player when within collectRadius * 2.
-   * Nearby gems merge periodically to reduce draw calls in late-game.
+   * Material is chosen by XP value tier (BD-174).
    *
    * @param {number} x - World X position.
    * @param {number} z - World Z position.
-   * @param {number} [xpValue=1] - XP value this gem awards on collection.
+   * @param {number} [xpValue=1] - XP value of the gem (determines visual tier).
    * @returns {XpGem} Gem object with mesh, bob animation phase, and xpValue.
    */
   function createXpGem(x, z, xpValue = 1) {
-    const mesh = new THREE.Mesh(gemGeo, gemMat.clone());
+    const mat = getGemMaterial(xpValue);
+    const mesh = new THREE.Mesh(gemGeo, mat);
     const h = terrainHeight(x, z);
     mesh.position.set(x, h + 0.5, z);
+    // Scale up larger gems slightly for visual distinction
+    if (xpValue >= 10)     mesh.scale.setScalar(1.8);
+    else if (xpValue >= 5) mesh.scale.setScalar(1.4);
+    else if (xpValue >= 3) mesh.scale.setScalar(1.2);
     scene.add(mesh);
     return { mesh, bobPhase: Math.random() * Math.PI * 2, baseScale: 1.0, xpValue };
   }
@@ -4096,19 +4118,27 @@ export function launch3DGame(options) {
         }
       }
 
-      // === OBJECT COLLISION (BD-69) ===
-      if (terrainState && terrainState.colliders) {
+      // === OBJECT COLLISION (BD-69, BD-169: chunk-indexed lookup) ===
+      if (terrainState && terrainState.collidersByChunk) {
         const PR = 0.5; // player radius
-        for (const c of terrainState.colliders) {
-          const dx = st.playerX - c.x;
-          const dz = st.playerZ - c.z;
-          const dist = Math.sqrt(dx * dx + dz * dz);
-          const minDist = PR + c.radius;
-          if (dist < minDist && dist > 0.001) {
-            // Push player out
-            const pushDist = minDist - dist;
-            st.playerX += (dx / dist) * pushDist;
-            st.playerZ += (dz / dist) * pushDist;
+        const pcx = Math.floor(st.playerX / CHUNK_SIZE);
+        const pcz = Math.floor(st.playerZ / CHUNK_SIZE);
+        for (let cdx = -1; cdx <= 1; cdx++) {
+          for (let cdz = -1; cdz <= 1; cdz++) {
+            const chunkColliders = terrainState.collidersByChunk[getChunkKey(pcx + cdx, pcz + cdz)];
+            if (!chunkColliders) continue;
+            for (const c of chunkColliders) {
+              const dx = st.playerX - c.x;
+              const dz = st.playerZ - c.z;
+              const dist = Math.sqrt(dx * dx + dz * dz);
+              const minDist = PR + c.radius;
+              if (dist < minDist && dist > 0.001) {
+                // Push player out
+                const pushDist = minDist - dist;
+                st.playerX += (dx / dist) * pushDist;
+                st.playerZ += (dz / dist) * pushDist;
+              }
+            }
           }
         }
       }
@@ -5046,7 +5076,7 @@ export function launch3DGame(options) {
         if (dist > 60) { disposeEnemy(e); }
       }
 
-      // === ZOMBIE-ZOMBIE COLLISION: TIERED MERGE SYSTEM ===
+      // === ZOMBIE-ZOMBIE COLLISION: TIERED MERGE SYSTEM (BD-175: throttled to 0.5s) ===
       // Same-tier zombies collide to progress toward merging into the next tier.
       // Merge ratios: Tier 1 (Shambler) -> Tier 2 (Lurcher) = 5:1,
       //               Tier 2 (Lurcher) -> Tier 3 (Bruiser) = 3:1,
@@ -5054,6 +5084,9 @@ export function launch3DGame(options) {
       // Merging is capped at Tier 4 (index 3) for alpha. Beyond that, just push apart.
       // When the merge counter fills, the surviving zombie is replaced by a new higher-tier one
       // with a brief scale bounce effect.
+      st.mergeCheckTimer -= dt;
+      if (st.mergeCheckTimer <= 0) {
+      st.mergeCheckTimer = 0.5; // Run merge checks every 0.5s
       const ZOMBIE_RADIUS = 0.6;
       const MERGE_RATIOS = [5, 3, 2]; // merges needed: tier1->2=5, tier2->3=3, tier3->4=2
       const MAX_MERGE_TIER = 4;       // Cap at tier 4 for alpha
@@ -5117,6 +5150,7 @@ export function launch3DGame(options) {
       if (newEnemies.length > 0) {
         st.enemies.push(...newEnemies);
       }
+      } // end merge throttle check (BD-175)
 
       // === AUTO-ATTACK REMOVED (BD-102) ===
       // Creatures now only attack via weapon slots and power attack.
@@ -5248,10 +5282,10 @@ export function launch3DGame(options) {
               a.xpValue += b.xpValue;
               const targetScale = Math.min(1.0 + a.xpValue * 0.05, 1.8);
               a.baseScale = targetScale;
-              if (a.mesh.material === gemMat) a.mesh.material = gemMat.clone();
-              a.mesh.material.emissiveIntensity = Math.min(0.3 + a.xpValue * 0.05, 1.0);
+              // BD-174: Switch to appropriate tiered material
+              a.mesh.material = getGemMaterial(a.xpValue);
               scene.remove(b.mesh);
-              if (b.mesh.material !== gemMat) b.mesh.material.dispose();
+              // Material is shared (gemMats) — do not dispose
               st.xpGems.splice(j, 1);
               i--;
               break;
@@ -5293,9 +5327,9 @@ export function launch3DGame(options) {
         }
         // Collection
         if (dist < st.collectRadius) {
-          st.xp += Math.max(1, Math.round(gem.xpValue * st.augmentXpMult * getHowlXpMult() * (st.totemXpMult || 1)));
+          st.xp += Math.max(1, Math.round((gem.xpValue || 1) * st.augmentXpMult * getHowlXpMult() * (st.totemXpMult || 1)));
           scene.remove(gem.mesh);
-          if (gem.mesh.material !== gemMat) gem.mesh.material.dispose();
+          // Material is shared (gemMats) — do not dispose
           st.xpGems.splice(i, 1);
           if (gem.xpValue >= 3) {
             playSound('sfx_weapon_boomerang'); // whoosh for big merged gems!
@@ -5311,7 +5345,7 @@ export function launch3DGame(options) {
         } else if (dist > 50) {
           // Cleanup far-away XP gems to prevent unbounded accumulation
           scene.remove(gem.mesh);
-          if (gem.mesh.material !== gemMat) gem.mesh.material.dispose();
+          // Material is shared (gemMats) — do not dispose
           st.xpGems.splice(i, 1);
         }
       }
