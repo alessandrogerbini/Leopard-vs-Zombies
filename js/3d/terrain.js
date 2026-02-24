@@ -128,6 +128,7 @@ export function createTerrainState() {
     chunkMeshes: {},
     decorations: [],
     colliders: [],    // Array of { x, z, radius } for solid objects (trees, rocks)
+    collidersByChunk: {},  // BD-113: chunk-indexed colliders for enemy collision lookups
   };
 }
 
@@ -503,7 +504,9 @@ export function generateChunk(cx, cz, scene, ts) {
     const h = terrainHeight(dx, dz);
     const meshes = createTree(dx, dz, h, scene);
     ts.decorations.push({ meshes, x: dx, z: dz });
-    ts.colliders.push({ x: dx, z: dz, radius: 1.2 });
+    const treeCollider = { x: dx, z: dz, radius: 1.2, r: 1.2 };
+    ts.colliders.push(treeCollider);
+    (ts.collidersByChunk[key] = ts.collidersByChunk[key] || []).push(treeCollider);
   }
 
   // Rocks: 0-2 per chunk
@@ -514,7 +517,9 @@ export function generateChunk(cx, cz, scene, ts) {
     const h = terrainHeight(dx, dz);
     const meshes = createRock(dx, dz, h, scene);
     ts.decorations.push({ meshes, x: dx, z: dz });
-    ts.colliders.push({ x: dx, z: dz, radius: 1.0 });
+    const rockCollider = { x: dx, z: dz, radius: 1.0, r: 1.0 };
+    ts.colliders.push(rockCollider);
+    (ts.collidersByChunk[key] = ts.collidersByChunk[key] || []).push(rockCollider);
   }
 
   // Fallen logs: 0-1 per chunk
@@ -581,6 +586,8 @@ export function unloadChunk(cx, cz, scene, ts) {
     const ccz = Math.floor(c.z / CHUNK_SIZE);
     return !(ccx === cx && ccz === cz);
   });
+  // BD-113: clean up chunk-indexed colliders
+  delete ts.collidersByChunk[key];
   ts.loadedChunks.delete(key);
 }
 

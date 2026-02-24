@@ -4106,6 +4106,32 @@ export function launch3DGame(options) {
           e.group.rotation.y = Math.atan2(nx, nz);
         }
 
+        // BD-113: Chunk-aware enemy terrain collision
+        if (terrainState && terrainState.collidersByChunk) {
+          const CHUNK_SZ = 16; // must match terrain.js CHUNK_SIZE
+          const ecx = Math.floor(e.group.position.x / CHUNK_SZ);
+          const ecz = Math.floor(e.group.position.z / CHUNK_SZ);
+          const ER = 0.4; // enemy radius
+          // Check enemy's chunk and 8 neighbors
+          for (let dcx = -1; dcx <= 1; dcx++) {
+            for (let dcz = -1; dcz <= 1; dcz++) {
+              const chunkColliders = terrainState.collidersByChunk[(ecx + dcx) + ',' + (ecz + dcz)];
+              if (!chunkColliders) continue;
+              for (const c of chunkColliders) {
+                const cdx = e.group.position.x - c.x;
+                const cdz = e.group.position.z - c.z;
+                const cDist = Math.sqrt(cdx * cdx + cdz * cdz);
+                const minDist = ER + c.r;
+                if (cDist < minDist && cDist > 0.001) {
+                  const pushDist = minDist - cDist;
+                  e.group.position.x += (cdx / cDist) * pushDist;
+                  e.group.position.z += (cdz / cDist) * pushDist;
+                }
+              }
+            }
+          }
+        }
+
         // Platform jumping logic
         if (e.jumpCooldown > 0) e.jumpCooldown -= dt;
 
