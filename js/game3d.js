@@ -665,6 +665,7 @@ export function launch3DGame(options) {
       if (e.code === 'Escape') {
         st.paused = true;
         st.pauseMenu = true;
+        st.showFullMap = false;
         st.selectedPauseOption = 0;
       }
     }
@@ -675,7 +676,9 @@ export function launch3DGame(options) {
     // TAB key toggles full map (BD-76)
     if (e.code === 'Tab') {
       e.preventDefault();
-      st.showFullMap = !st.showFullMap;
+      if (!st.gameOver && !st.upgradeMenu && !st.pauseMenu && !st.chargeShrineMenu) {
+        st.showFullMap = !st.showFullMap;
+      }
     }
   }
   /**
@@ -3209,6 +3212,7 @@ export function launch3DGame(options) {
   function showUpgradeMenu() {
     st.paused = true;
     st.upgradeMenu = true;
+    st.showFullMap = false;
     st.selectedUpgrade = 0;
     // BD-86: Clear Enter key state and charging when menu opens.
     // Prevents held-Enter (from power attack) from auto-confirming the menu.
@@ -4892,6 +4896,7 @@ export function launch3DGame(options) {
             st.chargeShrineChoices = shuffled.slice(0, Math.min(3, shuffled.length));
             st.selectedChargeShrineUpgrade = 0;
             st.chargeShrineMenu = true;
+            st.showFullMap = false;
             st.paused = true;
             st.chargeShrineProgress = CHARGE_SHRINE_TIME; // Clamp
             // BD-86: Clear Enter key state and charging when shrine menu opens.
@@ -4994,6 +4999,7 @@ export function launch3DGame(options) {
       if (st.hp <= 0) {
         st.hp = 0;
         st.gameOver = true;
+        st.showFullMap = false;
         st.enterReleasedSinceGameOver = false;
         st.nameEntryActive = true;
         st.nameEntry = '';
