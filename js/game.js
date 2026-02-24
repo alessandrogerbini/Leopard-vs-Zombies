@@ -296,9 +296,9 @@ function update() {
         state.selectedDifficulty = 0;
         state.gameState = 'difficulty';
       } else {
-        // 3D Survivor: skip difficulty, go to animal select
-        state.selectedAnimal = 0;
-        state.gameState = 'select';
+        // 3D Survivor: go through difficulty select (BD-179)
+        state.selectedDifficulty = 0;
+        state.gameState = 'difficulty';
       }
     }
     if (!keys['Enter']) state._enterHeld = false;
@@ -351,8 +351,8 @@ function update() {
       state._enterHeld = true;
       const animal = ANIMAL_TYPES[state.selectedAnimal];
       if (state.selectedMode === 1) {
-        // Fixed baseline — wave escalation + difficulty totems are the sole difficulty drivers
-        const diff = { hpMult: 1.0, scoreMult: 1.0, enemySpeedMult: 1.0, powerupFreqMult: 1.0 };
+        // BD-179: Apply selected difficulty settings to 3D mode
+        const diff = DIFFICULTY_SETTINGS[state.difficulty];
         // ── 3D Mode Launch Integration ──────────────────────────────
         // When the player selects 3D Survivor mode:
         // 1. The 2D RAF loop is stopped via stopGameLoop().
@@ -367,6 +367,7 @@ function update() {
         launch3DGame({
           animal,
           difficulty: diff,
+          difficultyKey: state.difficulty,
           onReturn: () => {
             canvas.style.display = '';
             // Clear all 2D keys to prevent ghost inputs
@@ -406,8 +407,8 @@ function update() {
     if (!keys['Enter']) state._enterHeld = false;
     if (keys['Escape'] && !state._escHeld) {
       state._escHeld = true;
-      // 2D goes back to difficulty, 3D goes back to mode select
-      state.gameState = state.selectedMode === 0 ? 'difficulty' : 'modeSelect';
+      // Both modes go back to difficulty select (BD-179)
+      state.gameState = 'difficulty';
     }
     return;
   }
