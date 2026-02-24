@@ -82,7 +82,7 @@ import { initAudio, playSound, toggleMute, isMuted, getVolume, disposeAudio } fr
  * @property {number} score          - Accumulated score.
  * @property {number} wave           - Current wave number (increments on wave event).
  * @property {number} ambientSpawnTimer  - Countdown to next ambient zombie spawn (resets to 1.7s).
- * @property {number} waveEventTimer     - Countdown to next wave event (resets to 180s).
+ * @property {number} waveEventTimer     - Countdown to next wave event (first=75s, then 90s).
  * @property {number} waveWarning        - Seconds remaining in wave warning countdown (0 = none).
  * @property {boolean} waveActive        - Whether a wave event is currently active.
  * @property {number} ambientCrateTimer  - Countdown to next ambient crate spawn (resets to 30s).
@@ -276,8 +276,9 @@ export function launch3DGame(options) {
     score: 0,
     wave: 1,
     ambientSpawnTimer: 1.7,
-    waveEventTimer: 150,  // 2.5 minutes until first wave event
+    waveEventTimer: 75,   // ~1.25 minutes until first wave event
     waveWarning: 0,       // countdown seconds (0 = no warning)
+    initialBurstDone: false,
     waveActive: false,
     ambientCrateTimer: 30 / (diffData.powerupFreqMult || 1.0),
     ambientItemTimer: 20,   // first item at 20s, then 45-60s cycle
@@ -1886,11 +1887,11 @@ export function launch3DGame(options) {
    */
   function spawnAmbient() {
     const elapsedMin = st.gameTime / 60;
-    const count = Math.min(8, 3 + Math.floor(elapsedMin / 2));
+    const count = Math.min(10, 6 + Math.floor(elapsedMin / 1.5));
     const baseHp = 8 + Math.floor(elapsedMin * 2.5);
     for (let i = 0; i < count; i++) {
       const angle = Math.random() * Math.PI * 2;
-      const dist = 25 + Math.random() * 10;
+      const dist = (elapsedMin < 2) ? (18 + Math.random() * 8) : (25 + Math.random() * 10);
       const sx = Math.max(-MAP_HALF + 2, Math.min(MAP_HALF - 2, st.playerX + Math.cos(angle) * dist));
       const sz = Math.max(-MAP_HALF + 2, Math.min(MAP_HALF - 2, st.playerZ + Math.sin(angle) * dist));
       // Progressive tier spawning: after wave 2, chance of higher tier ambient zombies
@@ -3876,6 +3877,18 @@ export function launch3DGame(options) {
       updateWeaponProjectiles(dt);
       updateWeaponEffects(dt);
 
+      // === INITIAL BURST (one-time, 10 enemies in a ring) ===
+      if (!st.initialBurstDone) {
+        st.initialBurstDone = true;
+        for (let i = 0; i < 10; i++) {
+          const angle = (i / 10) * Math.PI * 2;
+          const dist = 15 + Math.random() * 5;
+          const sx = Math.max(-MAP_HALF + 2, Math.min(MAP_HALF - 2, st.playerX + Math.cos(angle) * dist));
+          const sz = Math.max(-MAP_HALF + 2, Math.min(MAP_HALF - 2, st.playerZ + Math.sin(angle) * dist));
+          st.enemies.push(createEnemy(sx, sz, 8, 1));
+        }
+      }
+
       // === AMBIENT SPAWNS ===
       st.ambientSpawnTimer -= dt;
       if (st.ambientSpawnTimer <= 0) {
@@ -3914,7 +3927,7 @@ export function launch3DGame(options) {
         if (st.waveWarning <= 0) {
           st.waveWarning = 0;
           spawnWaveEvent();
-          st.waveEventTimer = 180; // Reset for next wave in 3 min
+          st.waveEventTimer = 90; // Reset for next wave in 1.5 min
         }
       }
 
