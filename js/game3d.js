@@ -480,7 +480,7 @@ export function launch3DGame(options) {
   // === FLOATING TEXT HELPER (BD-136 + BD-160) ===
   // Caps visible floating texts, deduplicates rapid identical messages,
   // importance-aware eviction, and horizontal spread to reduce overlap.
-  const MAX_FLOATING_TEXTS = 8;
+  const MAX_FLOATING_TEXTS = 5;
   const DEDUP_WINDOW = 0.6; // seconds
   const _recentTexts = []; // tracks {text, time} for dedup
 
@@ -515,7 +515,7 @@ export function launch3DGame(options) {
     _recentTexts.push({ text, time: now });
 
     // Horizontal spread: random +-30px offset stored on the entry (BD-160)
-    const spreadX = (Math.random() - 0.5) * 60; // +-30
+    const spreadX = (Math.random() - 0.5) * 100; // +-50
 
     // Cap: if at max, remove oldest non-important first, then oldest (BD-160)
     while (st.floatingTexts3d.length >= MAX_FLOATING_TEXTS) {
@@ -685,7 +685,7 @@ export function launch3DGame(options) {
           }
           // Show floating text
           if (st.chargeShrineCurrent) {
-            addFloatingText(chosen.name, chosen.color, st.chargeShrineCurrent.x, terrainHeight(st.chargeShrineCurrent.x, st.chargeShrineCurrent.z) + 3, st.chargeShrineCurrent.z, 2.0, true);
+            addFloatingText(chosen.name, chosen.color, st.chargeShrineCurrent.x, terrainHeight(st.chargeShrineCurrent.x, st.chargeShrineCurrent.z) + 3, st.chargeShrineCurrent.z, 1.0, true);
           }
           playSound('sfx_level_up'); // Celebration sound
         }
@@ -766,10 +766,6 @@ export function launch3DGame(options) {
           else if (it.slot === 'crown') st.items.crown = true;
           else if (it.slot === 'zombiemagnet') st.items.zombiemagnet = true;
           else if (it.slot === 'scarf') st.items.scarf = true;
-          // Floating text
-          const rarityColor = (ITEM_RARITIES[it.rarity] || ITEM_RARITIES.common).color;
-          st.floatingTexts3d.push({ text: it.name, color: rarityColor, x: wc.newPickup.x, y: st.playerY + 2.5, z: wc.newPickup.z, life: 2 });
-          st.floatingTexts3d.push({ text: it.desc, color: '#ffffff', x: wc.newPickup.x, y: st.playerY + 2, z: wc.newPickup.z, life: 2 });
           updateItemVisuals(playerModel, st.items, animalData.id);
           // Remove pickup from world
           wc.newPickup.alive = false;
@@ -2598,12 +2594,10 @@ export function launch3DGame(options) {
           : createItemPickup(dropX, dropZ, null, tierNum >= 3 ? 'uncommon' : null);
         if (pickup) {
           st.itemPickups.push(pickup);
-          addFloatingText(pickup.itype.name, '#ffd700', dropX, terrainHeight(dropX, dropZ) + 2, dropZ, 1.5, true);
         }
       } else if (roll < 0.55) {
         // Powerup crate
         st.powerupCrates.push(createPowerupCrate(dropX, dropZ));
-        addFloatingText('POWERUP!', '#4488ff', dropX, terrainHeight(dropX, dropZ) + 2, dropZ, 1.5, true);
       } else if (roll < 0.80) {
         // Health orb — heal 15% max HP
         st.hp = Math.min(st.hp + st.maxHp * 0.10, st.maxHp);
@@ -2681,7 +2675,7 @@ export function launch3DGame(options) {
     if (st.invincible > 0 || st.ghostForm) return 0;
     // Turbo Sneakers: dodge chance
     if (st.dodgeChance > 0 && Math.random() < st.dodgeChance) {
-      addFloatingText('DODGE!', '#00ffaa', st.playerX, st.playerY + 2, st.playerZ, 0.8);
+      addFloatingText('DODGE!', '#00ffaa', st.playerX, st.playerY + 2, st.playerZ, 0.5);
       st.invincible = 0.5; // BD-192: match damage iframes
       return 0;
     }
@@ -2703,7 +2697,7 @@ export function launch3DGame(options) {
       dmg = 0;
       st.shieldBraceletReady = false;
       st.shieldBraceletTimer = 30;
-      addFloatingText('BLOCKED!', '#4488ff', st.playerX, st.playerY + 2, st.playerZ, 1.5);
+      addFloatingText('BLOCKED!', '#4488ff', st.playerX, st.playerY + 2, st.playerZ, 0.5);
     }
     dmg = Math.max(1, dmg);
     st.hp -= dmg;
@@ -5825,8 +5819,6 @@ export function launch3DGame(options) {
             const existIdx = st.itemAcquireOrder.indexOf(itemKey);
             if (existIdx !== -1) st.itemAcquireOrder.splice(existIdx, 1);
             st.itemAcquireOrder.push(itemKey);
-            addFloatingText(it.name, rarityColor, item.x, st.playerY + 2.5, item.z, 2, true);
-            addFloatingText(it.desc, '#ffffff', item.x, st.playerY + 2, item.z, 2, true);
             playSound('sfx_item_pickup');
             // BD-147: Item pickup event feedback
             st.itemFlashTimer = 0.2;
@@ -5899,7 +5891,6 @@ export function launch3DGame(options) {
           } else {
             // First walk-over for same/higher rarity — start nearTimer
             wp.nearTimer = 5;
-            addFloatingText(`${wd.name} (walk over again)`, '#ffcc00', wp.x, st.playerY + 2.5, wp.z, 2);
           }
 
           if (shouldEquip) {
@@ -5914,10 +5905,6 @@ export function launch3DGame(options) {
             // Set the slot
             st.wearables[slot] = wp.wearableId;
             st.wearableFlash[slot] = 0.8;
-            // Floating text
-            const rarityColor = (ITEM_RARITIES[wd.rarity] || ITEM_RARITIES.common).color;
-            addFloatingText(wd.name, rarityColor, wp.x, st.playerY + 2.5, wp.z, 2, true);
-            addFloatingText(wd.desc, '#ffffff', wp.x, st.playerY + 2, wp.z, 2);
             playSound('sfx_item_pickup');
             updateWearableVisuals(playerModel, st.wearables);
             wp.alive = false;
@@ -5966,7 +5953,7 @@ export function launch3DGame(options) {
             aug.apply(st);
             st.augments[aug.id] = (st.augments[aug.id] || 0) + 1;
             // Floating text
-            addFloatingText(aug.name, aug.color, shrine.x, terrainHeight(shrine.x, shrine.z) + 2.5, shrine.z, 2, true);
+            addFloatingText(aug.name, aug.color, shrine.x, terrainHeight(shrine.x, shrine.z) + 2.5, shrine.z, 1.0, true);
             scene.remove(shrine.group);
             shrine.group.traverse(c => { if (c.geometry) c.geometry.dispose(); if (c.material) c.material.dispose(); });
             st.shrines.splice(i, 1);
@@ -6144,7 +6131,7 @@ export function launch3DGame(options) {
 
       // === FLOATING TEXTS 3D ===
       for (let i = st.floatingTexts3d.length - 1; i >= 0; i--) {
-        st.floatingTexts3d[i].y += dt * 1.5;
+        st.floatingTexts3d[i].y += dt * 2.5;
         st.floatingTexts3d[i].life -= dt;
         if (st.floatingTexts3d[i].life <= 0) {
           st.floatingTexts3d.splice(i, 1);
