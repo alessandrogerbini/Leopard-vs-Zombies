@@ -866,7 +866,7 @@ export function launch3DGame(options) {
       const segBot = baseH + seg * segH;
       const segMid = segBot + segH / 2;
       const sideColor = getSideColor(segBot);
-      const sideMat = new THREE.MeshLambertMaterial({ color: sideColor });
+      const sideMat = new THREE.MeshLambertMaterial({ color: sideColor, transparent: true, opacity: 0.55 });
 
       // Front side (positive Z)
       const front = new THREE.Mesh(new THREE.BoxGeometry(pw, segH, wallThick), sideMat);
@@ -895,6 +895,45 @@ export function launch3DGame(options) {
       right.castShadow = true;
       scene.add(right);
       meshes.push(right);
+    }
+
+    // Ramp/stairs for tall plateaus (BD-133)
+    if (plateauHeight >= 2) {
+      const stepCount = Math.min(5, Math.ceil(plateauHeight));
+      const stepH = plateauHeight / stepCount;
+      const rampSide = Math.abs(Math.floor(px * 7 + pz * 13)) % 4;
+      // Reuse the base side color for steps
+      const stepMat = new THREE.MeshLambertMaterial({
+        color: getSideColor(baseH),
+        transparent: true,
+        opacity: 0.55
+      });
+      for (let si = 0; si < stepCount; si++) {
+        const stepY = baseH + stepH * si + stepH / 2;
+        let sx, sz, sw, sd;
+        const stepDepth = 1.0;
+        if (rampSide === 0) { // front (+Z)
+          sx = px; sz = pz + pd / 2 + stepDepth * (si + 0.5); sw = 2; sd = stepDepth;
+        } else if (rampSide === 1) { // back (-Z)
+          sx = px; sz = pz - pd / 2 - stepDepth * (si + 0.5); sw = 2; sd = stepDepth;
+        } else if (rampSide === 2) { // left (-X)
+          sx = px - pw / 2 - stepDepth * (si + 0.5); sz = pz; sw = stepDepth; sd = 2;
+        } else { // right (+X)
+          sx = px + pw / 2 + stepDepth * (si + 0.5); sz = pz; sw = stepDepth; sd = 2;
+        }
+        const stepGeo = new THREE.BoxGeometry(sw, stepH, sd);
+        const stepMesh = new THREE.Mesh(stepGeo, stepMat);
+        stepMesh.position.set(sx, stepY, sz);
+        stepMesh.castShadow = true;
+        stepMesh.receiveShadow = true;
+        scene.add(stepMesh);
+        meshes.push(stepMesh);
+
+        // Add collider so player can walk on steps
+        if (terrainState) {
+          terrainState.colliders.push({ x: sx, z: sz, r: Math.max(sw, sd) / 2 + 0.3 });
+        }
+      }
     }
 
     return meshes;
