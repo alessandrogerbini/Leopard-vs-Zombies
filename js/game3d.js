@@ -2299,12 +2299,12 @@ export function launch3DGame(options) {
           : createItemPickup(dropX, dropZ, null, tierNum >= 3 ? 'uncommon' : null);
         if (pickup) {
           st.itemPickups.push(pickup);
-          st.floatingTexts3d.push({ text: pickup.itype.name, color: '#ffd700', x: dropX, y: terrainHeight(dropX, dropZ) + 2, z: dropZ, life: 1.5 });
+          addFloatingText(pickup.itype.name, '#ffd700', dropX, terrainHeight(dropX, dropZ) + 2, dropZ, 1.5, true);
         }
       } else if (roll < 0.55) {
         // Powerup crate
         st.powerupCrates.push(createPowerupCrate(dropX, dropZ));
-        st.floatingTexts3d.push({ text: 'POWERUP!', color: '#4488ff', x: dropX, y: terrainHeight(dropX, dropZ) + 2, z: dropZ, life: 1.5 });
+        addFloatingText('POWERUP!', '#4488ff', dropX, terrainHeight(dropX, dropZ) + 2, dropZ, 1.5, true);
       } else if (roll < 0.80) {
         // Health orb — heal 15% max HP
         st.hp = Math.min(st.hp + st.maxHp * 0.15, st.maxHp);
@@ -2314,7 +2314,7 @@ export function launch3DGame(options) {
         for (let g = 0; g < 3; g++) {
           st.xpGems.push(createXpGem(dropX + (Math.random() - 0.5) * 2, dropZ + (Math.random() - 0.5) * 2));
         }
-        st.floatingTexts3d.push({ text: '+XP', color: '#aa88ff', x: dropX, y: terrainHeight(dropX, dropZ) + 2, z: dropZ, life: 1.5 });
+        addFloatingText('+XP', '#aa88ff', dropX, terrainHeight(dropX, dropZ) + 2, dropZ, 0.5);
       }
     }
     e.dying = true;
