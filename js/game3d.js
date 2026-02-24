@@ -733,7 +733,7 @@ export function launch3DGame(options) {
   camera.lookAt(0, 0, 0);
 
   // Lights
-  const ambientLight = new THREE.AmbientLight(0x667788, 0.5);
+  const ambientLight = new THREE.HemisphereLight(0x87CEEB, 0x4a8c3f, 0.6);
   scene.add(ambientLight);
   const dirLight = new THREE.DirectionalLight(0xffeedd, 0.9);
   dirLight.position.set(10, 20, 10);
@@ -774,6 +774,15 @@ export function launch3DGame(options) {
   eastWall.position.set(MAP_HALF + wallThickness / 2, wallHeight / 2, 0);
   eastWall.castShadow = true; eastWall.receiveShadow = true;
   scene.add(eastWall);
+
+  // === TIME-OF-DAY LIGHTING STOPS (BD-127) ===
+  const TOD_STOPS = [
+    { time: 0,   dirColor: 0xffd8a0, dirInt: 0.7, fogColor: 0xc4a882, skyColor: 0xd4a870, gndColor: 0x4a6a2f },
+    { time: 180, dirColor: 0xffeedd, dirInt: 0.9, fogColor: 0x87CEEB, skyColor: 0x87CEEB, gndColor: 0x4a8c3f },
+    { time: 600, dirColor: 0xffddbb, dirInt: 0.85, fogColor: 0x7ab8d8, skyColor: 0x7ab8d8, gndColor: 0x4a8c3f },
+    { time: 1080, dirColor: 0xff9955, dirInt: 0.7, fogColor: 0xcc7744, skyColor: 0xcc8855, gndColor: 0x3a6a2f },
+  ];
+  const _todA = new THREE.Color(), _todB = new THREE.Color();
 
   // === PROCEDURAL TERRAIN ===
   // Terrain generation logic is imported from 3d/terrain.js.
@@ -2115,6 +2124,7 @@ export function launch3DGame(options) {
     const rangeSq = range * range;
     for (const e of st.enemies) {
       if (!e.alive) continue;
+      if (e.dying) continue;
       const dx = st.playerX - e.group.position.x;
       const dz = st.playerZ - e.group.position.z;
       const distSq = dx * dx + dz * dz;
@@ -2224,7 +2234,8 @@ export function launch3DGame(options) {
         st.floatingTexts3d.push({ text: '+XP', color: '#aa88ff', x: dropX, y: terrainHeight(dropX, dropZ) + 2, z: dropZ, life: 1.5 });
       }
     }
-    disposeEnemy(e);
+    e.dying = true;
+    e.deathTimer = 0.3;
   }
 
   /**
@@ -4024,6 +4035,16 @@ export function launch3DGame(options) {
       // Frozen enemies (from Frost Nova) skip movement until their timer expires.
       for (const e of st.enemies) {
         if (!e.alive) continue;
+        if (e.dying) {
+          e.deathTimer -= dt;
+          const t = Math.max(0, e.deathTimer / 0.3);
+          e.group.scale.setScalar(t * (e.isBoss ? 3 : 1));
+          e.group.position.y -= dt * 2;
+          if (e.deathTimer <= 0) {
+            disposeEnemy(e);
+          }
+          continue;
+        }
         if (e.frozen) continue; // Frost Nova: frozen enemies don't move
         // Mud slow timer decrement — restore speed when expired
         if (e._mudSlowed) {
@@ -4317,6 +4338,7 @@ export function launch3DGame(options) {
           }
         }
         // Contact damage (scaled by tier + difficulty) - check Y distance so platforms/air protect player
+        if (e.dying) continue; // Skip dying enemies for contact damage
         const dy = Math.abs(st.playerY - e.group.position.y);
         const tierData = ZOMBIE_TIERS[(e.tier || 1) - 1];
         if (dist < 1.0 * (tierData.scale || 1) && dy < 1.5 && st.invincible <= 0) {
@@ -4392,10 +4414,10 @@ export function launch3DGame(options) {
       const newEnemies = [];
       for (let i = 0; i < st.enemies.length; i++) {
         const a = st.enemies[i];
-        if (!a.alive || mergedSet.has(i)) continue;
+        if (!a.alive || a.dying || mergedSet.has(i)) continue;
         for (let j = i + 1; j < st.enemies.length; j++) {
           const b = st.enemies[j];
-          if (!b.alive || mergedSet.has(j)) continue;
+          if (!b.alive || b.dying || mergedSet.has(j)) continue;
           const dx = a.group.position.x - b.group.position.x;
           const dz = a.group.position.z - b.group.position.z;
           const distSq = dx * dx + dz * dz;
@@ -5001,6 +5023,42 @@ export function launch3DGame(options) {
     // Update directional light to follow player
     dirLight.position.set(st.playerX + 10, 20, st.playerZ + 10);
     dirLight.target.position.set(st.playerX, 0, st.playerZ);
+
+    // Tree canopy sway (BD-125)
+    if (terrainState && terrainState.decorations) {
+      const windTime = clock.elapsedTime;
+      for (const deco of terrainState.decorations) {
+        if (!deco.meshes) continue;
+        for (const m of deco.meshes) {
+          if (m.userData && m.userData.isCanopy) {
+            m.rotation.z = Math.sin(windTime * 0.5 + m.userData.windSeed) * 0.02;
+            m.rotation.x = Math.sin(windTime * 0.4 + m.userData.windSeed + 1.5) * 0.015;
+          }
+        }
+      }
+    }
+
+    // Time-of-day (BD-127)
+    const gt = st.gameTime;
+    let tA = TOD_STOPS[0], tB = TOD_STOPS[0];
+    for (let i = 0; i < TOD_STOPS.length - 1; i++) {
+      if (gt >= TOD_STOPS[i].time && gt < TOD_STOPS[i + 1].time) {
+        tA = TOD_STOPS[i]; tB = TOD_STOPS[i + 1]; break;
+      }
+      if (i === TOD_STOPS.length - 2) tA = tB = TOD_STOPS[TOD_STOPS.length - 1];
+    }
+    if (tA !== tB) {
+      const t = (gt - tA.time) / (tB.time - tA.time);
+      dirLight.color.copy(_todA.setHex(tA.dirColor).lerp(_todB.setHex(tB.dirColor), t));
+      dirLight.intensity = tA.dirInt + (tB.dirInt - tA.dirInt) * t;
+      const fc = _todA.setHex(tA.fogColor).lerp(_todB.setHex(tB.fogColor), t);
+      scene.fog.color.copy(fc);
+      renderer.setClearColor(fc);
+      if (ambientLight.isHemisphereLight) {
+        ambientLight.color.copy(_todA.setHex(tA.skyColor).lerp(_todB.setHex(tB.skyColor), t));
+        ambientLight.groundColor.copy(_todA.setHex(tA.gndColor).lerp(_todB.setHex(tB.gndColor), t));
+      }
+    }
 
     renderer.render(scene, camera);
     drawHUD(hudCtx, st, {
