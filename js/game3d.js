@@ -408,6 +408,8 @@ export function launch3DGame(options) {
     totemScoreMult: 1,
     // Floating texts for shrine/augment announcements
     floatingTexts3d: [],
+    // Item acquire order for display cap (BD-160)
+    itemAcquireOrder: [],
     // Leaderboard
     nameEntry: '',
     nameEntryActive: false,
@@ -439,6 +441,7 @@ export function launch3DGame(options) {
   // Load 3D leaderboard (single unified key — no per-difficulty split)
   st.leaderboard3d = JSON.parse(localStorage.getItem('avz3d-leaderboard') || '[]');
 
+
   // === AUDIO INIT ===
   initAudio('sound-pack-alpha/');
   playSound('sfx_player_growl');
@@ -463,28 +466,33 @@ export function launch3DGame(options) {
     localStorage.setItem('avz3d-leaderboard', JSON.stringify(st.leaderboard3d));
   }
 
-  // === FLOATING TEXT HELPER (BD-136) ===
-  // Caps visible floating texts and deduplicates rapid identical messages.
-  const MAX_FLOATING_TEXTS = 15;
+  // === FLOATING TEXT HELPER (BD-136 + BD-160) ===
+  // Caps visible floating texts, deduplicates rapid identical messages,
+  // importance-aware eviction, and horizontal spread to reduce overlap.
+  const MAX_FLOATING_TEXTS = 8;
+  const DEDUP_WINDOW = 0.6; // seconds
   const _recentTexts = []; // tracks {text, time} for dedup
 
   /**
-   * Add a floating text to the 3D scene with cap and dedup protection.
+   * Add a floating text to the 3D scene with cap, dedup, importance hierarchy, and horizontal spread.
    * @param {string} text - The display text.
    * @param {string} color - CSS color string.
    * @param {number} x - World X position.
    * @param {number} y - World Y position.
    * @param {number} z - World Z position.
-   * @param {number} life - Lifetime in seconds.
+   * @param {number} [life] - Lifetime in seconds (default: 0.6 for important, 0.3 for normal).
    * @param {boolean} [important=false] - If true, bypass dedup (item pickups, boss kills, totem, shrine, level-up).
    */
   function addFloatingText(text, color, x, y, z, life, important = false) {
     const now = performance.now() / 1000;
 
-    // Deduplicate rapid identical texts (skip if same text within 0.3s), unless important
+    // Default life based on importance
+    if (life === undefined || life === null) life = important ? 0.6 : 0.3;
+
+    // Deduplicate rapid identical texts (skip if same text within DEDUP_WINDOW), unless important
     if (!important) {
       for (let i = _recentTexts.length - 1; i >= 0; i--) {
-        if (now - _recentTexts[i].time > 0.3) {
+        if (now - _recentTexts[i].time > DEDUP_WINDOW) {
           _recentTexts.splice(i, 1);
         } else if (_recentTexts[i].text === text) {
           return; // suppress duplicate
@@ -495,12 +503,20 @@ export function launch3DGame(options) {
     // Track this text for dedup
     _recentTexts.push({ text, time: now });
 
-    // Hard cap — remove oldest to make room
-    if (st.floatingTexts3d.length >= MAX_FLOATING_TEXTS) {
-      st.floatingTexts3d.splice(0, st.floatingTexts3d.length - MAX_FLOATING_TEXTS + 1);
+    // Horizontal spread: random +-30px offset stored on the entry (BD-160)
+    const spreadX = (Math.random() - 0.5) * 60; // +-30
+
+    // Cap: if at max, remove oldest non-important first, then oldest (BD-160)
+    while (st.floatingTexts3d.length >= MAX_FLOATING_TEXTS) {
+      const nonImpIdx = st.floatingTexts3d.findIndex(ft => !ft.important);
+      if (nonImpIdx !== -1) {
+        st.floatingTexts3d.splice(nonImpIdx, 1);
+      } else {
+        st.floatingTexts3d.shift();
+      }
     }
 
-    st.floatingTexts3d.push({ text, color, x, y, z, life });
+    st.floatingTexts3d.push({ text, color, x, y, z, life, important, spreadX, spawnTime: now });
   }
 
   // Animal-specific starting weapon (ANIMAL_WEAPONS imported from 3d/constants.js)
@@ -5404,6 +5420,11 @@ export function launch3DGame(options) {
           else if (it.slot === 'scarf') st.items.scarf = true;
           // Floating text for item pickup (color by rarity)
           const rarityColor = (ITEM_RARITIES[it.rarity] || ITEM_RARITIES.common).color;
+          // Track acquisition order for display cap (BD-160)
+          const itemKey = it.stackable ? it.id : (it.slot || it.id);
+          const existIdx = st.itemAcquireOrder.indexOf(itemKey);
+          if (existIdx !== -1) st.itemAcquireOrder.splice(existIdx, 1);
+          st.itemAcquireOrder.push(itemKey);
           addFloatingText(it.name, rarityColor, item.x, st.playerY + 2.5, item.z, 2, true);
           addFloatingText(it.desc, '#ffffff', item.x, st.playerY + 2, item.z, 2, true);
           playSound('sfx_item_pickup');

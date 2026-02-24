@@ -172,74 +172,86 @@ export function drawHUD(ctx, s, deps) {
       ctx.fillRect(W / 2 - barW / 2, 46, barW * (pw.timer / pw.def.duration), barH);
     }
 
-    // --- Equipped Items (bottom-left) ---
+    // --- Equipped Items (bottom-left, BD-160: capped to 5 most recent) ---
     ctx.textAlign = 'left';
     let iy = H - 40;
-    if (s.items.armor) {
-      const armorDef = ITEMS_3D.find(i => i.id === s.items.armor);
-      if (armorDef) {
-        const rarityColor = (ITEM_RARITIES[armorDef.rarity] || ITEM_RARITIES.common).color;
-        ctx.fillStyle = rarityColor; ctx.font = '15px "Courier New"';
-        ctx.fillText(`[${armorDef.name}]`, 20, iy);
-        iy -= 18;
+    {
+      // Collect all equipped items with their display info
+      const allEquipped = [];
+      // Special slots: armor, glasses, boots
+      if (s.items.armor) {
+        const armorDef = ITEMS_3D.find(i => i.id === s.items.armor);
+        if (armorDef) allEquipped.push({ key: 'armor', label: `[${armorDef.name}]`, color: (ITEM_RARITIES[armorDef.rarity] || ITEM_RARITIES.common).color });
       }
-    }
-    if (s.items.glasses) {
-      ctx.fillStyle = ITEM_RARITIES.common.color; ctx.font = '15px "Courier New"';
-      ctx.fillText('[AVIATOR GLASSES]', 20, iy);
-      iy -= 18;
-    }
-    if (s.items.boots) {
-      const bootDef = ITEMS_3D.find(i => i.id === s.items.boots);
-      if (bootDef) {
-        const rarityColor = (ITEM_RARITIES[bootDef.rarity] || ITEM_RARITIES.common).color;
-        ctx.fillStyle = rarityColor; ctx.font = '15px "Courier New"';
-        ctx.fillText(`[${bootDef.name}]`, 20, iy);
-        iy -= 18;
+      if (s.items.glasses) {
+        allEquipped.push({ key: 'glasses', label: '[AVIATOR GLASSES]', color: ITEM_RARITIES.common.color });
       }
-    }
-    // Boolean-slot items (non-stackable)
-    const boolSlots = ['ring', 'charm', 'vest', 'pendant', 'bracelet', 'gloves', 'cushion', 'turboshoes', 'goldenbone', 'crown', 'zombiemagnet', 'scarf'];
-    for (const slot of boolSlots) {
-      if (s.items[slot]) {
-        const itemDef = ITEMS_3D.find(i => i.slot === slot);
-        if (itemDef) {
-          const rarityColor = (ITEM_RARITIES[itemDef.rarity] || ITEM_RARITIES.common).color;
-          ctx.fillStyle = rarityColor; ctx.font = '15px "Courier New"';
-          ctx.fillText(`[${itemDef.name}]`, 20, iy);
-          iy -= 18;
+      if (s.items.boots) {
+        const bootDef = ITEMS_3D.find(i => i.id === s.items.boots);
+        if (bootDef) allEquipped.push({ key: 'boots', label: `[${bootDef.name}]`, color: (ITEM_RARITIES[bootDef.rarity] || ITEM_RARITIES.common).color });
+      }
+      // Boolean-slot items (non-stackable)
+      const boolSlots = ['ring', 'charm', 'vest', 'pendant', 'bracelet', 'gloves', 'cushion', 'turboshoes', 'goldenbone', 'crown', 'zombiemagnet', 'scarf'];
+      for (const slot of boolSlots) {
+        if (s.items[slot]) {
+          const itemDef = ITEMS_3D.find(i => i.slot === slot);
+          if (itemDef) allEquipped.push({ key: slot, label: `[${itemDef.name}]`, color: (ITEM_RARITIES[itemDef.rarity] || ITEM_RARITIES.common).color });
         }
       }
-    }
-    // Stackable items (show count)
-    const stackableIds = ['rubberDucky', 'thickFur', 'sillyStraw', 'bandana', 'hotSauce', 'bouncyBall', 'luckyPenny', 'alarmClock'];
-    for (const id of stackableIds) {
-      if (s.items[id] > 0) {
-        const itemDef = ITEMS_3D.find(i => i.id === id);
-        if (itemDef) {
-          const rarityColor = (ITEM_RARITIES[itemDef.rarity] || ITEM_RARITIES.common).color;
-          ctx.fillStyle = rarityColor; ctx.font = '15px "Courier New"';
-          ctx.fillText(`[${itemDef.name} x${s.items[id]}]`, 20, iy);
-          iy -= 18;
+      // Stackable items (show count)
+      const stackableIds = ['rubberDucky', 'thickFur', 'sillyStraw', 'bandana', 'hotSauce', 'bouncyBall', 'luckyPenny', 'alarmClock'];
+      for (const id of stackableIds) {
+        if (s.items[id] > 0) {
+          const itemDef = ITEMS_3D.find(i => i.id === id);
+          if (itemDef) allEquipped.push({ key: id, label: `[${itemDef.name} x${s.items[id]}]`, color: (ITEM_RARITIES[itemDef.rarity] || ITEM_RARITIES.common).color });
         }
+      }
+      // Sort by acquisition order (most recent last in array = displayed first)
+      const order = s.itemAcquireOrder || [];
+      allEquipped.sort((a, b) => {
+        const ai = order.indexOf(a.key);
+        const bi = order.indexOf(b.key);
+        // Items not in order go first (oldest), items in order sorted by position
+        return (ai === -1 ? -1 : ai) - (bi === -1 ? -1 : bi);
+      });
+      // Cap to 5 most recent
+      const displayItems = allEquipped.slice(-5);
+      const totalCount = allEquipped.length;
+      // Render (most recent at bottom)
+      for (const item of displayItems) {
+        ctx.fillStyle = item.color; ctx.font = 'bold 16px "Courier New"';
+        ctx.fillText(item.label, 20, iy);
+        iy -= 20;
+      }
+      // Show overflow indicator if more than 5
+      if (totalCount > 5) {
+        ctx.fillStyle = '#888888'; ctx.font = '14px "Courier New"';
+        ctx.fillText(`+${totalCount - 5} more...`, 20, iy);
+        iy -= 20;
       }
     }
     // Shield bracelet cooldown indicator
     if (s.items.bracelet && !s.shieldBraceletReady) {
-      ctx.fillStyle = '#4488ff'; ctx.font = '15px "Courier New"';
+      ctx.fillStyle = '#4488ff'; ctx.font = 'bold 16px "Courier New"';
       ctx.fillText(`Shield: ${Math.ceil(s.shieldBraceletTimer)}s`, 20, iy);
-      iy -= 18;
+      iy -= 20;
     }
 
     // --- Floating 3D Texts (projected to screen space) ---
     for (const ft of s.floatingTexts3d) {
       const v = new THREE.Vector3(ft.x, ft.y, ft.z);
       v.project(camera);
-      const sx = (v.x * 0.5 + 0.5) * W;
+      const sx = (v.x * 0.5 + 0.5) * W + (ft.spreadX || 0);
       const sy = (-v.y * 0.5 + 0.5) * H;
       if (v.z > 0 && v.z < 1) {
         ctx.globalAlpha = Math.min(1, ft.life);
-        ctx.fillStyle = ft.color; ctx.font = 'bold 18px "Courier New"'; ctx.textAlign = 'center';
+        ctx.fillStyle = ft.color; ctx.textAlign = 'center';
+        // BD-160: Size hierarchy — important texts are larger and bold
+        if (ft.important) {
+          ctx.font = 'bold 20px "Courier New"';
+        } else {
+          ctx.font = '14px "Courier New"';
+        }
         ctx.fillText(ft.text, sx, sy);
         ctx.globalAlpha = 1;
       }
