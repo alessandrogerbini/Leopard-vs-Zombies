@@ -1882,6 +1882,7 @@ export function launch3DGame(options) {
       maxHp: totalHp,
       speed: td.speed + Math.random() * 0.3,
       hurtTimer: 0,
+      hurtFlashCooldown: 0,
       alive: true,
       tier,
       bodyColor: td.body,
@@ -2652,7 +2653,10 @@ export function launch3DGame(options) {
       if (st.items.gloves && Math.random() < 0.15) dmg *= 2;
     }
     e.hp -= dmg;
-    e.hurtTimer = 0.15;
+    if (e.hurtFlashCooldown <= 0) {
+      e.hurtTimer = 0.15;
+      e.hurtFlashCooldown = 1.0; // BD-203: Max one flash per second
+    }
     if (!opts || !opts.skipProcs) {
       // Hot Sauce: 15% chance to ignite enemies (DoT: 3 damage/s for 3s)
       if (st.items.hotSauce > 0 && !e.ignited && Math.random() < 0.15) {
@@ -5330,14 +5334,26 @@ export function launch3DGame(options) {
             }
           }
         }
-        // Hurt flash (white flash like 2D)
+        // BD-203: Hurt flash cooldown decrement
+        if (e.hurtFlashCooldown > 0) e.hurtFlashCooldown -= dt;
+        // Hurt flash (tinted flash, 1s cooldown — BD-203)
         if (e.hurtTimer > 0) {
           e.hurtTimer -= dt;
-          const flashColor = e.hurtTimer > 0 ? 0xffffff : e.bodyColor;
-          const headFlash = e.hurtTimer > 0 ? 0xffffff : e.headColor;
-          e.body.material.color.setHex(flashColor);
-          e.head.material.color.setHex(headFlash);
-          if (e.hurtTimer <= 0) {
+          if (e.hurtTimer > 0) {
+            // BD-203: Blend 60% white + 40% body color for tier-tinted flash
+            const bc = e.bodyColor;
+            const br = ((bc >> 16) & 0xff) * 0.4 + 255 * 0.6;
+            const bg = ((bc >> 8) & 0xff) * 0.4 + 255 * 0.6;
+            const bb = (bc & 0xff) * 0.4 + 255 * 0.6;
+            const flashColor = (Math.round(br) << 16) | (Math.round(bg) << 8) | Math.round(bb);
+            const hc = e.headColor;
+            const hr = ((hc >> 16) & 0xff) * 0.4 + 255 * 0.6;
+            const hg = ((hc >> 8) & 0xff) * 0.4 + 255 * 0.6;
+            const hb = (hc & 0xff) * 0.4 + 255 * 0.6;
+            const headFlash = (Math.round(hr) << 16) | (Math.round(hg) << 8) | Math.round(hb);
+            e.body.material.color.setHex(flashColor);
+            e.head.material.color.setHex(headFlash);
+          } else {
             e.body.material.color.setHex(e.bodyColor);
             e.head.material.color.setHex(e.headColor);
           }
