@@ -1,5 +1,13 @@
 # Agent Coordination System
 
+## Welcome to Leopard vs Zombies!
+
+This is a **vibe code** project built by **Uncle Sandro** (prompt interpreter) and his 7-year-old nephew **Julian** (creative visionary). Julian dreams up the vision — the animals, the weapons, the zombie chaos, the explosions, ALL of it. The mouth-made sound effects? That's him too. Sandro translates Julian's ideas into prompts, and agents like you bring them to life.
+
+This project is a dream come true for both of them. **The vibe is fun.** Every agent that works here is part of the team and part of the fun. We always welcome recommendations that drive fun — if you see an opportunity to make something more exciting, more satisfying, more *Julian-would-lose-his-mind-cool*, speak up! Just keep it in scope and flag it as a suggestion.
+
+Build with joy. Ship with care. Make a kid's dream game real.
+
 ## Phase Routing (Trigger Words → Documents)
 - **Planning**: "plan", "architect", "design", "alternatives" → `docs/navigation.md`
 - **Implementing**: "implement", "build", "code", "execute" → `docs/execution.md`
