@@ -32,7 +32,7 @@
 import {
   ARENA_SIZE, SHRINE_COUNT, CHUNK_SIZE, GRAVITY_3D, JUMP_FORCE, GROUND_Y, MAP_HALF,
   ANIMAL_PALETTES, WEAPON_TYPES, HOWL_TYPES, POWERUPS_3D, ITEMS_3D, ITEM_RARITIES,
-  SHRINE_AUGMENTS, TOTEM_EFFECT, ZOMBIE_TIERS, ANIMAL_WEAPONS,
+  SHRINE_AUGMENTS, TOTEM_EFFECT, ZOMBIE_TIERS, ANIMAL_WEAPONS, KILL_MILESTONES,
   MAP_GEMS_PER_CHUNK, GEM_XP_MIN, GEM_XP_MAX, GEM_COLLECT_RADIUS,
   CHARGE_SHRINE_UPGRADES, CHARGE_SHRINE_WEIGHTS, CHARGE_SHRINE_COUNT,
   CHARGE_SHRINE_TIME, CHARGE_SHRINE_RADIUS,
@@ -202,6 +202,8 @@ import { initAudio, playSound, toggleMute, isMuted, getVolume, disposeAudio } fr
  * --- Kill Tracking ---
  * @property {Array.<number>} killsByTier   - Kill count per zombie tier (index 0 = tier 1).
  * @property {number} totalKills            - Total zombies killed.
+ * @property {number} nextMilestoneIdx     - Index of next kill milestone to trigger.
+ * @property {?Object} killMilestone         - Active milestone display {text, color, timer} or null.
  */
 
 /**
@@ -398,6 +400,8 @@ export function launch3DGame(options) {
     // Kill tracking
     killsByTier: new Array(10).fill(0),
     totalKills: 0,
+    nextMilestoneIdx: 0, // Index into KILL_MILESTONES for next celebration
+    killMilestone: null,  // Active milestone announcement {text, color, timer}
     // Game timer
     gameTime: 0,
     // Randomized weapon/howl pools (6 of 10 each per run)
@@ -2124,6 +2128,15 @@ export function launch3DGame(options) {
     }
     st.totalKills++;
     st.killsByTier[(e.tier || 1) - 1]++;
+    // Kill milestone celebration (BD-195)
+    if (st.nextMilestoneIdx < KILL_MILESTONES.length &&
+        st.totalKills >= KILL_MILESTONES[st.nextMilestoneIdx].kills) {
+      const ms = KILL_MILESTONES[st.nextMilestoneIdx];
+      st.killMilestone = { text: ms.text, color: ms.color, timer: 3.0 };
+      st.floatingTexts3d.push({ text: ms.text, color: ms.color, x: st.playerX, y: st.playerY + 4, z: st.playerZ, life: 3 });
+      playSound('sfx_level_up');
+      st.nextMilestoneIdx++;
+    }
     // Silly Straw: heal 1 HP per 10 kills
     if (st.items.sillyStraw > 0) {
       st.sillyStrawKills++;
@@ -3328,6 +3341,11 @@ export function launch3DGame(options) {
 
     if (!st.paused && !st.gameOver) {
       st.gameTime += dt;
+      // Decrement kill milestone display timer (BD-195)
+      if (st.killMilestone) {
+        st.killMilestone.timer -= dt;
+        if (st.killMilestone.timer <= 0) st.killMilestone = null;
+      }
 
 
       // === PLAYER INPUT ===
