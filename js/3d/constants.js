@@ -326,19 +326,288 @@ export const ITEMS_3D = [
 export const WEARABLES_3D = {
   // HEAD slot
   partyHat: { slot: 'head', name: 'Party Hat', rarity: 'common', color: 0xff4488,
-    desc: 'Fun hat!', effect: { xpMult: 1.05 } },
+    desc: 'Fun hat!', effect: { xpMult: 1.05 },
+    drawIcon(ctx, cx, cy, s) {
+      // Colored triangle hat with white pom-pom and brim
+      ctx.fillStyle = '#ff4488';
+      ctx.beginPath();
+      ctx.moveTo(cx, cy - 16 * s);
+      ctx.lineTo(cx - 12 * s, cy + 6 * s);
+      ctx.lineTo(cx + 12 * s, cy + 6 * s);
+      ctx.closePath();
+      ctx.fill();
+      // Brim band
+      ctx.fillStyle = '#cc3366';
+      ctx.fillRect(cx - 14 * s, cy + 6 * s, 28 * s, 4 * s);
+      // Pom-pom
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath();
+      ctx.arc(cx, cy - 16 * s, 3 * s, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  },
   sharkFin: { slot: 'head', name: 'Shark Fin', rarity: 'uncommon', color: 0x4488cc,
-    desc: 'Look scary!', effect: { dmgMult: 1.10 } },
+    desc: 'Look scary!', effect: { dmgMult: 1.10 },
+    drawIcon(ctx, cx, cy, s) {
+      // Tall vertical fin shape — narrow at top, wider at base
+      ctx.fillStyle = '#888899';
+      ctx.beginPath();
+      ctx.moveTo(cx, cy - 16 * s);
+      ctx.lineTo(cx - 8 * s, cy + 10 * s);
+      ctx.lineTo(cx + 8 * s, cy + 10 * s);
+      ctx.closePath();
+      ctx.fill();
+      // Darker ridge line down center
+      ctx.strokeStyle = '#666677';
+      ctx.lineWidth = 2 * s;
+      ctx.beginPath();
+      ctx.moveTo(cx, cy - 14 * s);
+      ctx.lineTo(cx, cy + 8 * s);
+      ctx.stroke();
+    }
+  },
+  bumbleHelmet: { slot: 'head', name: 'Bumble Helm', rarity: 'rare', color: 0xffcc00,
+    desc: 'Bzz bzz!', effect: { dmgReduction: 0.15, dmgMult: 1.08 },
+    drawIcon(ctx, cx, cy, s) {
+      // Yellow rounded helmet with black stripes and antennae
+      ctx.fillStyle = '#ffcc00';
+      ctx.beginPath();
+      ctx.arc(cx, cy + 2 * s, 14 * s, Math.PI, 0);
+      ctx.lineTo(cx + 14 * s, cy + 10 * s);
+      ctx.lineTo(cx - 14 * s, cy + 10 * s);
+      ctx.closePath();
+      ctx.fill();
+      // Black horizontal stripes
+      ctx.fillStyle = '#222222';
+      ctx.fillRect(cx - 12 * s, cy - 2 * s, 24 * s, 3 * s);
+      ctx.fillRect(cx - 10 * s, cy + 4 * s, 20 * s, 3 * s);
+      // Antennae
+      ctx.strokeStyle = '#222222';
+      ctx.lineWidth = 2 * s;
+      ctx.beginPath();
+      ctx.moveTo(cx - 5 * s, cy - 10 * s);
+      ctx.lineTo(cx - 7 * s, cy - 16 * s);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(cx + 5 * s, cy - 10 * s);
+      ctx.lineTo(cx + 7 * s, cy - 16 * s);
+      ctx.stroke();
+      // Antenna tips
+      ctx.fillStyle = '#ffcc00';
+      ctx.beginPath();
+      ctx.arc(cx - 7 * s, cy - 16 * s, 2 * s, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(cx + 7 * s, cy - 16 * s, 2 * s, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  },
+  crownOfClaws: { slot: 'head', name: 'Claw Crown', rarity: 'legendary', color: 0xffd700,
+    desc: 'Rule them!', effect: { dmgMult: 1.20, xpMult: 1.10 },
+    drawIcon(ctx, cx, cy, s) {
+      // Gold band at bottom with 5 pointed spikes rising from it
+      ctx.fillStyle = '#ffd700';
+      ctx.fillRect(cx - 14 * s, cy + 4 * s, 28 * s, 6 * s);
+      // 5 spike/claw shapes — center tallest
+      const spikes = [
+        { x: -12, h: -10 }, { x: -6, h: -14 }, { x: 0, h: -18 },
+        { x: 6, h: -14 }, { x: 12, h: -10 }
+      ];
+      for (const sp of spikes) {
+        ctx.beginPath();
+        ctx.moveTo(cx + (sp.x - 3) * s, cy + 4 * s);
+        ctx.lineTo(cx + sp.x * s, cy + sp.h * s);
+        ctx.lineTo(cx + (sp.x + 3) * s, cy + 4 * s);
+        ctx.closePath();
+        ctx.fill();
+      }
+      // Darker gold accent line on band
+      ctx.fillStyle = '#cc9900';
+      ctx.fillRect(cx - 13 * s, cy + 7 * s, 26 * s, 2 * s);
+    }
+  },
+
   // BODY slot
   cardboardBox: { slot: 'body', name: 'Cardboard Box', rarity: 'common', color: 0xbb8844,
-    desc: 'Tough box!', effect: { dmgReduction: 0.10 } },
+    desc: 'Tough box!', effect: { dmgReduction: 0.10 },
+    drawIcon(ctx, cx, cy, s) {
+      // Brown rectangle with lighter tape cross, darker edges
+      ctx.fillStyle = '#b08040';
+      ctx.fillRect(cx - 14 * s, cy - 12 * s, 28 * s, 24 * s);
+      // Darker brown edges
+      ctx.fillStyle = '#8a6030';
+      ctx.fillRect(cx - 14 * s, cy - 12 * s, 28 * s, 2 * s);
+      ctx.fillRect(cx - 14 * s, cy + 10 * s, 28 * s, 2 * s);
+      ctx.fillRect(cx - 14 * s, cy - 12 * s, 2 * s, 24 * s);
+      ctx.fillRect(cx + 12 * s, cy - 12 * s, 2 * s, 24 * s);
+      // Lighter tan tape cross in center
+      ctx.fillStyle = '#d4a060';
+      ctx.fillRect(cx - 2 * s, cy - 10 * s, 4 * s, 20 * s);
+      ctx.fillRect(cx - 10 * s, cy - 2 * s, 20 * s, 4 * s);
+    }
+  },
   bumbleArmor: { slot: 'body', name: 'Bumble Armor', rarity: 'uncommon', color: 0xffcc00,
-    desc: 'Bee strong!', effect: { dmgReduction: 0.20, maxHpBonus: 15 } },
+    desc: 'Bee strong!', effect: { dmgReduction: 0.20, maxHpBonus: 15 },
+    drawIcon(ctx, cx, cy, s) {
+      // Yellow chest shape with black stripe and wing nubs
+      ctx.fillStyle = '#ffcc00';
+      ctx.fillRect(cx - 12 * s, cy - 12 * s, 24 * s, 24 * s);
+      // Black horizontal stripe across middle
+      ctx.fillStyle = '#222222';
+      ctx.fillRect(cx - 12 * s, cy - 3 * s, 24 * s, 6 * s);
+      // Small wing nubs on sides
+      ctx.fillStyle = '#ffffcc';
+      ctx.globalAlpha = 0.6;
+      ctx.beginPath();
+      ctx.ellipse(cx - 14 * s, cy - 4 * s, 5 * s, 8 * s, -0.3, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.ellipse(cx + 14 * s, cy - 4 * s, 5 * s, 8 * s, 0.3, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalAlpha = 1;
+    }
+  },
+  knightPlate: { slot: 'body', name: 'Knight Plate', rarity: 'rare', color: 0xbbbbcc,
+    desc: 'Tank up!', effect: { dmgReduction: 0.30, speedMult: 0.95 },
+    drawIcon(ctx, cx, cy, s) {
+      // Silver-gray chest plate with darker shoulder pads and center rivet
+      ctx.fillStyle = '#bbbbcc';
+      ctx.fillRect(cx - 10 * s, cy - 10 * s, 20 * s, 22 * s);
+      // Shoulder pads
+      ctx.fillStyle = '#8888aa';
+      ctx.fillRect(cx - 16 * s, cy - 10 * s, 8 * s, 10 * s);
+      ctx.fillRect(cx + 8 * s, cy - 10 * s, 8 * s, 10 * s);
+      // Center cross/rivet
+      ctx.fillStyle = '#666688';
+      ctx.fillRect(cx - 1.5 * s, cy - 4 * s, 3 * s, 8 * s);
+      ctx.fillRect(cx - 4 * s, cy - 1.5 * s, 8 * s, 3 * s);
+      // Highlight edge
+      ctx.fillStyle = '#ddddee';
+      ctx.fillRect(cx - 10 * s, cy - 10 * s, 20 * s, 2 * s);
+    }
+  },
+  dragonScale: { slot: 'body', name: 'Dragon Scale', rarity: 'legendary', color: 0x44aa44,
+    desc: 'Scaly!', effect: { dmgReduction: 0.35, maxHpBonus: 30 },
+    drawIcon(ctx, cx, cy, s) {
+      // Green chest with darker overlapping scale pattern and yellow-green trim
+      ctx.fillStyle = '#44aa44';
+      ctx.fillRect(cx - 12 * s, cy - 12 * s, 24 * s, 24 * s);
+      // Overlapping scale pattern (offset rectangles)
+      ctx.fillStyle = '#338833';
+      for (let row = -2; row < 3; row++) {
+        const offset = (row % 2 === 0) ? 0 : 5;
+        for (let col = -1; col < 3; col++) {
+          ctx.fillRect(cx + (col * 10 - 12 + offset) * s, cy + (row * 5 - 6) * s, 7 * s, 4 * s);
+        }
+      }
+      // Glowing yellow-green trim at top and bottom
+      ctx.fillStyle = '#88ff44';
+      ctx.fillRect(cx - 12 * s, cy - 12 * s, 24 * s, 2 * s);
+      ctx.fillRect(cx - 12 * s, cy + 10 * s, 24 * s, 2 * s);
+    }
+  },
+
   // FEET slot
   clownShoes: { slot: 'feet', name: 'Clown Shoes', rarity: 'common', color: 0xff2222,
     desc: 'Go faster!', effect: { speedMult: 1.10 } },
   springBoots: { slot: 'feet', name: 'Spring Boots', rarity: 'uncommon', color: 0x44ff44,
-    desc: 'Boing boing!', effect: { speedMult: 1.15, jumpMult: 1.3 } },
+    desc: 'Boing boing!', effect: { speedMult: 1.15, jumpMult: 1.3 },
+    drawIcon(ctx, cx, cy, s) {
+      // Green boot shafts with coiled spring zigzag underneath
+      ctx.fillStyle = '#44bb44';
+      // Left boot shaft
+      ctx.fillRect(cx - 14 * s, cy - 10 * s, 8 * s, 12 * s);
+      // Right boot shaft
+      ctx.fillRect(cx + 6 * s, cy - 10 * s, 8 * s, 12 * s);
+      // Spring coils under left boot (zigzag)
+      ctx.strokeStyle = '#88ff88';
+      ctx.lineWidth = 2 * s;
+      ctx.beginPath();
+      ctx.moveTo(cx - 14 * s, cy + 2 * s);
+      ctx.lineTo(cx - 7 * s, cy + 5 * s);
+      ctx.lineTo(cx - 14 * s, cy + 8 * s);
+      ctx.lineTo(cx - 7 * s, cy + 11 * s);
+      ctx.stroke();
+      // Spring coils under right boot
+      ctx.beginPath();
+      ctx.moveTo(cx + 6 * s, cy + 2 * s);
+      ctx.lineTo(cx + 13 * s, cy + 5 * s);
+      ctx.lineTo(cx + 6 * s, cy + 8 * s);
+      ctx.lineTo(cx + 13 * s, cy + 11 * s);
+      ctx.stroke();
+    }
+  },
+  rocketBoots: { slot: 'feet', name: 'Rocket Boots', rarity: 'rare', color: 0xff6600,
+    desc: 'Blast off!', effect: { speedMult: 1.25, jumpMult: 1.5 },
+    drawIcon(ctx, cx, cy, s) {
+      // Orange boots with flame shapes at the bottom
+      ctx.fillStyle = '#ff6600';
+      // Left boot
+      ctx.fillRect(cx - 14 * s, cy - 10 * s, 9 * s, 14 * s);
+      // Right boot
+      ctx.fillRect(cx + 5 * s, cy - 10 * s, 9 * s, 14 * s);
+      // Exhaust nozzles
+      ctx.fillStyle = '#444444';
+      ctx.fillRect(cx - 12 * s, cy + 4 * s, 5 * s, 3 * s);
+      ctx.fillRect(cx + 7 * s, cy + 4 * s, 5 * s, 3 * s);
+      // Flame shapes (red/yellow gradient rects)
+      ctx.fillStyle = '#ff2200';
+      ctx.fillRect(cx - 12 * s, cy + 7 * s, 5 * s, 4 * s);
+      ctx.fillRect(cx + 7 * s, cy + 7 * s, 5 * s, 4 * s);
+      ctx.fillStyle = '#ffcc00';
+      ctx.fillRect(cx - 11 * s, cy + 8 * s, 3 * s, 5 * s);
+      ctx.fillRect(cx + 8 * s, cy + 8 * s, 3 * s, 5 * s);
+    }
+  },
+  shadowSteps: { slot: 'feet', name: 'Shadow Steps', rarity: 'rare', color: 0x8844ff,
+    desc: 'Sneaky!', effect: { speedMult: 1.20, dmgMult: 1.10 },
+    drawIcon(ctx, cx, cy, s) {
+      // Dark purple-black semi-transparent boot shapes with glow dots
+      ctx.globalAlpha = 0.7;
+      ctx.fillStyle = '#332244';
+      // Left boot
+      ctx.fillRect(cx - 14 * s, cy - 8 * s, 8 * s, 16 * s);
+      ctx.fillRect(cx - 16 * s, cy + 4 * s, 14 * s, 6 * s);
+      // Right boot
+      ctx.fillRect(cx + 6 * s, cy - 8 * s, 8 * s, 16 * s);
+      ctx.fillRect(cx + 4 * s, cy + 4 * s, 14 * s, 6 * s);
+      ctx.globalAlpha = 1;
+      // Purple glow dots around edges
+      ctx.fillStyle = '#8844ff';
+      const dots = [
+        [-16, -6], [-15, 2], [-4, 8], [-8, -8],
+        [16, -6], [15, 2], [6, 8], [10, -8]
+      ];
+      for (const d of dots) {
+        ctx.beginPath();
+        ctx.arc(cx + d[0] * s, cy + d[1] * s, 1.5 * s, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+  },
+  gravityStompers: { slot: 'feet', name: 'Grav Stompers', rarity: 'legendary', color: 0xaa44ff,
+    desc: 'STOMP!', effect: { speedMult: 1.15, jumpMult: 2.0, dmgMult: 1.15 },
+    drawIcon(ctx, cx, cy, s) {
+      // Purple chunky wide boots with bright glow at sole
+      ctx.fillStyle = '#aa44ff';
+      // Left boot (oversized/stompy)
+      ctx.fillRect(cx - 16 * s, cy - 8 * s, 10 * s, 14 * s);
+      ctx.fillRect(cx - 18 * s, cy + 2 * s, 16 * s, 8 * s);
+      // Right boot
+      ctx.fillRect(cx + 6 * s, cy - 8 * s, 10 * s, 14 * s);
+      ctx.fillRect(cx + 4 * s, cy + 2 * s, 16 * s, 8 * s);
+      // Bright glow rectangle at sole
+      ctx.fillStyle = '#cc88ff';
+      ctx.fillRect(cx - 17 * s, cy + 8 * s, 14 * s, 3 * s);
+      ctx.fillRect(cx + 5 * s, cy + 8 * s, 14 * s, 3 * s);
+      // Extra glow
+      ctx.globalAlpha = 0.4;
+      ctx.fillStyle = '#cc88ff';
+      ctx.fillRect(cx - 18 * s, cy + 10 * s, 16 * s, 2 * s);
+      ctx.fillRect(cx + 4 * s, cy + 10 * s, 16 * s, 2 * s);
+      ctx.globalAlpha = 1;
+    }
+  },
 };
 
 /**
