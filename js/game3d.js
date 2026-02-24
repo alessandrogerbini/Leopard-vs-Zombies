@@ -41,7 +41,8 @@ import {
 
 import {
   noise2D, smoothNoise, terrainHeight, getBiome, BIOME_COLORS,
-  getChunkKey, createTerrainState, generateChunk as terrainGenerateChunk,
+  getChunkKey, createTerrainState, getNearbyColliders,
+  generateChunk as terrainGenerateChunk,
   unloadChunk as terrainUnloadChunk, updateChunks as terrainUpdateChunks,
 } from './3d/terrain.js';
 
@@ -3352,10 +3353,12 @@ export function launch3DGame(options) {
       st.playerX = Math.max(-MAP_HALF + 1, Math.min(MAP_HALF - 1, st.playerX));
       st.playerZ = Math.max(-MAP_HALF + 1, Math.min(MAP_HALF - 1, st.playerZ));
 
-      // === OBJECT COLLISION (BD-69) ===
-      if (terrainState && terrainState.colliders) {
+      // === OBJECT COLLISION (BD-69, BD-156: chunk-indexed) ===
+      if (terrainState) {
         const PR = 0.5; // player radius
-        for (const c of terrainState.colliders) {
+        const nearby = getNearbyColliders(st.playerX, st.playerZ, terrainState);
+        for (let ci = 0; ci < nearby.length; ci++) {
+          const c = nearby[ci];
           const dx = st.playerX - c.x;
           const dz = st.playerZ - c.z;
           const dist = Math.sqrt(dx * dx + dz * dz);

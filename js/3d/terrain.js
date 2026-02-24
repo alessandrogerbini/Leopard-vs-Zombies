@@ -16,8 +16,8 @@
  * Extracted from game3d.js as Layer 1 of the modular decomposition.
  *
  * Dependencies: Three.js (global), 3d/constants.js (CHUNK_SIZE, MAP_HALF)
- * Exports: 10 — noise2D, smoothNoise, terrainHeight, getBiome, BIOME_COLORS,
- *               getChunkKey, createTerrainState, generateChunk, unloadChunk, updateChunks
+ * Exports: 11 — noise2D, smoothNoise, terrainHeight, getBiome, BIOME_COLORS,
+ *               getChunkKey, createTerrainState, getNearbyColliders, generateChunk, unloadChunk, updateChunks
  */
 
 import { CHUNK_SIZE, MAP_HALF } from './constants.js';
@@ -113,7 +113,7 @@ export function getChunkKey(cx, cz) { return `${cx},${cz}`; }
  * @property {Set.<string>} loadedChunks - Set of chunk keys currently loaded.
  * @property {Object.<string, THREE.Mesh>} chunkMeshes - Map of chunk key to ground mesh.
  * @property {Array.<{meshes: THREE.Mesh[], x: number, z: number}>} decorations - Decoration objects (trees, rocks, logs, mushrooms, stumps).
- * @property {Array.<{x: number, z: number, radius: number}>} colliders - Collision circles for solid objects (trees, rocks).
+ * @property {Object.<string, Array.<{x: number, z: number, radius: number}>>} collidersByChunk - Chunk-indexed collision circles for solid objects (trees, rocks).
  */
 
 /**
@@ -127,8 +127,34 @@ export function createTerrainState() {
     loadedChunks: new Set(),
     chunkMeshes: {},
     decorations: [],
-    colliders: [],    // Array of { x, z, radius } for solid objects (trees, rocks)
+    collidersByChunk: {},  // Chunk key -> array of { x, z, radius } for solid objects
   };
+}
+
+/**
+ * Get colliders from the 9 chunks surrounding (and including) a world position.
+ * This is the chunk-indexed replacement for scanning the entire flat colliders array.
+ * Only checks ~30 colliders (nearby chunks) instead of all ~350 loaded.
+ *
+ * @param {number} wx - World X position to query around.
+ * @param {number} wz - World Z position to query around.
+ * @param {TerrainState} ts - The terrain state with collidersByChunk.
+ * @returns {Array.<{x: number, z: number, radius: number}>} Combined colliders from 9 nearby chunks.
+ */
+export function getNearbyColliders(wx, wz, ts) {
+  const cx = Math.floor(wx / CHUNK_SIZE);
+  const cz = Math.floor(wz / CHUNK_SIZE);
+  const result = [];
+  for (let dx = -1; dx <= 1; dx++) {
+    for (let dz = -1; dz <= 1; dz++) {
+      const key = getChunkKey(cx + dx, cz + dz);
+      const arr = ts.collidersByChunk[key];
+      if (arr) {
+        for (let i = 0; i < arr.length; i++) result.push(arr[i]);
+      }
+    }
+  }
+  return result;
 }
 
 // === DECORATION BUILDERS ===
@@ -503,7 +529,8 @@ export function generateChunk(cx, cz, scene, ts) {
     const h = terrainHeight(dx, dz);
     const meshes = createTree(dx, dz, h, scene);
     ts.decorations.push({ meshes, x: dx, z: dz });
-    ts.colliders.push({ x: dx, z: dz, radius: 1.2 });
+    if (!ts.collidersByChunk[key]) ts.collidersByChunk[key] = [];
+    ts.collidersByChunk[key].push({ x: dx, z: dz, radius: 1.2 });
   }
 
   // Rocks: 0-2 per chunk
@@ -514,7 +541,8 @@ export function generateChunk(cx, cz, scene, ts) {
     const h = terrainHeight(dx, dz);
     const meshes = createRock(dx, dz, h, scene);
     ts.decorations.push({ meshes, x: dx, z: dz });
-    ts.colliders.push({ x: dx, z: dz, radius: 1.0 });
+    if (!ts.collidersByChunk[key]) ts.collidersByChunk[key] = [];
+    ts.collidersByChunk[key].push({ x: dx, z: dz, radius: 1.0 });
   }
 
   // Fallen logs: 0-1 per chunk
@@ -575,12 +603,8 @@ export function unloadChunk(cx, cz, scene, ts) {
       ts.decorations.splice(i, 1);
     }
   }
-  // Remove colliders in this chunk
-  ts.colliders = ts.colliders.filter(c => {
-    const ccx = Math.floor(c.x / CHUNK_SIZE);
-    const ccz = Math.floor(c.z / CHUNK_SIZE);
-    return !(ccx === cx && ccz === cz);
-  });
+  // Remove colliders for this chunk
+  delete ts.collidersByChunk[key];
   ts.loadedChunks.delete(key);
 }
 
