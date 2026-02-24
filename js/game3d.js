@@ -5894,7 +5894,7 @@ export function launch3DGame(options) {
             if (eff.maxHpBonus) { st.maxHp += eff.maxHpBonus; st.hp = Math.min(st.hp + eff.maxHpBonus, st.maxHp); }
             // Set the slot
             st.wearables[slot] = wp.wearableId;
-            st.wearableFlash[slot] = 0.8;
+            st.wearableFlash[slot] = 1.5;
             playSound('sfx_item_pickup');
             updateWearableVisuals(playerModel, st.wearables);
             wp.alive = false;
