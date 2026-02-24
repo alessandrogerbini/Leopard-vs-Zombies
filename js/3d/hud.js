@@ -22,6 +22,8 @@ import {
   CHARGE_SHRINE_TIME,
 } from './constants.js';
 
+const GAME_FONT = '"Fredoka One", "Comic Sans MS", "Arial Rounded MT Bold", sans-serif';
+
 /**
  * Draw the full HUD overlay on the 2D canvas.
  * Renders different elements based on game state:
@@ -87,7 +89,7 @@ export function drawHUD(ctx, s, deps) {
       ctx.lineWidth = 3;
       ctx.strokeRect(18, 18, 224, 34);
     }
-    ctx.fillStyle = '#fff'; ctx.font = 'bold 20px "Courier New"'; ctx.textAlign = 'left';
+    ctx.fillStyle = '#fff'; ctx.font = 'bold 20px ' + GAME_FONT; ctx.textAlign = 'left';
     ctx.fillText(`HP: ${Math.ceil(s.hp)}/${s.maxHp}`, 25, 41);
 
     // --- XP Bar (below HP) ---
@@ -96,13 +98,13 @@ export function drawHUD(ctx, s, deps) {
     ctx.fillStyle = '#44aaff';
     ctx.fillRect(20, 56, 200 * xpRatio, 22);
     ctx.strokeStyle = '#fff'; ctx.strokeRect(20, 56, 200, 22);
-    ctx.fillStyle = '#fff'; ctx.font = 'bold 16px "Courier New"';
+    ctx.fillStyle = '#fff'; ctx.font = 'bold 16px ' + GAME_FONT;
     ctx.fillText(`XP: ${s.xp}/${s.xpToNext}`, 25, 72);
 
     // --- Level + Animal Name ---
-    ctx.fillStyle = '#ffcc00'; ctx.font = 'bold 20px "Courier New"';
+    ctx.fillStyle = '#ffcc00'; ctx.font = 'bold 20px ' + GAME_FONT;
     ctx.fillText(`LVL ${s.level}`, 20, 98);
-    ctx.fillStyle = animalData.color; ctx.font = 'bold 16px "Courier New"';
+    ctx.fillStyle = animalData.color; ctx.font = 'bold 16px ' + GAME_FONT;
     ctx.fillText(animalData.name, 20, 116);
 
     // --- Weapon Slot Bars (left side, below level) ---
@@ -117,7 +119,7 @@ export function drawHUD(ctx, s, deps) {
       ctx.fillStyle = def.color + '88'; ctx.fillRect(20, wy, 160 * (1 - cdRatio), 24);
       ctx.strokeStyle = '#555'; ctx.lineWidth = 1; ctx.strokeRect(20, wy, 160, 24);
       // Name
-      ctx.fillStyle = def.color; ctx.font = 'bold 16px "Courier New"'; ctx.textAlign = 'left';
+      ctx.fillStyle = def.color; ctx.font = 'bold 16px ' + GAME_FONT; ctx.textAlign = 'left';
       ctx.fillText(`${def.name} Lv${w.level}`, 24, wy + 17);
       wy += 28;
     }
@@ -125,27 +127,27 @@ export function drawHUD(ctx, s, deps) {
     for (let wi = s.weapons.length; wi < s.maxWeaponSlots; wi++) {
       ctx.fillStyle = '#1a1a1a'; ctx.fillRect(20, wy, 160, 24);
       ctx.strokeStyle = '#333'; ctx.lineWidth = 1; ctx.strokeRect(20, wy, 160, 24);
-      ctx.fillStyle = '#666'; ctx.font = 'bold 16px "Courier New"'; ctx.textAlign = 'left';
+      ctx.fillStyle = '#666'; ctx.font = 'bold 16px ' + GAME_FONT; ctx.textAlign = 'left';
       ctx.fillText('[EMPTY SLOT]', 24, wy + 17);
       wy += 28;
     }
 
     // --- Wave + Score + Timer (top-right) ---
     ctx.textAlign = 'right';
-    ctx.fillStyle = '#ff6644'; ctx.font = 'bold 22px "Courier New"';
+    ctx.fillStyle = '#ff6644'; ctx.font = 'bold 22px ' + GAME_FONT;
     ctx.fillText(`WAVE ${s.wave}`, W - 20, 35);
     if (s.waveEventTimer !== undefined && s.waveWarning <= 0) {
       const progress = Math.max(0, Math.min(1, 1 - (s.waveEventTimer / (s.waveTimerMax || 90))));
       ctx.fillStyle = 'rgba(255,100,68,0.3)';
       ctx.fillRect(W - 20 - 60, 40, 60 * progress, 3);
     }
-    ctx.fillStyle = '#ffcc00'; ctx.font = 'bold 18px "Courier New"';
+    ctx.fillStyle = '#ffcc00'; ctx.font = 'bold 18px ' + GAME_FONT;
     ctx.fillText(`SCORE: ${s.score}`, W - 20, 55);
     // Timer
     const mins = Math.floor(s.gameTime / 60);
     const secs = Math.floor(s.gameTime % 60);
     const timeStr = `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
-    ctx.fillStyle = '#ffffff'; ctx.font = 'bold 16px "Courier New"';
+    ctx.fillStyle = '#ffffff'; ctx.font = 'bold 16px ' + GAME_FONT;
     ctx.fillText(timeStr, W - 20, 75);
 
     // --- Wave Warning Countdown (top-center, below HP/XP bars) ---
@@ -154,10 +156,10 @@ export function drawHUD(ctx, s, deps) {
       ctx.fillRect(0, 0, W, H);
       ctx.textAlign = 'center';
       ctx.fillStyle = '#ff2222';
-      ctx.font = 'bold 36px "Courier New"';
+      ctx.font = 'bold 36px ' + GAME_FONT;
       ctx.fillText(`WAVE ${s.wave + 1} INCOMING`, W / 2, H * 0.35);
       ctx.fillStyle = '#ffcc00';
-      ctx.font = 'bold 48px "Courier New"';
+      ctx.font = 'bold 48px ' + GAME_FONT;
       ctx.fillText(Math.ceil(s.waveWarning).toString(), W / 2, H * 0.45);
       ctx.textAlign = 'left';
     }
@@ -165,7 +167,7 @@ export function drawHUD(ctx, s, deps) {
     // --- Active Powerup Indicator (top-center) ---
     if (s.activePowerup) {
       const pw = s.activePowerup;
-      ctx.fillStyle = pw.def.color; ctx.font = 'bold 20px "Courier New"';
+      ctx.fillStyle = pw.def.color; ctx.font = 'bold 20px ' + GAME_FONT;
       ctx.textAlign = 'center';
       ctx.fillText(`${pw.def.name} (${Math.ceil(pw.timer)}s)`, W / 2, 40);
       // Timer bar
@@ -222,20 +224,20 @@ export function drawHUD(ctx, s, deps) {
       const totalCount = allEquipped.length;
       // Render (most recent at bottom)
       for (const item of displayItems) {
-        ctx.fillStyle = item.color; ctx.font = 'bold 16px "Courier New"';
+        ctx.fillStyle = item.color; ctx.font = 'bold 16px ' + GAME_FONT;
         ctx.fillText(item.label, 20, iy);
         iy -= 20;
       }
       // Show overflow indicator if more than 5
       if (totalCount > 5) {
-        ctx.fillStyle = '#888888'; ctx.font = '14px "Courier New"';
+        ctx.fillStyle = '#888888'; ctx.font = '14px ' + GAME_FONT;
         ctx.fillText(`+${totalCount - 5} more...`, 20, iy);
         iy -= 20;
       }
     }
     // Shield bracelet cooldown indicator
     if (s.items.bracelet && !s.shieldBraceletReady) {
-      ctx.fillStyle = '#4488ff'; ctx.font = 'bold 16px "Courier New"';
+      ctx.fillStyle = '#4488ff'; ctx.font = 'bold 16px ' + GAME_FONT;
       ctx.fillText(`Shield: ${Math.ceil(s.shieldBraceletTimer)}s`, 20, iy);
       iy -= 20;
     }
@@ -262,10 +264,10 @@ export function drawHUD(ctx, s, deps) {
           ctx.strokeStyle = rarityColor; ctx.lineWidth = 2;
           ctx.strokeRect(sx, sy, slotSize, slotSize);
           // Slot label
-          ctx.fillStyle = '#ffffff'; ctx.font = 'bold 10px "Courier New"'; ctx.textAlign = 'center';
+          ctx.fillStyle = '#ffffff'; ctx.font = 'bold 10px ' + GAME_FONT; ctx.textAlign = 'center';
           ctx.fillText(slotLabels[si], sx + slotSize / 2, sy + 10);
           // Wearable name below slot
-          ctx.fillStyle = rarityColor; ctx.font = '9px "Courier New"';
+          ctx.fillStyle = rarityColor; ctx.font = '9px ' + GAME_FONT;
           ctx.fillText(wData.name, sx + slotSize / 2, sy + slotSize + 10);
           ctx.textAlign = 'left';
         } else {
@@ -274,7 +276,7 @@ export function drawHUD(ctx, s, deps) {
           ctx.fillRect(sx, sy, slotSize, slotSize);
           ctx.strokeStyle = '#555'; ctx.lineWidth = 1;
           ctx.strokeRect(sx, sy, slotSize, slotSize);
-          ctx.fillStyle = '#666'; ctx.font = 'bold 12px "Courier New"'; ctx.textAlign = 'center';
+          ctx.fillStyle = '#666'; ctx.font = 'bold 12px ' + GAME_FONT; ctx.textAlign = 'center';
           ctx.fillText(slotLabels[si], sx + slotSize / 2, sy + slotSize / 2 + 4);
           ctx.textAlign = 'left';
         }
@@ -292,9 +294,9 @@ export function drawHUD(ctx, s, deps) {
         ctx.fillStyle = ft.color; ctx.textAlign = 'center';
         // BD-160: Size hierarchy — important texts are larger and bold
         if (ft.important) {
-          ctx.font = 'bold 20px "Courier New"';
+          ctx.font = 'bold 20px ' + GAME_FONT;
         } else {
-          ctx.font = '14px "Courier New"';
+          ctx.font = '14px ' + GAME_FONT;
         }
         ctx.fillText(ft.text, sx, sy);
         ctx.globalAlpha = 1;
@@ -310,13 +312,13 @@ export function drawHUD(ctx, s, deps) {
       // Howls (powers)
       const howlEntries = Object.entries(s.howls).filter(([, v]) => v > 0);
       if (howlEntries.length > 0) {
-        ctx.fillStyle = '#ffcc00'; ctx.font = 'bold 16px "Courier New"';
+        ctx.fillStyle = '#ffcc00'; ctx.font = 'bold 16px ' + GAME_FONT;
         ctx.fillText('YOUR POWERS:', W - 20, ry);
         ry += 18;
         for (const [tid, count] of howlEntries) {
           const def = HOWL_TYPES[tid];
           const shortName = def.name.replace(' HOWL', '');
-          ctx.fillStyle = def.color; ctx.font = '16px "Courier New"';
+          ctx.fillStyle = def.color; ctx.font = '16px ' + GAME_FONT;
           ctx.fillText(`${shortName} x${count}`, W - 20, ry);
           ry += 18;
         }
@@ -326,13 +328,13 @@ export function drawHUD(ctx, s, deps) {
       // Augments
       const augKeys = Object.keys(s.augments);
       if (augKeys.length > 0) {
-        ctx.fillStyle = '#88ffaa'; ctx.font = 'bold 16px "Courier New"';
+        ctx.fillStyle = '#88ffaa'; ctx.font = 'bold 16px ' + GAME_FONT;
         ctx.fillText('BOOSTS', W - 20, ry);
         ry += 18;
         for (const aKey of augKeys) {
           const aug = SHRINE_AUGMENTS.find(a => a.id === aKey);
           if (aug) {
-            ctx.fillStyle = aug.color; ctx.font = '16px "Courier New"';
+            ctx.fillStyle = aug.color; ctx.font = '16px ' + GAME_FONT;
             ctx.fillText(`${aug.name} x${s.augments[aKey]}`, W - 20, ry);
             ry += 18;
           }
@@ -342,7 +344,7 @@ export function drawHUD(ctx, s, deps) {
 
       // Skulls (totems)
       if (s.totemCount > 0) {
-        ctx.fillStyle = '#ff2222'; ctx.font = 'bold 16px "Courier New"';
+        ctx.fillStyle = '#ff2222'; ctx.font = 'bold 16px ' + GAME_FONT;
         ctx.fillText(`SKULLS: ${s.totemCount}`, W - 20, ry);
       }
 
@@ -358,7 +360,7 @@ export function drawHUD(ctx, s, deps) {
         const sx = (_v.x * 0.5 + 0.5) * W;
         const sy = (-_v.y * 0.5 + 0.5) * H;
         if (_v.z > 0 && _v.z < 1) {
-          ctx.fillStyle = c.ptype.color; ctx.font = 'bold 14px "Courier New"'; ctx.textAlign = 'center';
+          ctx.fillStyle = c.ptype.color; ctx.font = 'bold 14px ' + GAME_FONT; ctx.textAlign = 'center';
           ctx.fillText(c.ptype.name, sx, sy);
         }
       }
@@ -370,7 +372,7 @@ export function drawHUD(ctx, s, deps) {
         const sx = (_v.x * 0.5 + 0.5) * W;
         const sy = (-_v.y * 0.5 + 0.5) * H;
         if (_v.z > 0 && _v.z < 1) {
-          ctx.fillStyle = ip.itype.color; ctx.font = 'bold 14px "Courier New"'; ctx.textAlign = 'center';
+          ctx.fillStyle = ip.itype.color; ctx.font = 'bold 14px ' + GAME_FONT; ctx.textAlign = 'center';
           ctx.fillText(ip.itype.name, sx, sy);
         }
       }
@@ -384,7 +386,7 @@ export function drawHUD(ctx, s, deps) {
           const sy = (-_v.y * 0.5 + 0.5) * H;
           if (_v.z > 0 && _v.z < 1) {
             const rarityColor = (ITEM_RARITIES[wp.wearableData.rarity] || ITEM_RARITIES.common).color;
-            ctx.fillStyle = rarityColor; ctx.font = 'bold 14px "Courier New"'; ctx.textAlign = 'center';
+            ctx.fillStyle = rarityColor; ctx.font = 'bold 14px ' + GAME_FONT; ctx.textAlign = 'center';
             ctx.fillText(wp.wearableData.name, sx, sy);
           }
         }
@@ -397,7 +399,7 @@ export function drawHUD(ctx, s, deps) {
       const audioVolume = deps.audioVolume != null ? deps.audioVolume : 0.3;
       const vx = W - 100, vy = H - 28;
       ctx.fillStyle = audioMuted ? 'rgba(255,68,68,0.7)' : 'rgba(255,255,255,0.7)';
-      ctx.font = 'bold 16px "Courier New"'; ctx.textAlign = 'left';
+      ctx.font = 'bold 16px ' + GAME_FONT; ctx.textAlign = 'left';
       const volPct = Math.round(audioVolume * 100);
       const icon = audioMuted ? 'MUTED' : `VOL ${volPct}%`;
       ctx.fillText(icon, vx, vy);
@@ -428,10 +430,10 @@ export function drawHUD(ctx, s, deps) {
       // Text
       ctx.textAlign = 'center';
       ctx.fillStyle = '#ffffff';
-      ctx.font = 'bold 16px "Courier New"';
+      ctx.font = 'bold 16px ' + GAME_FONT;
       ctx.fillText('CHARGING SHRINE...', W / 2, by - 10);
       ctx.fillStyle = '#cccccc';
-      ctx.font = '14px "Courier New"';
+      ctx.font = '14px ' + GAME_FONT;
       ctx.fillText('STAY IN RANGE', W / 2, by + barH + 16);
       ctx.textAlign = 'left';
     }
@@ -439,7 +441,7 @@ export function drawHUD(ctx, s, deps) {
     // --- Controls Hint (bottom-center, auto-hide after 30s) ---
     if (s.gameTime < 30) {
       ctx.textAlign = 'center';
-      ctx.fillStyle = 'rgba(255,255,255,0.85)'; ctx.font = 'bold 20px "Courier New"';
+      ctx.fillStyle = 'rgba(255,255,255,0.85)'; ctx.font = 'bold 20px ' + GAME_FONT;
       ctx.fillText('WASD Move | SPACE Jump | B Attack', W / 2, H - 10);
     }
 
@@ -703,18 +705,18 @@ export function drawHUD(ctx, s, deps) {
         if (flashOn) {
           const fontSize = 22 + Math.floor(pulse * 4);
           ctx.fillStyle = '#ff2200';
-          ctx.font = `bold ${fontSize}px "Courier New"`;
+          ctx.font = `bold ${fontSize}px ` + GAME_FONT;
           ctx.fillText('READY!', W / 2, by - 10);
         }
       } else {
         ctx.fillStyle = '#ffffff';
-        ctx.font = 'bold 18px "Courier New"';
+        ctx.font = 'bold 18px ' + GAME_FONT;
         ctx.fillText('CHARGING...', W / 2, by - 10);
       }
 
       // Percentage readout below bar
       ctx.fillStyle = '#cccccc';
-      ctx.font = 'bold 14px "Courier New"';
+      ctx.font = 'bold 14px ' + GAME_FONT;
       ctx.fillText(`${Math.floor(ratio * 100)}%`, W / 2, by + barH + 16);
     }
   }
@@ -724,7 +726,7 @@ export function drawHUD(ctx, s, deps) {
     ctx.shadowColor = 'transparent'; ctx.shadowBlur = 0; ctx.shadowOffsetX = 0; ctx.shadowOffsetY = 0;
     ctx.fillStyle = 'rgba(0,0,0,0.65)'; ctx.fillRect(0, 0, W, H);
     ctx.textAlign = 'center';
-    ctx.fillStyle = '#ffffff'; ctx.font = 'bold 40px "Courier New"';
+    ctx.fillStyle = '#ffffff'; ctx.font = 'bold 40px ' + GAME_FONT;
     ctx.fillText('PAUSED', W / 2, H / 2 - 80);
 
     const pauseOpts = ['RESUME', 'RESTART', 'MAIN MENU'];
@@ -745,7 +747,7 @@ export function drawHUD(ctx, s, deps) {
       ctx.fillStyle = isSelected ? '#1a1a2a' : '#111118';
       ctx.fillRect(cx, cardY, cardW, cardH);
 
-      ctx.fillStyle = pauseColors[i]; ctx.font = 'bold 24px "Courier New"';
+      ctx.fillStyle = pauseColors[i]; ctx.font = 'bold 24px ' + GAME_FONT;
       ctx.fillText(pauseOpts[i], cx + cardW / 2, cardY + cardH / 2 + 6);
 
       if (isSelected) {
@@ -760,7 +762,7 @@ export function drawHUD(ctx, s, deps) {
       }
     }
 
-    ctx.fillStyle = '#aaa'; ctx.font = 'bold 18px "Courier New"';
+    ctx.fillStyle = '#aaa'; ctx.font = 'bold 18px ' + GAME_FONT;
     ctx.fillText('<  ARROW KEYS  >', W / 2, cardY + cardH + 25);
   }
 
@@ -769,9 +771,9 @@ export function drawHUD(ctx, s, deps) {
     ctx.shadowColor = 'transparent'; ctx.shadowBlur = 0; ctx.shadowOffsetX = 0; ctx.shadowOffsetY = 0;
     ctx.fillStyle = 'rgba(0,0,0,0.7)'; ctx.fillRect(0, 0, W, H);
     ctx.textAlign = 'center';
-    ctx.fillStyle = '#ffcc00'; ctx.font = 'bold 32px "Courier New"';
+    ctx.fillStyle = '#ffcc00'; ctx.font = 'bold 32px ' + GAME_FONT;
     ctx.fillText('LEVEL UP!', W / 2, 100);
-    ctx.fillStyle = '#ffffff'; ctx.font = '16px "Courier New"';
+    ctx.fillStyle = '#ffffff'; ctx.font = '16px ' + GAME_FONT;
     ctx.fillText('Choose:', W / 2, 130);
 
     const cardW = 200, cardH = 200, gap = 30;
@@ -794,20 +796,20 @@ export function drawHUD(ctx, s, deps) {
       // Category badge
       const badgeColors = { 'NEW!': '#ff8844', 'BETTER!': '#44aaff', 'POWER!': '#aa44ff', 'HEAL': '#44ff44' };
       const badgeColor = badgeColors[u.category] || '#666';
-      ctx.fillStyle = badgeColor; ctx.font = 'bold 16px "Courier New"';
+      ctx.fillStyle = badgeColor; ctx.font = 'bold 16px ' + GAME_FONT;
       // Badge background
       const badgeW = ctx.measureText(u.category).width + 12;
       ctx.fillStyle = badgeColor + 'aa';
       ctx.fillRect(cx + cardW / 2 - badgeW / 2, cardY + 10, badgeW, 20);
-      ctx.fillStyle = badgeColor; ctx.font = 'bold 16px "Courier New"';
+      ctx.fillStyle = badgeColor; ctx.font = 'bold 16px ' + GAME_FONT;
       ctx.fillText(u.category, cx + cardW / 2, cardY + 25);
 
       // Name
-      ctx.fillStyle = u.color; ctx.font = 'bold 16px "Courier New"';
+      ctx.fillStyle = u.color; ctx.font = 'bold 16px ' + GAME_FONT;
       ctx.fillText(u.name, cx + cardW / 2, cardY + 65);
 
       // Description
-      ctx.fillStyle = '#cccccc'; ctx.font = '16px "Courier New"';
+      ctx.fillStyle = '#cccccc'; ctx.font = '16px ' + GAME_FONT;
       // Word wrap description
       const words = u.desc.split(' ');
       let line = '', lineY = cardY + 100;
@@ -835,21 +837,21 @@ export function drawHUD(ctx, s, deps) {
       }
     }
 
-    ctx.fillStyle = '#666'; ctx.font = '14px "Courier New"';
+    ctx.fillStyle = '#666'; ctx.font = '14px ' + GAME_FONT;
     ctx.fillText('<  ARROW KEYS  >', W / 2, cardY + cardH + 25);
     {
       const alpha = 0.6 + 0.4 * Math.sin(Date.now() * 0.005);
       ctx.globalAlpha = alpha;
-      ctx.fillStyle = '#ffcc00'; ctx.font = 'bold 22px "Courier New"';
+      ctx.fillStyle = '#ffcc00'; ctx.font = 'bold 22px ' + GAME_FONT;
       ctx.fillText('PRESS ENTER TO SELECT', W / 2, cardY + cardH + 55);
       ctx.globalAlpha = 1;
     }
     // Reroll indicator
     if (s.rerolls > 0) {
-      ctx.fillStyle = '#88ccff'; ctx.font = 'bold 18px "Courier New"';
+      ctx.fillStyle = '#88ccff'; ctx.font = 'bold 18px ' + GAME_FONT;
       ctx.fillText(`Press R for NEW CHOICES! (${s.rerolls} left)`, W / 2, cardY + cardH + 80);
     } else {
-      ctx.fillStyle = '#444'; ctx.font = '14px "Courier New"';
+      ctx.fillStyle = '#444'; ctx.font = '14px ' + GAME_FONT;
       ctx.fillText('No new choices left', W / 2, cardY + cardH + 80);
     }
   }
@@ -866,11 +868,11 @@ export function drawHUD(ctx, s, deps) {
     const csRarity = s.chargeShrineCurrent ? s.chargeShrineCurrent.rarity : 'common';
     const rarColor = rarityMenuColors[csRarity] || '#ffffff';
 
-    ctx.fillStyle = rarColor; ctx.font = 'bold 32px "Courier New"';
+    ctx.fillStyle = rarColor; ctx.font = 'bold 32px ' + GAME_FONT;
     ctx.fillText('SHRINE ACTIVATED', W / 2, 100);
-    ctx.fillStyle = rarColor; ctx.font = 'bold 18px "Courier New"';
+    ctx.fillStyle = rarColor; ctx.font = 'bold 18px ' + GAME_FONT;
     ctx.fillText(`${rarityNames[csRarity] || 'SMALL'} SHRINE`, W / 2, 130);
-    ctx.fillStyle = '#ffffff'; ctx.font = '16px "Courier New"';
+    ctx.fillStyle = '#ffffff'; ctx.font = '16px ' + GAME_FONT;
     ctx.fillText('Choose an upgrade:', W / 2, 155);
 
     const csCardW = 180, csCardH = 120, csGap = 25;
@@ -891,7 +893,7 @@ export function drawHUD(ctx, s, deps) {
       ctx.fillRect(cx, csCardY, csCardW, csCardH);
 
       // Upgrade name
-      ctx.fillStyle = u.color; ctx.font = 'bold 16px "Courier New"';
+      ctx.fillStyle = u.color; ctx.font = 'bold 16px ' + GAME_FONT;
       ctx.fillText(u.name, cx + csCardW / 2, csCardY + csCardH / 2 + 6);
 
       // Selection arrow
@@ -907,12 +909,12 @@ export function drawHUD(ctx, s, deps) {
       }
     }
 
-    ctx.fillStyle = '#666'; ctx.font = '14px "Courier New"';
+    ctx.fillStyle = '#666'; ctx.font = '14px ' + GAME_FONT;
     ctx.fillText('<  ARROW KEYS  >', W / 2, csCardY + csCardH + 25);
     {
       const alpha = 0.6 + 0.4 * Math.sin(Date.now() * 0.005);
       ctx.globalAlpha = alpha;
-      ctx.fillStyle = '#ffcc00'; ctx.font = 'bold 22px "Courier New"';
+      ctx.fillStyle = '#ffcc00'; ctx.font = 'bold 22px ' + GAME_FONT;
       ctx.fillText('PRESS ENTER TO SELECT', W / 2, csCardY + csCardH + 55);
       ctx.globalAlpha = 1;
     }
@@ -926,23 +928,23 @@ export function drawHUD(ctx, s, deps) {
     ctx.textAlign = 'center';
 
     // "GAME OVER" title
-    ctx.fillStyle = '#ff4444'; ctx.font = 'bold 48px "Courier New"';
+    ctx.fillStyle = '#ff4444'; ctx.font = 'bold 48px ' + GAME_FONT;
     ctx.fillText('GAME OVER', W / 2, 55);
 
     // --- Stats Panel ---
-    ctx.fillStyle = '#ffcc00'; ctx.font = 'bold 24px "Courier New"';
+    ctx.fillStyle = '#ffcc00'; ctx.font = 'bold 24px ' + GAME_FONT;
     ctx.fillText(`SCORE: ${s.score}`, W / 2, 95);
-    ctx.fillStyle = '#ffffff'; ctx.font = 'bold 14px "Courier New"';
+    ctx.fillStyle = '#ffffff'; ctx.font = 'bold 14px ' + GAME_FONT;
     ctx.fillText(`${animalData.name} | Level ${s.level} | Wave ${s.wave - 1}`, W / 2, 118);
 
     // Time survived
     const goMins = Math.floor(s.gameTime / 60);
     const goSecs = Math.floor(s.gameTime % 60);
-    ctx.fillStyle = '#88ccff'; ctx.font = 'bold 14px "Courier New"';
+    ctx.fillStyle = '#88ccff'; ctx.font = 'bold 14px ' + GAME_FONT;
     ctx.fillText(`Time: ${String(goMins).padStart(2, '0')}:${String(goSecs).padStart(2, '0')}`, W / 2, 138);
 
     // --- Big total kills line ---
-    ctx.fillStyle = '#ffcc44'; ctx.font = 'bold 28px "Courier New"';
+    ctx.fillStyle = '#ffcc44'; ctx.font = 'bold 28px ' + GAME_FONT;
     ctx.fillText(`YOU DEFEATED ${s.totalKills} ZOMBIES!`, W / 2, 175);
 
     // Kid-friendly tier breakdown (max 4 groups)
@@ -959,7 +961,7 @@ export function drawHUD(ctx, s, deps) {
         count += s.killsByTier[t] || 0;
       }
       if (count > 0) {
-        ctx.fillStyle = '#ffaa44'; ctx.font = 'bold 16px "Courier New"';
+        ctx.fillStyle = '#ffaa44'; ctx.font = 'bold 16px ' + GAME_FONT;
         ctx.fillText(`${grp.label}: ${count}`, W / 2, tierY);
         tierY += 22;
       }
@@ -967,14 +969,14 @@ export function drawHUD(ctx, s, deps) {
 
     // Best combo (only show if noteworthy)
     if (s.bestCombo >= 5) {
-      ctx.fillStyle = '#ffaa00'; ctx.font = 'bold 13px "Courier New"';
+      ctx.fillStyle = '#ffaa00'; ctx.font = 'bold 13px ' + GAME_FONT;
       ctx.fillText(`Best Combo: x${s.bestCombo}`, W / 2, tierY);
       tierY += 18;
     }
 
     // --- Feedback Section ---
     const feedbackY = tierY + 8;
-    ctx.fillStyle = '#aaaacc'; ctx.font = 'bold 20px "Courier New"';
+    ctx.fillStyle = '#aaaacc'; ctx.font = 'bold 20px ' + GAME_FONT;
     ctx.fillText('Was that FUN?', W / 2, feedbackY);
 
     const fbOptions = ['YES', 'KINDA', 'NAH'];
@@ -985,14 +987,14 @@ export function drawHUD(ctx, s, deps) {
       const fx = fbStartX + fi * fbGap;
       const isSelected = fi === s.feedbackSelection;
       if (isSelected) {
-        ctx.fillStyle = fbColors[fi]; ctx.font = 'bold 18px "Courier New"';
+        ctx.fillStyle = fbColors[fi]; ctx.font = 'bold 18px ' + GAME_FONT;
         ctx.fillText(`[${fbOptions[fi]}]`, fx, feedbackY + 26);
       } else {
-        ctx.fillStyle = '#555'; ctx.font = 'bold 16px "Courier New"';
+        ctx.fillStyle = '#555'; ctx.font = 'bold 16px ' + GAME_FONT;
         ctx.fillText(fbOptions[fi], fx, feedbackY + 26);
       }
     }
-    ctx.fillStyle = '#777'; ctx.font = 'bold 14px "Courier New"';
+    ctx.fillStyle = '#777'; ctx.font = 'bold 14px ' + GAME_FONT;
     ctx.fillText('<  Arrow Keys to pick  >', W / 2, feedbackY + 48);
 
     // --- Name Entry / Leaderboard (below feedback) ---
@@ -1000,22 +1002,22 @@ export function drawHUD(ctx, s, deps) {
 
     if (s.nameEntryActive) {
       // Name entry
-      ctx.fillStyle = '#88ccff'; ctx.font = 'bold 16px "Courier New"';
+      ctx.fillStyle = '#88ccff'; ctx.font = 'bold 16px ' + GAME_FONT;
       ctx.fillText('ENTER YOUR NAME:', W / 2, entryY);
       ctx.fillStyle = '#222'; ctx.fillRect(W / 2 - 110, entryY + 8, 220, 32);
       ctx.strokeStyle = '#88ccff'; ctx.lineWidth = 2; ctx.strokeRect(W / 2 - 110, entryY + 8, 220, 32);
-      ctx.fillStyle = '#ffffff'; ctx.font = 'bold 20px "Courier New"';
+      ctx.fillStyle = '#ffffff'; ctx.font = 'bold 20px ' + GAME_FONT;
       const cursor = Math.sin(Date.now() * 0.005) > 0 ? '_' : '';
       ctx.fillText(s.nameEntry + cursor, W / 2, entryY + 30);
-      ctx.fillStyle = '#888'; ctx.font = 'bold 14px "Courier New"';
+      ctx.fillStyle = '#888'; ctx.font = 'bold 14px ' + GAME_FONT;
       ctx.fillText('Type name, then ENTER to save', W / 2, entryY + 55);
     } else {
       // Leaderboard (simplified: 3 columns, top 5)
-      ctx.fillStyle = '#ffcc00'; ctx.font = 'bold 18px "Courier New"';
+      ctx.fillStyle = '#ffcc00'; ctx.font = 'bold 18px ' + GAME_FONT;
       ctx.fillText('LEADERBOARD', W / 2, entryY);
       const lb = s.leaderboard3d;
       if (lb.length > 0) {
-        ctx.font = 'bold 16px "Courier New"';
+        ctx.font = 'bold 16px ' + GAME_FONT;
         ctx.fillStyle = '#aaa';
         ctx.fillText('RANK     NAME        SCORE', W / 2, entryY + 22);
         const rankColors = ['#ffd700', '#c0c0c0', '#cd7f32', '#888888', '#888888'];
@@ -1025,16 +1027,16 @@ export function drawHUD(ctx, s, deps) {
           const name = (e.name || '???').padEnd(10);
           const score = String(e.score).padStart(6);
           ctx.fillStyle = rankColors[i] || '#888888';
-          ctx.font = 'bold 18px "Courier New"';
+          ctx.font = 'bold 18px ' + GAME_FONT;
           ctx.fillText(`${rank}.  ${name}  ${score}`, W / 2, entryY + 44 + i * 24);
         }
       } else {
-        ctx.fillStyle = '#888'; ctx.font = 'bold 14px "Courier New"';
+        ctx.fillStyle = '#888'; ctx.font = 'bold 14px ' + GAME_FONT;
         ctx.fillText('No scores yet', W / 2, entryY + 34);
       }
 
       if (Math.sin(Date.now() * 0.005) > 0) {
-        ctx.fillStyle = '#ffcc00'; ctx.font = 'bold 18px "Courier New"';
+        ctx.fillStyle = '#ffcc00'; ctx.font = 'bold 18px ' + GAME_FONT;
         ctx.fillText('PRESS ENTER TO RETURN', W / 2, H - 30);
       }
     }
