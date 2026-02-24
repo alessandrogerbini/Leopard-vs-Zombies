@@ -2413,20 +2413,65 @@ export function launch3DGame(options) {
    *
    * @param {Enemy} e - The enemy to damage.
    * @param {number} dmg - Base damage to apply (may be doubled by crit).
+   * @param {Object} [opts] - Optional settings.
+   * @param {boolean} [opts.skipProcs=false] - If true, skip Gloves crit and Hot Sauce ignite.
    */
-  function damageEnemy(e, dmg) {
-    if (st.items.gloves && Math.random() < 0.15) dmg *= 2;
+  function damageEnemy(e, dmg, opts) {
+    if (!opts || !opts.skipProcs) {
+      if (st.items.gloves && Math.random() < 0.15) dmg *= 2;
+    }
     e.hp -= dmg;
     e.hurtTimer = 0.15;
-    // Hot Sauce: 15% chance to ignite enemies (DoT: 3 damage/s for 3s)
-    if (st.items.hotSauce > 0 && !e.ignited && Math.random() < 0.15) {
-      e.ignited = true;
-      e.igniteTimer = 3;
-      e.igniteDps = 3 * st.items.hotSauce; // scales with stacks
+    if (!opts || !opts.skipProcs) {
+      // Hot Sauce: 15% chance to ignite enemies (DoT: 3 damage/s for 3s)
+      if (st.items.hotSauce > 0 && !e.ignited && Math.random() < 0.15) {
+        e.ignited = true;
+        e.igniteTimer = 3;
+        e.igniteDps = 3 * st.items.hotSauce; // scales with stacks
+      }
     }
     if (e.hp <= 0 && e.alive) killEnemy(e);
   }
 
+  /**
+   * Apply damage to the player with all defensive checks.
+   * Handles: invincibility, dodge (Turbo Sneakers), Shield Bracelet,
+   * armor reduction, augment armor, and Berserker Rage vulnerability.
+   * Returns the final damage dealt (for thorns/reflect calculations).
+   *
+   * @param {number} baseDmg - Raw incoming damage before reductions.
+   * @returns {number} The final damage dealt after all reductions (0 if dodged/blocked/invincible).
+   */
+  function damagePlayer(baseDmg, color) {
+    if (st.invincible > 0 || st.ghostForm) return 0;
+    // Turbo Sneakers: dodge chance
+    if (st.dodgeChance > 0 && Math.random() < st.dodgeChance) {
+      addFloatingText('DODGE!', '#00ffaa', st.playerX, st.playerY + 2, st.playerZ, 0.8);
+      st.invincible = 0.2;
+      return 0;
+    }
+    let dmg = baseDmg;
+    // Armor reduction
+    if (st.items.armor === 'leather') dmg *= 0.75;
+    else if (st.items.armor === 'chainmail') dmg *= 0.6;
+    // Augment armor reduction
+    dmg *= (1 - st.augmentArmor);
+    // Berserker Rage: +25% damage taken
+    if (st.berserkVulnerable) dmg *= 1.25;
+    // Shield Bracelet: absorb one hit every 30s
+    if (st.items.bracelet && st.shieldBraceletReady) {
+      dmg = 0;
+      st.shieldBraceletReady = false;
+      st.shieldBraceletTimer = 30;
+      addFloatingText('BLOCKED!', '#4488ff', st.playerX, st.playerY + 2, st.playerZ, 1.5);
+    }
+    dmg = Math.max(1, dmg);
+    st.hp -= dmg;
+    if (st.hp < 0) st.hp = 0;
+    st.invincible = 0.2;
+    addFloatingText('-' + Math.round(dmg), color || '#ff2200', st.playerX, st.playerY + 2, st.playerZ, 0.5);
+    return dmg;
+  }
   /**
    * Fire a weapon, creating appropriate visuals and dealing damage.
    * Each weapon type has a unique attack pattern:
@@ -2856,13 +2901,7 @@ export function launch3DGame(options) {
         const dbdx = st.playerX - p.x;
         const dbdz = st.playerZ - p.z;
         if (dbdx * dbdx + dbdz * dbdz < p.range * p.range) {
-          let boltDmg = p.damage * (1 - (st.augmentArmor || 0));
-          if (st.items.armor === 'leather') boltDmg *= 0.75;
-          else if (st.items.armor === 'chainmail') boltDmg *= 0.6;
-          boltDmg = Math.max(1, boltDmg);
-          st.hp -= boltDmg;
-          if (st.hp < 0) st.hp = 0;
-          addFloatingText('-' + Math.round(boltDmg), '#ff0044', st.playerX, st.playerY + 2, st.playerZ, 0.5);
+          damagePlayer(p.damage, '#ff0044');
           disposeSceneObject(p.mesh);
           st.weaponProjectiles.splice(i, 1);
           playSound('sfx_explosion');
@@ -3175,30 +3214,7 @@ export function launch3DGame(options) {
   // ==========================================================================
 
   /** Apply damage to the player with armor/augment reduction and floating text. */
-  function damagePlayer(baseDmg, color) {
-    if (st.invincible > 0) return;
-    // Dodge check (Turbo Sneakers)
-    if (st.dodgeChance > 0 && Math.random() < st.dodgeChance) {
-      st.floatingTexts3d.push({ text: 'DODGE!', color: '#00ffaa', x: st.playerX, y: st.playerY + 2, z: st.playerZ, life: 0.8 });
-      st.invincible = 0.2;
-      return;
-    }
-    let dmg = baseDmg * (1 - (st.augmentArmor || 0));
-    if (st.items.armor === 'leather') dmg *= 0.75;
-    else if (st.items.armor === 'chainmail') dmg *= 0.6;
-    if (st.berserkVulnerable) dmg *= 1.25;
-    // Shield Bracelet
-    if (st.items.bracelet && st.shieldBraceletReady) {
-      dmg = 0;
-      st.shieldBraceletReady = false;
-      st.shieldBraceletTimer = 30;
-      st.floatingTexts3d.push({ text: 'BLOCKED!', color: '#4488ff', x: st.playerX, y: st.playerY + 2, z: st.playerZ, life: 1.5 });
-    }
-    dmg = Math.max(1, dmg);
-    st.hp -= dmg;
-    if (st.hp < 0) st.hp = 0;
-    st.floatingTexts3d.push({ text: '-' + Math.round(dmg), color: color || '#ff2200', x: st.playerX, y: st.playerY + 2, z: st.playerZ, life: 1 });
-  }
+  // damagePlayer() consolidated at line ~2445 (BD-155)
 
   /** Remove a telegraph mesh from the scene and dispose its resources. */
   function disposeTelegraph(e) {
@@ -4252,8 +4268,7 @@ export function launch3DGame(options) {
           const dx = st.playerX - e.group.position.x;
           const dz = st.playerZ - e.group.position.z;
           if (dx * dx + dz * dz < 9) { // range 3
-            e.hp -= 20 * dt;
-            e.hurtTimer = 0.1;
+            damageEnemy(e, 20 * dt, { skipProcs: true });
           }
         }
       }
@@ -4358,8 +4373,7 @@ export function launch3DGame(options) {
             const dx = st.playerX - e.group.position.x;
             const dz = st.playerZ - e.group.position.z;
             if (dx * dx + dz * dz < 25) { // range 5
-              e.hp -= stompDmg;
-              e.hurtTimer = 0.15;
+              damageEnemy(e, stompDmg);
             }
           }
           // Visual: expanding ring of brown particles
@@ -4408,8 +4422,7 @@ export function launch3DGame(options) {
             }
           }
           if (nearest) {
-            nearest.hp -= 10 * st.dmgBoost;
-            nearest.hurtTimer = 0.15;
+            damageEnemy(nearest, 10 * st.dmgBoost);
             // Lightning bolt visual (line of particles from player to enemy)
             const ex = nearest.group.position.x, ez = nearest.group.position.z;
             const ey = nearest.group.position.y + 0.5;
@@ -4501,8 +4514,7 @@ export function launch3DGame(options) {
               const dx = cloneData.group.position.x - e.group.position.x;
               const dz = cloneData.group.position.z - e.group.position.z;
               if (dx * dx + dz * dz < 9) { // range 3
-                e.hp -= st.attackDamage * st.dmgBoost * 0.5;
-                e.hurtTimer = 0.1;
+                damageEnemy(e, st.attackDamage * st.dmgBoost * 0.5);
                 break; // one target per attack
               }
             }
@@ -4551,8 +4563,7 @@ export function launch3DGame(options) {
             const dx = b.x - e.group.position.x;
             const dz = b.z - e.group.position.z;
             if (dx * dx + dz * dz < 9) {
-              e.hp -= st.attackDamage * st.dmgBoost;
-              e.hurtTimer = 0.15;
+              damageEnemy(e, st.attackDamage * st.dmgBoost);
             }
           }
           // Explosion particles
@@ -4710,9 +4721,7 @@ export function launch3DGame(options) {
           if (e._stinkPoisonTimer <= 0) {
             e._stinkPoisoned = false;
           } else {
-            e.hp -= e._stinkPoisonDmg * dt;
-            e.hurtTimer = 0.1;
-            if (e.hp <= 0 && e.alive) killEnemy(e);
+            damageEnemy(e, e._stinkPoisonDmg * dt, { skipProcs: true });
             if (!e.alive) continue;
           }
         }
@@ -4803,13 +4812,7 @@ export function launch3DGame(options) {
                 const sdz = st.playerZ - e.group.position.z;
                 const distSq = sdx * sdx + sdz * sdz;
                 if (distSq < 64) { // 8^2 = 64
-                  let shockDmg = 20 * (1 - (st.augmentArmor || 0));
-                  if (st.items.armor === 'leather') shockDmg *= 0.75;
-                  else if (st.items.armor === 'chainmail') shockDmg *= 0.6;
-                  shockDmg = Math.max(1, shockDmg);
-                  st.hp -= shockDmg;
-                  if (st.hp < 0) st.hp = 0;
-                  addFloatingText('-' + Math.round(shockDmg), '#ff2200', st.playerX, st.playerY + 2, st.playerZ, 0.5);
+                  damagePlayer(20, '#ff2200');
                 }
                 playSound('sfx_explosion');
               }
@@ -4971,34 +4974,16 @@ export function launch3DGame(options) {
         if (e.dying) continue; // Skip dying enemies for contact damage
         const dy = Math.abs(st.playerY - e.group.position.y);
         const tierData = ZOMBIE_TIERS[(e.tier || 1) - 1];
-        if (dist < 1.0 * (tierData.scale || 1) && dy < 1.5 && st.invincible <= 0) {
-          // Turbo Sneakers: 10% dodge chance
-          if (st.dodgeChance > 0 && Math.random() < st.dodgeChance) {
-            addFloatingText('DODGE!', '#00ffaa', st.playerX, st.playerY + 2, st.playerZ, 0.8);
-            st.invincible = 0.2;
-          } else {
-            let dmg = 15 * tierData.dmgMult * st.zombieDmgMult * (e.bossDmgMult || 1) * dt;
-            if (st.items.armor === 'leather') dmg *= 0.75;
-            else if (st.items.armor === 'chainmail') dmg *= 0.6;
-            dmg *= (1 - st.augmentArmor);
-            if (st.berserkVulnerable) dmg *= 1.25; // Berserker Rage: +25% damage taken
-            // Shield Bracelet: absorb one hit every 30s
-            if (st.items.bracelet && st.shieldBraceletReady) {
-              dmg = 0;
-              st.shieldBraceletReady = false;
-              st.shieldBraceletTimer = 30;
-              addFloatingText('BLOCKED!', '#4488ff', st.playerX, st.playerY + 2, st.playerZ, 1.5);
-            }
-            st.hp -= dmg;
+        if (dist < 1.0 * (tierData.scale || 1) && dy < 1.5) {
+          const baseDmg = 15 * tierData.dmgMult * st.zombieDmgMult * (e.bossDmgMult || 1);
+          const dealt = damagePlayer(baseDmg);
+          if (dealt > 0) {
             // Thorned Vest: reflect 20% damage back
-            if (st.items.vest && dmg > 0) { e.hp -= dmg * 0.2; e.hurtTimer = 0.1; }
+            if (st.items.vest) damageEnemy(e, dealt * 0.2, { skipProcs: true });
             // Thorns Howl: reflect 10% contact damage per stack
-            if (st.howls.thorns > 0 && dmg > 0) {
-              const thornsDmg = dmg * 0.10 * st.howls.thorns;
-              e.hp -= thornsDmg;
-              e.hurtTimer = 0.1;
+            if (st.howls.thorns > 0) {
+              damageEnemy(e, dealt * 0.10 * st.howls.thorns, { skipProcs: true });
             }
-            st.invincible = 0.2;
           }
         }
         // Hurt flash (white flash like 2D)
@@ -5016,14 +5001,13 @@ export function launch3DGame(options) {
         // Hot Sauce ignite DoT: 3 damage/s per stack for 3s
         if (e.ignited) {
           e.igniteTimer -= dt;
-          e.hp -= e.igniteDps * dt;
+          damageEnemy(e, e.igniteDps * dt, { skipProcs: true });
           // Orange tint while burning
           if (e.body) e.body.material.color.setHex(0xff6600);
           if (e.igniteTimer <= 0) {
             e.ignited = false;
             if (e.body) e.body.material.color.setHex(e.bodyColor);
           }
-          if (e.hp <= 0 && e.alive) killEnemy(e);
         }
         // Kill enemies that fall too far behind
         if (dist > 60) { disposeEnemy(e); }
@@ -5144,8 +5128,7 @@ export function launch3DGame(options) {
         let range = st.attackRange * (1 + st.chargeTime * 0.5);
         if (st.items.boots === 'cowboyBoots') range *= 1.2;
         const py = st.playerY + 0.8;
-        let dmg = st.attackDamage * getPlayerDmgMult() * chargeMult;
-        if (st.items.gloves && Math.random() < 0.15) dmg *= 2;
+        const dmg = st.attackDamage * getPlayerDmgMult() * chargeMult;
 
         // Hit all enemies in range (AoE power attack)
         const rangeSqPA = range * range;
@@ -5154,10 +5137,8 @@ export function launch3DGame(options) {
           const dx = st.playerX - e.group.position.x;
           const dz = st.playerZ - e.group.position.z;
           if (dx * dx + dz * dz < rangeSqPA) {
-            e.hp -= dmg;
-            e.hurtTimer = 0.2;
+            damageEnemy(e, dmg);
             st.attackLines.push(createAttackLine(st.playerX, py, st.playerZ, e.group.position.x, e.group.position.y + 0.8, e.group.position.z));
-            if (e.hp <= 0 && e.alive) killEnemy(e);
           }
         }
         // Flash effect
@@ -5213,10 +5194,8 @@ export function launch3DGame(options) {
           const dx = p.mesh.position.x - e.group.position.x;
           const dz = p.mesh.position.z - e.group.position.z;
           if (dx * dx + dz * dz < 1) {
-            e.hp -= st.attackDamage * st.dmgBoost * 0.8;
-            e.hurtTimer = 0.15;
+            damageEnemy(e, st.attackDamage * st.dmgBoost * 0.8);
             p.hitEnemies.add(e);
-            if (e.hp <= 0 && e.alive) killEnemy(e);
           }
         }
       }
