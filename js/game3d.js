@@ -588,7 +588,8 @@ export function launch3DGame(options) {
    */
   function onKeyDown(e) {
     keys3d[e.code] = true;
-    e.preventDefault();
+    // BD-213: Only preventDefault for gameplay keys, not during name entry
+    if (!(st.gameOver && st.nameEntryActive)) e.preventDefault();
 
     // BD-86: Track whether Enter/Space is a fresh press (not a key-repeat).
     // Menus require a fresh press to confirm — this prevents held-Enter from
@@ -600,19 +601,20 @@ export function launch3DGame(options) {
 
     if (st.gameOver && !st.upgradeMenu && st.enterReleasedSinceGameOver) {
       if (st.nameEntryActive) {
-        // BD-107: Block input during cooldown to prevent WASD leaking into name
+        // BD-213: Name entry — accept ALL printable keys, block gameplay processing
         if (st.nameEntryInputCooldown > 0) return;
-        // BD-107: Block movement/action keys from being captured as name characters
-        const BLOCKED_NAME_KEYS = new Set(['w','a','s','d','b','r','e',' ']);
-        // Name entry text input
         if (e.key === 'Backspace') {
           st.nameEntry = st.nameEntry.slice(0, -1);
+          e.preventDefault();
         } else if (e.key === 'Enter' && st.nameEntry.length > 0) {
           saveScore3d();
           st.nameEntryActive = false;
-        } else if (e.key.length === 1 && st.nameEntry.length < 10 && !BLOCKED_NAME_KEYS.has(e.key.toLowerCase())) {
+          e.preventDefault();
+        } else if (e.key.length === 1 && st.nameEntry.length < 10) {
           st.nameEntry += e.key.toUpperCase();
+          e.preventDefault();
         }
+        return; // Block ALL gameplay key processing during name entry
       } else {
         // Feedback "Would you play again?" navigation (arrow keys cycle Y/M/N)
         if (e.code === 'ArrowLeft' || e.code === 'KeyA') {
