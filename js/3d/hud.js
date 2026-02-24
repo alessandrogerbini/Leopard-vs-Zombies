@@ -881,6 +881,13 @@ export function drawHUD(ctx, s, deps) {
       tierY += 4;
     }
 
+    // Best combo (only show if noteworthy)
+    if (s.bestCombo >= 5) {
+      ctx.fillStyle = '#ffaa00'; ctx.font = 'bold 13px "Courier New"';
+      ctx.fillText(`Best Combo: x${s.bestCombo}`, W / 2, tierY);
+      tierY += 18;
+    }
+
     // --- Feedback Section ---
     const feedbackY = tierY + 2;
     ctx.fillStyle = '#aaaacc'; ctx.font = 'bold 13px "Courier New"';

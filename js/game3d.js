@@ -406,6 +406,10 @@ export function launch3DGame(options) {
     // Kill tracking
     killsByTier: new Array(10).fill(0),
     totalKills: 0,
+    // Kill combo tracking
+    comboCount: 0,
+    comboTimer: 0,
+    bestCombo: 0,
     // Game timer
     gameTime: 0,
     // Randomized weapon/howl pools (6 of 10 each per run)
@@ -2271,6 +2275,16 @@ export function launch3DGame(options) {
     }
     st.totalKills++;
     st.killsByTier[(e.tier || 1) - 1]++;
+    // Kill combo tracking
+    st.comboCount++;
+    st.comboTimer = 2.0; // 2-second window to chain kills
+    if (st.comboCount > st.bestCombo) st.bestCombo = st.comboCount;
+    // Announce combo milestones at every 5 kills
+    if (st.comboCount >= 5 && st.comboCount % 5 === 0) {
+      const comboColor = st.comboCount >= 20 ? '#ff00ff' : st.comboCount >= 10 ? '#ffaa00' : '#ff4444';
+      st.floatingTexts3d.push({ text: 'x' + st.comboCount + ' COMBO!', color: comboColor, x: st.playerX, y: st.playerY + 3, z: st.playerZ, life: 1.5, important: true });
+      playSound('sfx_level_up');
+    }
     // Silly Straw: heal 1 HP per 10 kills
     if (st.items.sillyStraw > 0) {
       st.sillyStrawKills++;
@@ -3713,6 +3727,14 @@ export function launch3DGame(options) {
       if (st.nameEntryInputCooldown > 0) st.nameEntryInputCooldown -= dt;
       // BD-126: Attack lunge animation timer
       if (st.attackAnimTimer > 0) st.attackAnimTimer -= dt;
+
+      // Combo decay
+      if (st.comboTimer > 0) {
+        st.comboTimer -= dt;
+        if (st.comboTimer <= 0) {
+          st.comboCount = 0;
+        }
+      }
 
       // === ACTIVE POWERUP TIMER ===
       if (st.activePowerup) {
