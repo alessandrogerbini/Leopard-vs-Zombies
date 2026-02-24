@@ -754,6 +754,146 @@ export function drawHUD(ctx, s, deps) {
     ctx.textAlign = 'left';
   }
 
+  // --- BD-199: Wearable Comparison Menu ---
+  if (s.wearableCompare && !s.gameOver) {
+    ctx.shadowColor = 'transparent'; ctx.shadowBlur = 0; ctx.shadowOffsetX = 0; ctx.shadowOffsetY = 0;
+    ctx.fillStyle = 'rgba(0,0,0,0.7)'; ctx.fillRect(0, 0, W, H);
+    ctx.textAlign = 'center';
+
+    // Title
+    ctx.fillStyle = '#ffffff'; ctx.font = 'bold 32px "Courier New"';
+    ctx.fillText('REPLACE EQUIPMENT?', W / 2, H / 2 - 130);
+
+    // Look up current and new item data from ITEMS_3D
+    const wc = s.wearableCompare;
+    const currentItem = ITEMS_3D.find(it => it.id === wc.currentId);
+    const newItem = wc.newPickup.itype;
+    const currentRarity = currentItem ? (ITEM_RARITIES[currentItem.rarity] || ITEM_RARITIES.common) : ITEM_RARITIES.common;
+    const newRarity = ITEM_RARITIES[newItem.rarity] || ITEM_RARITIES.common;
+
+    // Card dimensions
+    const wcCardW = 200, wcCardH = 140, wcGap = 60;
+    const wcTotalW = 2 * wcCardW + wcGap;
+    const wcStartX = (W - wcTotalW) / 2;
+    const wcCardY = H / 2 - 90;
+
+    // --- Left card: CURRENT ITEM ---
+    const leftX = wcStartX;
+    const leftSelected = wc.choice === 0;
+    if (leftSelected) {
+      ctx.fillStyle = '#44ff44';
+      ctx.fillRect(leftX - 3, wcCardY - 3, wcCardW + 6, wcCardH + 6);
+    }
+    ctx.fillStyle = leftSelected ? '#1a1a2a' : '#111118';
+    ctx.fillRect(leftX, wcCardY, wcCardW, wcCardH);
+
+    // "CURRENT" label
+    ctx.fillStyle = '#888'; ctx.font = 'bold 12px "Courier New"';
+    ctx.fillText('CURRENT', leftX + wcCardW / 2, wcCardY + 18);
+
+    // Item name
+    ctx.fillStyle = currentItem ? currentRarity.color : '#aaa'; ctx.font = 'bold 16px "Courier New"';
+    ctx.fillText(currentItem ? currentItem.name : 'UNKNOWN', leftX + wcCardW / 2, wcCardY + 50);
+
+    // Rarity label
+    ctx.fillStyle = currentRarity.color; ctx.font = '13px "Courier New"';
+    ctx.fillText(currentRarity.name, leftX + wcCardW / 2, wcCardY + 72);
+
+    // Effect description
+    ctx.fillStyle = '#cccccc'; ctx.font = '14px "Courier New"';
+    if (currentItem) {
+      const descWords = currentItem.desc.split(' ');
+      let descLine = '', descY = wcCardY + 95;
+      for (const w of descWords) {
+        const test = descLine + w + ' ';
+        if (ctx.measureText(test).width > wcCardW - 20) {
+          ctx.fillText(descLine.trim(), leftX + wcCardW / 2, descY);
+          descLine = w + ' '; descY += 16;
+        } else { descLine = test; }
+      }
+      if (descLine.trim()) ctx.fillText(descLine.trim(), leftX + wcCardW / 2, descY);
+    }
+
+    // Selection arrow for left card
+    if (leftSelected) {
+      const t = Date.now() * 0.003;
+      const arrowBob = Math.sin(t * 3) * 4;
+      ctx.fillStyle = '#ffcc00';
+      ctx.beginPath();
+      ctx.moveTo(leftX + wcCardW / 2, wcCardY - 10 + arrowBob);
+      ctx.lineTo(leftX + wcCardW / 2 - 10, wcCardY - 22 + arrowBob);
+      ctx.lineTo(leftX + wcCardW / 2 + 10, wcCardY - 22 + arrowBob);
+      ctx.closePath(); ctx.fill();
+    }
+
+    // --- Right card: NEW ITEM ---
+    const rightX = wcStartX + wcCardW + wcGap;
+    const rightSelected = wc.choice === 1;
+    if (rightSelected) {
+      ctx.fillStyle = '#ffcc00';
+      ctx.fillRect(rightX - 3, wcCardY - 3, wcCardW + 6, wcCardH + 6);
+    }
+    ctx.fillStyle = rightSelected ? '#1a1a2a' : '#111118';
+    ctx.fillRect(rightX, wcCardY, wcCardW, wcCardH);
+
+    // "NEW" label
+    ctx.fillStyle = '#888'; ctx.font = 'bold 12px "Courier New"';
+    ctx.fillText('NEW', rightX + wcCardW / 2, wcCardY + 18);
+
+    // Item name
+    ctx.fillStyle = newRarity.color; ctx.font = 'bold 16px "Courier New"';
+    ctx.fillText(newItem.name, rightX + wcCardW / 2, wcCardY + 50);
+
+    // Rarity label
+    ctx.fillStyle = newRarity.color; ctx.font = '13px "Courier New"';
+    ctx.fillText(newRarity.name, rightX + wcCardW / 2, wcCardY + 72);
+
+    // Effect description
+    ctx.fillStyle = '#cccccc'; ctx.font = '14px "Courier New"';
+    const newDescWords = newItem.desc.split(' ');
+    let newDescLine = '', newDescY = wcCardY + 95;
+    for (const w of newDescWords) {
+      const test = newDescLine + w + ' ';
+      if (ctx.measureText(test).width > wcCardW - 20) {
+        ctx.fillText(newDescLine.trim(), rightX + wcCardW / 2, newDescY);
+        newDescLine = w + ' '; newDescY += 16;
+      } else { newDescLine = test; }
+    }
+    if (newDescLine.trim()) ctx.fillText(newDescLine.trim(), rightX + wcCardW / 2, newDescY);
+
+    // Selection arrow for right card
+    if (rightSelected) {
+      const t = Date.now() * 0.003;
+      const arrowBob = Math.sin(t * 3) * 4;
+      ctx.fillStyle = '#ffcc00';
+      ctx.beginPath();
+      ctx.moveTo(rightX + wcCardW / 2, wcCardY - 10 + arrowBob);
+      ctx.lineTo(rightX + wcCardW / 2 - 10, wcCardY - 22 + arrowBob);
+      ctx.lineTo(rightX + wcCardW / 2 + 10, wcCardY - 22 + arrowBob);
+      ctx.closePath(); ctx.fill();
+    }
+
+    // --- "VS" divider ---
+    ctx.fillStyle = '#ff4444'; ctx.font = 'bold 24px "Courier New"';
+    ctx.fillText('VS', W / 2, wcCardY + wcCardH / 2 + 6);
+
+    // --- Bottom labels ---
+    const labelY = wcCardY + wcCardH + 28;
+    ctx.fillStyle = leftSelected ? '#44ff44' : '#666'; ctx.font = 'bold 14px "Courier New"';
+    ctx.fillText('KEEP CURRENT', leftX + wcCardW / 2, labelY);
+    ctx.fillStyle = rightSelected ? '#ffcc00' : '#666'; ctx.font = 'bold 14px "Courier New"';
+    ctx.fillText('EQUIP NEW', rightX + wcCardW / 2, labelY);
+
+    // Arrow keys hint
+    ctx.fillStyle = '#666'; ctx.font = '14px "Courier New"';
+    ctx.fillText('<  ARROW KEYS  >', W / 2, labelY + 25);
+    if (Math.sin(Date.now() * 0.005) > 0) {
+      ctx.fillStyle = '#ffcc00'; ctx.font = 'bold 18px "Courier New"';
+      ctx.fillText('PRESS ENTER TO SELECT', W / 2, labelY + 55);
+    }
+    ctx.textAlign = 'left';
+  }
+
   // --- Game Over Screen (stats + feedback + name entry + leaderboard) ---
   if (s.gameOver) {
     ctx.shadowColor = 'transparent'; ctx.shadowBlur = 0; ctx.shadowOffsetX = 0; ctx.shadowOffsetY = 0;

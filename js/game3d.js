@@ -351,6 +351,8 @@ export function launch3DGame(options) {
     pauseMenu: false,
     selectedPauseOption: 0,
     showFullMap: false,
+    // Wearable comparison menu (BD-199)
+    wearableCompare: null, // { currentId, newPickup, slot, pickupIndex, choice }
     // Auto-attack + power attack
     autoAttackTimer: 0,
     charging: false,
@@ -648,6 +650,57 @@ export function launch3DGame(options) {
         e.stopPropagation();
         return;
       }
+    } else if (st.wearableCompare && !st.gameOver) {
+      // BD-199: Wearable comparison menu navigation
+      if (e.code === 'ArrowLeft' || e.code === 'KeyA') st.wearableCompare.choice = 0; // KEEP CURRENT
+      if (e.code === 'ArrowRight' || e.code === 'KeyD') st.wearableCompare.choice = 1; // EQUIP NEW
+      if (isFreshConfirm) {
+        const wc = st.wearableCompare;
+        if (wc.choice === 1) {
+          // Equip new item: apply it to the slot
+          const it = wc.newPickup.itype;
+          if (it.slot === 'armor') st.items.armor = it.id;
+          else if (it.slot === 'boots') st.items.boots = it.id;
+          else if (it.slot === 'glasses') st.items.glasses = true;
+          else if (it.slot === 'ring') { st.items.ring = true; st.collectRadius *= 1.5; }
+          else if (it.slot === 'charm') st.items.charm = true;
+          else if (it.slot === 'vest') st.items.vest = true;
+          else if (it.slot === 'pendant') { st.items.pendant = true; st.augmentRegen += 1; }
+          else if (it.slot === 'bracelet') st.items.bracelet = true;
+          else if (it.slot === 'gloves') st.items.gloves = true;
+          else if (it.slot === 'cushion') st.items.cushion = true;
+          else if (it.slot === 'turboshoes') { st.items.turboshoes = true; st.dodgeChance += 0.10; }
+          else if (it.slot === 'goldenbone') st.items.goldenbone = true;
+          else if (it.slot === 'crown') st.items.crown = true;
+          else if (it.slot === 'zombiemagnet') st.items.zombiemagnet = true;
+          else if (it.slot === 'scarf') st.items.scarf = true;
+          // Floating text
+          const rarityColor = (ITEM_RARITIES[it.rarity] || ITEM_RARITIES.common).color;
+          st.floatingTexts3d.push({ text: it.name, color: rarityColor, x: wc.newPickup.x, y: st.playerY + 2.5, z: wc.newPickup.z, life: 2 });
+          st.floatingTexts3d.push({ text: it.desc, color: '#ffffff', x: wc.newPickup.x, y: st.playerY + 2, z: wc.newPickup.z, life: 2 });
+          updateItemVisuals(playerModel, st.items, animalData.id);
+          // Remove pickup from world
+          wc.newPickup.alive = false;
+          scene.remove(wc.newPickup.mesh);
+          wc.newPickup.mesh.geometry.dispose();
+          wc.newPickup.mesh.material.dispose();
+          const idx = st.itemPickups.indexOf(wc.newPickup);
+          if (idx !== -1) st.itemPickups.splice(idx, 1);
+        }
+        // Both choices: close menu, grant invulnerability
+        st.wearableCompare = null;
+        st.paused = false;
+        st.invincible = 1.0;
+        st._menuDismissedAt = performance.now();
+        keys3d['Enter'] = false;
+        keys3d['NumpadEnter'] = false;
+        keys3d['Space'] = false;
+        st.charging = false;
+        st.chargeTime = 0;
+        e.preventDefault();
+        e.stopPropagation();
+        return;
+      }
     } else if (!st.gameOver && !st.upgradeMenu && !st.pauseMenu && !st.chargeShrineMenu) {
       // Normal gameplay — Enter/NumpadEnter/B handled by power attack in game loop via keys3d
       // Escape opens pause menu
@@ -682,7 +735,7 @@ export function launch3DGame(options) {
       st.enterReleasedSinceGameOver = true;
     }
     // Power attack release
-    if ((e.code === 'Enter' || e.code === 'NumpadEnter' || e.code === 'KeyB') && st.charging && !st.gameOver && !st.upgradeMenu && !st.pauseMenu && !st.chargeShrineMenu) {
+    if ((e.code === 'Enter' || e.code === 'NumpadEnter' || e.code === 'KeyB') && st.charging && !st.gameOver && !st.upgradeMenu && !st.pauseMenu && !st.chargeShrineMenu && !st.wearableCompare) {
       st.charging = false;
       st.powerAttackReady = true;
     }
@@ -1762,17 +1815,22 @@ export function launch3DGame(options) {
     }
 
     // Pick a random available item using rarity-weighted selection.
-    // Stackable items are always available; non-stackable items are only available if slot is free.
+    // Stackable items are always available; non-stackable items allow occupied-slot spawns
+    // for multi-item slots (armor, boots) so the player can choose via comparison menu (BD-199).
     const available = ITEMS_3D.filter(it => {
       // Stackable items are always available
       if (it.stackable) return true;
+      // Armor: allow different armor to spawn even if slot occupied (comparison menu)
       if (it.slot === 'armor') {
-        if (st.items.armor === 'chainmail') return false;
-        if (st.items.armor === 'leather' && it.tier <= 1) return false;
+        if (st.items.armor === it.id) return false; // already have this exact armor
         return true;
       }
       if (it.slot === 'glasses') return !st.items.glasses;
-      if (it.slot === 'boots') return st.items.boots !== it.id;
+      // Boots: allow different boots to spawn even if slot occupied (comparison menu)
+      if (it.slot === 'boots') {
+        if (st.items.boots === it.id) return false; // already have this exact boot
+        return true;
+      }
       // Boolean-slot items: ring, charm, vest, pendant, bracelet, gloves, cushion, turboshoes, goldenbone, crown, zombiemagnet, scarf
       if (st.items[it.slot] !== undefined && typeof st.items[it.slot] === 'boolean') return !st.items[it.slot];
       return true;
@@ -4394,7 +4452,7 @@ export function launch3DGame(options) {
         st._enterCooldown -= dt;
       }
       const chargeKey = keys3d['Enter'] || keys3d['NumpadEnter'] || keys3d['KeyB'];
-      if (chargeKey && !st.gameOver && !st.upgradeMenu && !st.pauseMenu && !st.chargeShrineMenu && st._enterCooldown <= 0 && (performance.now() - st._menuDismissedAt > 500)) {
+      if (chargeKey && !st.gameOver && !st.upgradeMenu && !st.pauseMenu && !st.chargeShrineMenu && !st.wearableCompare && st._enterCooldown <= 0 && (performance.now() - st._menuDismissedAt > 500)) {
         if (!st.charging) {
           st.charging = true;
           st.chargeTime = 0;
@@ -4645,38 +4703,80 @@ export function launch3DGame(options) {
         if (distSq < 2.25 && idy < 2.0) { // 1.5*1.5
           // Equip item
           const it = item.itype;
-          if (it.stackable) {
-            // Stackable items: increment count and apply per-stack effects
-            st.items[it.id]++;
-            // Thick Fur: +15 max HP per stack (immediate)
-            if (it.id === 'thickFur') { st.maxHp += 15; st.hp = Math.min(st.hp + 15, st.maxHp); }
-          } else if (it.slot === 'armor') st.items.armor = it.id;
-          else if (it.slot === 'glasses') st.items.glasses = true;
-          else if (it.slot === 'boots') st.items.boots = it.id;
-          else if (it.slot === 'ring') { st.items.ring = true; st.collectRadius *= 1.5; }
-          else if (it.slot === 'charm') st.items.charm = true;
-          else if (it.slot === 'vest') st.items.vest = true;
-          else if (it.slot === 'pendant') { st.items.pendant = true; st.augmentRegen += 1; }
-          else if (it.slot === 'bracelet') st.items.bracelet = true;
-          else if (it.slot === 'gloves') st.items.gloves = true;
-          // New non-stackable slots
-          else if (it.slot === 'cushion') st.items.cushion = true;
-          else if (it.slot === 'turboshoes') { st.items.turboshoes = true; st.dodgeChance += 0.10; }
-          else if (it.slot === 'goldenbone') st.items.goldenbone = true;
-          else if (it.slot === 'crown') st.items.crown = true;
-          else if (it.slot === 'zombiemagnet') st.items.zombiemagnet = true;
-          else if (it.slot === 'scarf') st.items.scarf = true;
-          // Floating text for item pickup (color by rarity)
-          const rarityColor = (ITEM_RARITIES[it.rarity] || ITEM_RARITIES.common).color;
-          st.floatingTexts3d.push({ text: it.name, color: rarityColor, x: item.x, y: st.playerY + 2.5, z: item.z, life: 2 });
-          st.floatingTexts3d.push({ text: it.desc, color: '#ffffff', x: item.x, y: st.playerY + 2, z: item.z, life: 2 });
-          playSound('sfx_item_pickup');
-          updateItemVisuals(playerModel, st.items, animalData.id);
-          item.alive = false;
-          scene.remove(item.mesh);
-          item.mesh.geometry.dispose();
-          item.mesh.material.dispose();
-          st.itemPickups.splice(i, 1);
+          // BD-199: Check if non-stackable slot is occupied — show comparison menu
+          let slotOccupied = false;
+          if (!it.stackable) {
+            if (it.slot === 'armor' && st.items.armor !== null) slotOccupied = true;
+            else if (it.slot === 'boots' && st.items.boots !== null) slotOccupied = true;
+            else if (it.slot === 'glasses' && st.items.glasses) slotOccupied = true;
+            else if (it.slot === 'ring' && st.items.ring) slotOccupied = true;
+            else if (it.slot === 'charm' && st.items.charm) slotOccupied = true;
+            else if (it.slot === 'vest' && st.items.vest) slotOccupied = true;
+            else if (it.slot === 'pendant' && st.items.pendant) slotOccupied = true;
+            else if (it.slot === 'bracelet' && st.items.bracelet) slotOccupied = true;
+            else if (it.slot === 'gloves' && st.items.gloves) slotOccupied = true;
+            else if (it.slot === 'cushion' && st.items.cushion) slotOccupied = true;
+            else if (it.slot === 'turboshoes' && st.items.turboshoes) slotOccupied = true;
+            else if (it.slot === 'goldenbone' && st.items.goldenbone) slotOccupied = true;
+            else if (it.slot === 'crown' && st.items.crown) slotOccupied = true;
+            else if (it.slot === 'zombiemagnet' && st.items.zombiemagnet) slotOccupied = true;
+            else if (it.slot === 'scarf' && st.items.scarf) slotOccupied = true;
+          }
+          if (slotOccupied && !st.wearableCompare) {
+            // Slot occupied: open comparison menu instead of auto-equipping
+            // Determine the current item ID for this slot
+            let currentId;
+            if (it.slot === 'armor') currentId = st.items.armor;
+            else if (it.slot === 'boots') currentId = st.items.boots;
+            else {
+              // Boolean slots: look up the item ID from ITEMS_3D by slot name
+              const slotItem = ITEMS_3D.find(si => si.slot === it.slot && !si.stackable);
+              currentId = slotItem ? slotItem.id : it.slot;
+            }
+            st.wearableCompare = {
+              currentId: currentId,
+              newPickup: item,
+              slot: it.slot,
+              pickupIndex: i,
+              choice: 1, // default to "EQUIP NEW"
+            };
+            st.paused = true;
+            playSound('sfx_item_pickup');
+          } else if (!slotOccupied) {
+            // Slot empty: auto-equip immediately
+            if (it.stackable) {
+              // Stackable items: increment count and apply per-stack effects
+              st.items[it.id]++;
+              // Thick Fur: +15 max HP per stack (immediate)
+              if (it.id === 'thickFur') { st.maxHp += 15; st.hp = Math.min(st.hp + 15, st.maxHp); }
+            } else if (it.slot === 'armor') st.items.armor = it.id;
+            else if (it.slot === 'glasses') st.items.glasses = true;
+            else if (it.slot === 'boots') st.items.boots = it.id;
+            else if (it.slot === 'ring') { st.items.ring = true; st.collectRadius *= 1.5; }
+            else if (it.slot === 'charm') st.items.charm = true;
+            else if (it.slot === 'vest') st.items.vest = true;
+            else if (it.slot === 'pendant') { st.items.pendant = true; st.augmentRegen += 1; }
+            else if (it.slot === 'bracelet') st.items.bracelet = true;
+            else if (it.slot === 'gloves') st.items.gloves = true;
+            // New non-stackable slots
+            else if (it.slot === 'cushion') st.items.cushion = true;
+            else if (it.slot === 'turboshoes') { st.items.turboshoes = true; st.dodgeChance += 0.10; }
+            else if (it.slot === 'goldenbone') st.items.goldenbone = true;
+            else if (it.slot === 'crown') st.items.crown = true;
+            else if (it.slot === 'zombiemagnet') st.items.zombiemagnet = true;
+            else if (it.slot === 'scarf') st.items.scarf = true;
+            // Floating text for item pickup (color by rarity)
+            const rarityColor = (ITEM_RARITIES[it.rarity] || ITEM_RARITIES.common).color;
+            st.floatingTexts3d.push({ text: it.name, color: rarityColor, x: item.x, y: st.playerY + 2.5, z: item.z, life: 2 });
+            st.floatingTexts3d.push({ text: it.desc, color: '#ffffff', x: item.x, y: st.playerY + 2, z: item.z, life: 2 });
+            playSound('sfx_item_pickup');
+            updateItemVisuals(playerModel, st.items, animalData.id);
+            item.alive = false;
+            scene.remove(item.mesh);
+            item.mesh.geometry.dispose();
+            item.mesh.material.dispose();
+            st.itemPickups.splice(i, 1);
+          }
         }
         if (distSq > 3600) { // 60*60
           item.alive = false;
@@ -4765,7 +4865,7 @@ export function launch3DGame(options) {
       // === CHARGE SHRINE INTERACTION ===
       // Player stands near an uncharged charge shrine to accumulate charge.
       // On charge completion, 3 random upgrades from the shrine's rarity tier are offered.
-      if (!st.chargeShrineMenu && !st.upgradeMenu && !st.pauseMenu && !st.gameOver) {
+      if (!st.chargeShrineMenu && !st.upgradeMenu && !st.pauseMenu && !st.wearableCompare && !st.gameOver) {
         let nearestShrine = null;
         let nearestDist = Infinity;
         for (const cs of st.chargeShrines) {
