@@ -138,6 +138,25 @@ export function createTerrainState() {
   };
 }
 
+// === COLOR UTILITY ===
+
+/**
+ * Safely adjust an RGB hex color by per-channel deltas, clamping each channel to [0, 255].
+ * Prevents overflow/underflow that corrupts adjacent channels when using raw hex arithmetic.
+ *
+ * @param {number} hex - Base color as 0xRRGGBB integer.
+ * @param {number} rAdj - Red channel adjustment (-255 to +255).
+ * @param {number} gAdj - Green channel adjustment (-255 to +255).
+ * @param {number} bAdj - Blue channel adjustment (-255 to +255).
+ * @returns {number} Adjusted color as 0xRRGGBB integer.
+ */
+function adjustColor(hex, rAdj, gAdj, bAdj) {
+  const r = Math.max(0, Math.min(255, ((hex >> 16) & 0xFF) + rAdj));
+  const g = Math.max(0, Math.min(255, ((hex >> 8) & 0xFF) + gAdj));
+  const b = Math.max(0, Math.min(255, (hex & 0xFF) + bAdj));
+  return (r << 16) | (g << 8) | b;
+}
+
 // === DECORATION BUILDERS ===
 // Each builder creates one decoration type and returns an array of meshes.
 // All decorations use simple BoxGeometry to maintain the voxel art style.
@@ -252,7 +271,7 @@ function createRock(dx, dz, h, scene) {
     const topD = baseD * 0.6;
     const top = new THREE.Mesh(
       new THREE.BoxGeometry(topW, topH, topD),
-      new THREE.MeshLambertMaterial({ color: color + 0x111111 })
+      new THREE.MeshLambertMaterial({ color: adjustColor(color, 0x11, 0x11, 0x11) })
     );
     top.position.set(dx + (noise2D(dx * 2, dz) - 0.5) * 0.2, h + baseH + topH / 2, dz + (noise2D(dx, dz * 2) - 0.5) * 0.2);
     top.rotation.y = noise2D(dx * 7, dz * 7) * Math.PI;
@@ -269,7 +288,7 @@ function createRock(dx, dz, h, scene) {
       const rd = 0.5 + noise2D(dx + i * 2, dz + i * 2) * 0.5;
       const rock = new THREE.Mesh(
         new THREE.BoxGeometry(rw, rh, rd),
-        new THREE.MeshLambertMaterial({ color: color + (i % 2 === 0 ? 0 : 0x0a0a0a) })
+        new THREE.MeshLambertMaterial({ color: i % 2 === 0 ? color : adjustColor(color, 0x0a, 0x0a, 0x0a) })
       );
       const rx = dx + offsetX;
       const rz = dz + offsetZ;
@@ -314,7 +333,7 @@ function createFallenLog(dx, dz, h, scene) {
     const stumpH = 0.2 + noise2D(dx * 6, dz * 6) * 0.15;
     const stump = new THREE.Mesh(
       new THREE.BoxGeometry(0.12, stumpH, 0.12),
-      new THREE.MeshLambertMaterial({ color: color - 0x111100 })
+      new THREE.MeshLambertMaterial({ color: adjustColor(color, -0x11, -0x11, 0) })
     );
     stump.position.set(
       dx + (noise2D(dx * 4, dz * 4) - 0.5) * logLength * 0.3,
@@ -416,7 +435,7 @@ function createStump(dx, dz, h, scene) {
     const ringW = stumpW * 0.7;
     const ring = new THREE.Mesh(
       new THREE.BoxGeometry(ringW, 0.03, ringW),
-      new THREE.MeshLambertMaterial({ color: color + 0x222211 })
+      new THREE.MeshLambertMaterial({ color: adjustColor(color, 0x22, 0x22, 0x11) })
     );
     ring.position.set(dx, h + stumpH + 0.015, dz);
     scene.add(ring);
@@ -429,7 +448,7 @@ function createStump(dx, dz, h, scene) {
     const rootH = 0.1;
     const root = new THREE.Mesh(
       new THREE.BoxGeometry(rootW, rootH, rootW),
-      new THREE.MeshLambertMaterial({ color: color - 0x111100 })
+      new THREE.MeshLambertMaterial({ color: adjustColor(color, -0x11, -0x11, 0) })
     );
     root.position.set(dx, h + rootH / 2, dz);
     scene.add(root);
@@ -451,15 +470,18 @@ function createStump(dx, dz, h, scene) {
  */
 function createGrassPatch(dx, dz, h, scene) {
   const meshes = [];
-  const bladeCount = 3 + Math.floor(Math.random() * 6);
+  const bladeCount = 3 + Math.floor(noise2D(dx * 3.1, dz * 4.3) * 6); // 3-8
   const greens = [0x3a7a2f, 0x4a8c3f, 0x5a9c4f, 0x2a6a1f, 0x3a8a35];
   for (let i = 0; i < bladeCount; i++) {
-    const bh = 0.3 + Math.random() * 0.3;
+    const bh = 0.3 + noise2D(dx * 5.7 + i * 7, dz * 3.3 + i * 11) * 0.3; // 0.3-0.6
+    const colorIdx = Math.floor(noise2D(dx * 2.1 + i * 13, dz * 6.7 + i * 17) * greens.length);
     const m = new THREE.Mesh(
       new THREE.BoxGeometry(0.08, bh, 0.05),
-      new THREE.MeshLambertMaterial({ color: greens[Math.floor(Math.random() * greens.length)] })
+      new THREE.MeshLambertMaterial({ color: greens[colorIdx] })
     );
-    m.position.set(dx + (Math.random() - 0.5) * 1.2, h + bh / 2, dz + (Math.random() - 0.5) * 1.2);
+    const offX = (noise2D(dx * 4.3 + i * 19, dz * 5.9 + i * 23) - 0.5); // -0.5 to 0.5
+    const offZ = (noise2D(dx * 6.1 + i * 29, dz * 2.7 + i * 31) - 0.5);
+    m.position.set(dx + offX * 1.2, h + bh / 2, dz + offZ * 1.2);
     scene.add(m);
     meshes.push(m);
   }
@@ -478,22 +500,25 @@ function createGrassPatch(dx, dz, h, scene) {
  */
 function createFlowerPatch(dx, dz, h, scene) {
   const meshes = [];
-  const count = 2 + Math.floor(Math.random() * 3);
+  const count = 2 + Math.floor(noise2D(dx * 2.9, dz * 4.1) * 3); // 2-4
   const colors = [0xcc3333, 0xddcc33, 0xeeeedd, 0x4466cc, 0xdd66aa, 0xdd8833];
   for (let i = 0; i < count; i++) {
-    const stemH = 0.25 + Math.random() * 0.2;
+    const stemH = 0.25 + noise2D(dx * 5.3 + i * 7, dz * 3.7 + i * 11) * 0.2; // 0.25-0.45
     const stem = new THREE.Mesh(
       new THREE.BoxGeometry(0.06, stemH, 0.06),
       new THREE.MeshLambertMaterial({ color: 0x3a7a2f })
     );
-    const fx = dx + (Math.random() - 0.5) * 1.0;
-    const fz = dz + (Math.random() - 0.5) * 1.0;
+    const offX = (noise2D(dx * 4.7 + i * 13, dz * 6.1 + i * 17) - 0.5);
+    const offZ = (noise2D(dx * 6.3 + i * 19, dz * 2.9 + i * 23) - 0.5);
+    const fx = dx + offX * 1.0;
+    const fz = dz + offZ * 1.0;
     stem.position.set(fx, h + stemH / 2, fz);
     scene.add(stem);
     meshes.push(stem);
+    const colorIdx = Math.floor(noise2D(dx * 3.1 + i * 29, dz * 7.3 + i * 31) * colors.length);
     const cap = new THREE.Mesh(
       new THREE.BoxGeometry(0.14, 0.06, 0.14),
-      new THREE.MeshLambertMaterial({ color: colors[Math.floor(Math.random() * colors.length)] })
+      new THREE.MeshLambertMaterial({ color: colors[colorIdx] })
     );
     cap.position.set(fx, h + stemH + 0.02, fz);
     scene.add(cap);
