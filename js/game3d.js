@@ -203,6 +203,9 @@ import { initAudio, playSound, toggleMute, isMuted, getVolume, disposeAudio } fr
  * --- Kill Tracking ---
  * @property {Array.<number>} killsByTier   - Kill count per zombie tier (index 0 = tier 1).
  * @property {number} totalKills            - Total zombies killed.
+ * @property {number} comboCount            - Current kill combo streak (resets when comboTimer expires).
+ * @property {number} comboTimer            - Seconds remaining before combo resets (2s window).
+ * @property {number} bestCombo             - Highest combo achieved this run (for game-over display).
  */
 
 /**
@@ -406,7 +409,7 @@ export function launch3DGame(options) {
     // Kill tracking
     killsByTier: new Array(10).fill(0),
     totalKills: 0,
-    // Kill combo tracking
+    // Combo tracking (BD-142)
     comboCount: 0,
     comboTimer: 0,
     bestCombo: 0,
@@ -424,6 +427,9 @@ export function launch3DGame(options) {
     _fpsTime: 0,
     _fpsDisplay: 0,
   };
+
+  // Combo milestone thresholds — notifications only fire at these counts (BD-142)
+  const COMBO_MILESTONES = [10, 25, 50, 100, 200, 500, 1000];
 
   // Load 3D leaderboard (single unified key — no per-difficulty split)
   st.leaderboard3d = JSON.parse(localStorage.getItem('avz3d-leaderboard') || '[]');
@@ -2275,14 +2281,13 @@ export function launch3DGame(options) {
     }
     st.totalKills++;
     st.killsByTier[(e.tier || 1) - 1]++;
-    // Kill combo tracking
+    // Combo tracking (BD-142)
     st.comboCount++;
-    st.comboTimer = 2.0; // 2-second window to chain kills
+    st.comboTimer = 2.0;
     if (st.comboCount > st.bestCombo) st.bestCombo = st.comboCount;
-    // Announce combo milestones at every 5 kills
-    if (st.comboCount >= 5 && st.comboCount % 5 === 0) {
-      const comboColor = st.comboCount >= 20 ? '#ff00ff' : st.comboCount >= 10 ? '#ffaa00' : '#ff4444';
-      st.floatingTexts3d.push({ text: 'x' + st.comboCount + ' COMBO!', color: comboColor, x: st.playerX, y: st.playerY + 3, z: st.playerZ, life: 1.5, important: true });
+    if (COMBO_MILESTONES.includes(st.comboCount)) {
+      const comboColor = st.comboCount >= 100 ? '#ff00ff' : st.comboCount >= 50 ? '#ffaa00' : '#ff4444';
+      addFloatingText('x' + st.comboCount + ' COMBO!', comboColor, st.playerX, st.playerY + 3, st.playerZ, 2.0, true);
       playSound('sfx_level_up');
     }
     // Silly Straw: heal 1 HP per 10 kills
@@ -5151,6 +5156,12 @@ export function launch3DGame(options) {
           st.shieldBraceletReady = true;
           addFloatingText('SHIELD READY!', '#4488ff', st.playerX, st.playerY + 2, st.playerZ, 1.5, true);
         }
+      }
+
+      // === COMBO DECAY (BD-142) ===
+      if (st.comboTimer > 0) {
+        st.comboTimer -= dt;
+        if (st.comboTimer <= 0) st.comboCount = 0;
       }
 
       // === CLEANUP + DEATH CHECK ===

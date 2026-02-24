@@ -846,9 +846,9 @@ export function drawHUD(ctx, s, deps) {
     ctx.fillStyle = '#88ccff'; ctx.font = '14px "Courier New"';
     ctx.fillText(`Time: ${String(goMins).padStart(2, '0')}:${String(goSecs).padStart(2, '0')}`, W / 2, 138);
 
-    // Total kills
+    // Total kills + best combo
     ctx.fillStyle = '#ff8844'; ctx.font = 'bold 14px "Courier New"';
-    ctx.fillText(`Total Kills: ${s.totalKills}`, W / 2, 158);
+    ctx.fillText(`Total Kills: ${s.totalKills}` + (s.bestCombo >= 10 ? `  |  Best Combo: x${s.bestCombo}` : ''), W / 2, 158);
 
     // Kill breakdown by tier (only show tiers with kills)
     let tierY = 174;
