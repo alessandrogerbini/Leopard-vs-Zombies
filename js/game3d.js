@@ -2399,7 +2399,7 @@ export function launch3DGame(options) {
         addFloatingText('POWERUP!', '#4488ff', dropX, terrainHeight(dropX, dropZ) + 2, dropZ, 1.5, true);
       } else if (roll < 0.80) {
         // Health orb — heal 15% max HP
-        st.hp = Math.min(st.hp + st.maxHp * 0.15, st.maxHp);
+        st.hp = Math.min(st.hp + st.maxHp * 0.10, st.maxHp);
         addFloatingText('+HEALTH', '#44ff44', dropX, terrainHeight(dropX, dropZ) + 2, dropZ, 1.5);
       } else {
         // XP burst — bonus XP gems (BD-144: respect 80-gem cap)
@@ -3901,7 +3901,7 @@ export function launch3DGame(options) {
             if (id === 'guardian') {
               s.maxHp = Math.floor(s.maxHp * 1.08);
               s.hp = Math.min(s.hp + 10, s.maxHp);
-              s.augmentRegen += 2;
+              s.augmentRegen += 1;
             }
           }
         });
@@ -5638,9 +5638,10 @@ export function launch3DGame(options) {
         }
       }
 
-      // === AUGMENT REGEN ===
+      // === AUGMENT REGEN (BD-187: capped at 4 HP/s) ===
       if (st.augmentRegen > 0) {
-        st.hp = Math.min(st.hp + st.augmentRegen * dt, st.maxHp);
+        const effectiveRegen = Math.min(st.augmentRegen, 4.0);
+        st.hp = Math.min(st.hp + effectiveRegen * dt, st.maxHp);
       }
 
       // === SHIELD BRACELET COOLDOWN ===
