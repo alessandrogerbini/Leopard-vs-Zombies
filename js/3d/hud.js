@@ -272,7 +272,7 @@ export function drawHUD(ctx, s, deps) {
 
       // Semi-transparent panel background
       const cornerR = 6;
-      ctx.fillStyle = 'rgba(0,0,0,0.5)';
+      ctx.fillStyle = 'rgba(0,0,0,0.75)';
       ctx.beginPath();
       ctx.moveTo(PANEL_X + cornerR, PANEL_Y);
       ctx.lineTo(PANEL_X + PANEL_W - cornerR, PANEL_Y);
@@ -286,6 +286,12 @@ export function drawHUD(ctx, s, deps) {
       ctx.closePath();
       ctx.fill();
 
+      // BD-209: Subtle pulsing glow border around wearable panel
+      const pulseAlpha = 0.2 + 0.3 * Math.sin(Date.now() / 1500 * Math.PI);
+      ctx.strokeStyle = `rgba(255, 215, 0, ${pulseAlpha})`;
+      ctx.lineWidth = 2;
+      ctx.strokeRect(PANEL_X - 1, PANEL_Y - 1, PANEL_W + 2, PANEL_H + 2);
+
       // Draw each wearable slot
       for (let si = 0; si < wearSlots.length; si++) {
         const ws = wearSlots[si];
@@ -297,12 +303,12 @@ export function drawHUD(ctx, s, deps) {
         const flashTimer = s.wearableFlash ? s.wearableFlash[ws.flashKey] || 0 : 0;
 
         // Slot background
-        ctx.fillStyle = '#111118';
+        ctx.fillStyle = '#1a1a2e';
         ctx.fillRect(slotX, slotY, SLOT_SIZE, SLOT_SIZE);
 
         // Equip flash overlay (bright rarity-colored, fading)
         if (flashTimer > 0) {
-          const flashAlpha = (flashTimer / 0.8) * 0.6;
+          const flashAlpha = (flashTimer / 1.5) * 0.6;
           ctx.fillStyle = rarityColor;
           ctx.globalAlpha = flashAlpha;
           ctx.fillRect(slotX, slotY, SLOT_SIZE, SLOT_SIZE);
@@ -321,7 +327,7 @@ export function drawHUD(ctx, s, deps) {
           const slotCY = slotY + SLOT_SIZE / 2;
           if (itemDef.drawIcon) {
             ctx.save();
-            itemDef.drawIcon(ctx, slotCX, slotCY, 1);
+            itemDef.drawIcon(ctx, slotCX, slotCY, 1.3);
             ctx.restore();
           } else {
             ctx.fillStyle = rarityColor;
@@ -337,7 +343,7 @@ export function drawHUD(ctx, s, deps) {
           // Item name below slot
           ctx.textAlign = 'center';
           ctx.fillStyle = rarityColor;
-          ctx.font = 'bold 11px ' + GAME_FONT;
+          ctx.font = 'bold 13px ' + GAME_FONT;
           const displayName = itemDef.name.length > 8 ? itemDef.name.slice(0, 7) + '.' : itemDef.name;
           ctx.fillText(displayName, slotX + SLOT_SIZE / 2, slotY + SLOT_SIZE + 14);
 
@@ -363,7 +369,7 @@ export function drawHUD(ctx, s, deps) {
           // Slot label below
           ctx.textAlign = 'center';
           ctx.fillStyle = '#444444';
-          ctx.font = 'bold 11px ' + GAME_FONT;
+          ctx.font = 'bold 13px ' + GAME_FONT;
           ctx.fillText(ws.label, slotX + SLOT_SIZE / 2, slotY + SLOT_SIZE + 14);
 
           // Empty hint
@@ -383,6 +389,7 @@ export function drawHUD(ctx, s, deps) {
       ctx.textAlign = 'left';
 
       // === REGULAR ITEMS (compact text list above wearable panel) ===
+      // BD-210: Background panel, two-line items with effect descriptions, ITEMS header
       // Collect all visible items first, then render with overflow cap
       const visibleItems = [];
       // Boolean-slot items (non-stackable)
@@ -392,7 +399,7 @@ export function drawHUD(ctx, s, deps) {
           const itemDef = ITEMS_3D.find(i => i.slot === slot);
           if (itemDef) {
             const rarityColor = (ITEM_RARITIES[itemDef.rarity] || ITEM_RARITIES.common).color;
-            visibleItems.push({ text: `[${itemDef.name}]`, color: rarityColor });
+            visibleItems.push({ name: itemDef.name, desc: itemDef.desc || '', color: rarityColor });
           }
         }
       }
@@ -403,28 +410,71 @@ export function drawHUD(ctx, s, deps) {
           const itemDef = ITEMS_3D.find(i => i.id === id);
           if (itemDef) {
             const rarityColor = (ITEM_RARITIES[itemDef.rarity] || ITEM_RARITIES.common).color;
-            visibleItems.push({ text: `[${itemDef.name} x${s.items[id]}]`, color: rarityColor });
+            visibleItems.push({ name: `${itemDef.name} x${s.items[id]}`, desc: itemDef.desc || '', color: rarityColor });
           }
         }
       }
       // Shield bracelet cooldown indicator
       if (s.items.bracelet && !s.shieldBraceletReady) {
-        visibleItems.push({ text: `Shield: ${Math.ceil(s.shieldBraceletTimer)}s`, color: '#4488ff' });
+        visibleItems.push({ name: `Shield: ${Math.ceil(s.shieldBraceletTimer)}s`, desc: 'Cooldown...', color: '#4488ff' });
       }
-      // Render items with overflow cap (max 6 visible)
-      const MAX_VISIBLE_ITEMS = 6;
-      const itemLineH = 18;
-      let iy = PANEL_Y - 8;
-      const displayCount = Math.min(visibleItems.length, MAX_VISIBLE_ITEMS);
-      for (let ii = 0; ii < displayCount; ii++) {
-        const item = visibleItems[ii];
-        ctx.fillStyle = item.color; ctx.font = '14px ' + GAME_FONT;
-        ctx.fillText(item.text, 20, iy);
-        iy -= itemLineH;
-      }
-      if (visibleItems.length > MAX_VISIBLE_ITEMS) {
-        ctx.fillStyle = '#888888'; ctx.font = '13px ' + GAME_FONT;
-        ctx.fillText(`+${visibleItems.length - MAX_VISIBLE_ITEMS} more`, 20, iy);
+      // Render items with background panel, two-line format, and overflow cap
+      if (visibleItems.length > 0) {
+        const MAX_VISIBLE_ITEMS = 5;
+        const itemLineH = 28;
+        const ITEMS_PAD = 4;
+        const displayCount = Math.min(visibleItems.length, MAX_VISIBLE_ITEMS);
+        const hasOverflow = visibleItems.length > MAX_VISIBLE_ITEMS;
+        const headerH = 16;
+        const panelContentH = headerH + displayCount * itemLineH + (hasOverflow ? 16 : 0);
+        const itemsPanelH = panelContentH + ITEMS_PAD * 2;
+        const itemsPanelW = 200;
+        const itemsPanelX = 16;
+        const itemsPanelY = PANEL_Y - 12 - itemsPanelH;
+
+        // Background panel with rounded corners
+        const iCornerR = 4;
+        ctx.fillStyle = 'rgba(0,0,0,0.65)';
+        ctx.beginPath();
+        ctx.moveTo(itemsPanelX + iCornerR, itemsPanelY);
+        ctx.lineTo(itemsPanelX + itemsPanelW - iCornerR, itemsPanelY);
+        ctx.quadraticCurveTo(itemsPanelX + itemsPanelW, itemsPanelY, itemsPanelX + itemsPanelW, itemsPanelY + iCornerR);
+        ctx.lineTo(itemsPanelX + itemsPanelW, itemsPanelY + itemsPanelH - iCornerR);
+        ctx.quadraticCurveTo(itemsPanelX + itemsPanelW, itemsPanelY + itemsPanelH, itemsPanelX + itemsPanelW - iCornerR, itemsPanelY + itemsPanelH);
+        ctx.lineTo(itemsPanelX + iCornerR, itemsPanelY + itemsPanelH);
+        ctx.quadraticCurveTo(itemsPanelX, itemsPanelY + itemsPanelH, itemsPanelX, itemsPanelY + itemsPanelH - iCornerR);
+        ctx.lineTo(itemsPanelX, itemsPanelY + iCornerR);
+        ctx.quadraticCurveTo(itemsPanelX, itemsPanelY, itemsPanelX + iCornerR, itemsPanelY);
+        ctx.closePath();
+        ctx.fill();
+
+        // "ITEMS" header
+        let iy = itemsPanelY + ITEMS_PAD + 12;
+        ctx.fillStyle = '#ffffff';
+        ctx.font = 'bold 12px ' + GAME_FONT;
+        ctx.textAlign = 'left';
+        ctx.fillText('ITEMS', itemsPanelX + ITEMS_PAD + 2, iy);
+        iy += headerH;
+
+        // Two-line item entries: name (bold 14px, rarity color) + desc (10px, gray)
+        for (let ii = 0; ii < displayCount; ii++) {
+          const item = visibleItems[ii];
+          // Line 1: Item name in rarity color
+          ctx.fillStyle = item.color;
+          ctx.font = 'bold 14px ' + GAME_FONT;
+          ctx.fillText(item.name, itemsPanelX + ITEMS_PAD + 2, iy);
+          // Line 2: Effect description in gray
+          ctx.fillStyle = '#aaaaaa';
+          ctx.font = '10px ' + GAME_FONT;
+          ctx.fillText(item.desc, itemsPanelX + ITEMS_PAD + 2, iy + 13);
+          iy += itemLineH;
+        }
+        // Overflow indicator
+        if (hasOverflow) {
+          ctx.fillStyle = '#888888';
+          ctx.font = '13px ' + GAME_FONT;
+          ctx.fillText(`+${visibleItems.length - MAX_VISIBLE_ITEMS} more`, itemsPanelX + ITEMS_PAD + 2, iy);
+        }
       }
     }
 
