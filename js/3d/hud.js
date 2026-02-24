@@ -316,36 +316,62 @@ export function drawHUD(ctx, s, deps) {
           ctx.fillRect(slotX + 4, slotY + 4, SLOT_SIZE - 8, SLOT_SIZE - 8);
           ctx.globalAlpha = 1;
 
-          // Item icon silhouette in rarity color
-          ctx.fillStyle = rarityColor;
-          ws.drawSilhouette(slotX + SLOT_SIZE / 2, slotY + SLOT_SIZE / 2);
+          // Item icon: use per-item drawIcon if available, else generic silhouette
+          const slotCX = slotX + SLOT_SIZE / 2;
+          const slotCY = slotY + SLOT_SIZE / 2;
+          if (itemDef.drawIcon) {
+            ctx.save();
+            itemDef.drawIcon(ctx, slotCX, slotCY, 1);
+            ctx.restore();
+          } else {
+            ctx.fillStyle = rarityColor;
+            ws.drawSilhouette(slotCX, slotCY);
+          }
+
+          // Clip text to slot width to prevent overlap into adjacent slots
+          ctx.save();
+          ctx.beginPath();
+          ctx.rect(slotX - 2, slotY + SLOT_SIZE, SLOT_SIZE + 4, 40);
+          ctx.clip();
 
           // Item name below slot
           ctx.textAlign = 'center';
           ctx.fillStyle = rarityColor;
-          ctx.font = 'bold 12px ' + GAME_FONT;
-          const displayName = itemDef.name.length > 12 ? itemDef.name.slice(0, 11) + '.' : itemDef.name;
+          ctx.font = 'bold 11px ' + GAME_FONT;
+          const displayName = itemDef.name.length > 8 ? itemDef.name.slice(0, 7) + '.' : itemDef.name;
           ctx.fillText(displayName, slotX + SLOT_SIZE / 2, slotY + SLOT_SIZE + 14);
 
           // Effect text below name
+          const desc = itemDef.desc || '';
+          const displayDesc = desc.length > 10 ? desc.slice(0, 9) + '.' : desc;
           ctx.fillStyle = '#aaaaaa';
-          ctx.font = '10px ' + GAME_FONT;
-          ctx.fillText(itemDef.desc, slotX + SLOT_SIZE / 2, slotY + SLOT_SIZE + 26);
+          ctx.font = '9px ' + GAME_FONT;
+          ctx.fillText(displayDesc, slotX + SLOT_SIZE / 2, slotY + SLOT_SIZE + 26);
+
+          ctx.restore();
         } else {
           // Empty slot: draw silhouette placeholder
           ctx.fillStyle = 'rgba(255,255,255,0.12)';
           ws.drawSilhouette(slotX + SLOT_SIZE / 2, slotY + SLOT_SIZE / 2);
 
+          // Clip text to slot width
+          ctx.save();
+          ctx.beginPath();
+          ctx.rect(slotX - 2, slotY + SLOT_SIZE, SLOT_SIZE + 4, 40);
+          ctx.clip();
+
           // Slot label below
           ctx.textAlign = 'center';
           ctx.fillStyle = '#444444';
-          ctx.font = 'bold 12px ' + GAME_FONT;
+          ctx.font = 'bold 11px ' + GAME_FONT;
           ctx.fillText(ws.label, slotX + SLOT_SIZE / 2, slotY + SLOT_SIZE + 14);
 
           // Empty hint
           ctx.fillStyle = '#333333';
-          ctx.font = '10px ' + GAME_FONT;
+          ctx.font = '9px ' + GAME_FONT;
           ctx.fillText('empty', slotX + SLOT_SIZE / 2, slotY + SLOT_SIZE + 26);
+
+          ctx.restore();
         }
 
         // Rarity-colored border (thick)
