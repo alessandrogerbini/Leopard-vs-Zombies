@@ -176,6 +176,8 @@ function createTree(dx, dz, h, scene) {
     );
     m.position.set(dx + ox, canopyBase + oy, dz + oz);
     m.castShadow = true;
+    m.userData.isCanopy = true;
+    m.userData.windSeed = dx * 0.1 + dz * 0.07;
     scene.add(m);
     meshes.push(m);
   };
