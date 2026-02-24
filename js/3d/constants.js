@@ -743,8 +743,8 @@ export const ZOMBIE_TIERS = [
   { scale: 1.9,  hpMult: 10,  dmgMult: 4.5, speed: 2.5, body: 0x6a2a1a, head: 0x7a3a2a, eye: 0xffaa00, name: 'Horror' },
   { scale: 2.15, hpMult: 14,  dmgMult: 5.5, speed: 2.6, body: 0x7a1a1a, head: 0x8a2a2a, eye: 0xffcc00, name: 'Abomination' },
   { scale: 2.4,  hpMult: 19,  dmgMult: 7,   speed: 2.7, body: 0x8a1010, head: 0x9a2020, eye: 0xffdd00, name: 'Nightmare' },
-  { scale: 2.7,  hpMult: 25,  dmgMult: 9,   speed: 2.8, body: 0x990808, head: 0xaa1818, eye: 0xffee44, name: 'Titan' },
-  { scale: 3.0,  hpMult: 35,  dmgMult: 12,  speed: 2.9, body: 0xaa0000, head: 0xbb1111, eye: 0xffff66, name: 'Overlord' },
+  { scale: 2.7,  hpMult: 25,  dmgMult: 9,   speed: 4.5, body: 0x990808, head: 0xaa1818, eye: 0xffee44, name: 'Titan' },
+  { scale: 3.0,  hpMult: 35,  dmgMult: 12,  speed: 5.0, body: 0xaa0000, head: 0xbb1111, eye: 0xffff66, name: 'Overlord' },
 ];
 
 /**
