@@ -251,13 +251,17 @@ export function drawHUD(ctx, s, deps) {
       ctx.textAlign = 'right';
       let ry = 98; // starts below timer (which ends at Y=75) with gap
 
-      // Howls
+      // Howls (powers)
       const howlEntries = Object.entries(s.howls).filter(([, v]) => v > 0);
       if (howlEntries.length > 0) {
+        ctx.fillStyle = '#ffcc00'; ctx.font = 'bold 16px "Courier New"';
+        ctx.fillText('YOUR POWERS:', W - 20, ry);
+        ry += 18;
         for (const [tid, count] of howlEntries) {
           const def = HOWL_TYPES[tid];
+          const shortName = def.name.replace(' HOWL', '');
           ctx.fillStyle = def.color; ctx.font = '16px "Courier New"';
-          ctx.fillText(`${def.name} x${count}`, W - 20, ry);
+          ctx.fillText(`${shortName} x${count}`, W - 20, ry);
           ry += 18;
         }
         ry += 8; // gap before next section
@@ -267,7 +271,7 @@ export function drawHUD(ctx, s, deps) {
       const augKeys = Object.keys(s.augments);
       if (augKeys.length > 0) {
         ctx.fillStyle = '#88ffaa'; ctx.font = 'bold 16px "Courier New"';
-        ctx.fillText('AUGMENTS', W - 20, ry);
+        ctx.fillText('BOOSTS', W - 20, ry);
         ry += 18;
         for (const aKey of augKeys) {
           const aug = SHRINE_AUGMENTS.find(a => a.id === aKey);
@@ -700,14 +704,14 @@ export function drawHUD(ctx, s, deps) {
       ctx.fillRect(cx, cardY, cardW, cardH);
 
       // Category badge
-      const badgeColors = { 'NEW WEAPON': '#ff8844', 'UPGRADE': '#44aaff', 'HOWL': '#aa44ff', 'HEAL': '#44ff44' };
+      const badgeColors = { 'NEW!': '#ff8844', 'BETTER!': '#44aaff', 'POWER!': '#aa44ff', 'HEAL': '#44ff44' };
       const badgeColor = badgeColors[u.category] || '#666';
-      ctx.fillStyle = badgeColor; ctx.font = 'bold 14px "Courier New"';
+      ctx.fillStyle = badgeColor; ctx.font = 'bold 16px "Courier New"';
       // Badge background
       const badgeW = ctx.measureText(u.category).width + 12;
-      ctx.fillStyle = badgeColor + '44';
+      ctx.fillStyle = badgeColor + 'aa';
       ctx.fillRect(cx + cardW / 2 - badgeW / 2, cardY + 10, badgeW, 20);
-      ctx.fillStyle = badgeColor; ctx.font = 'bold 14px "Courier New"';
+      ctx.fillStyle = badgeColor; ctx.font = 'bold 16px "Courier New"';
       ctx.fillText(u.category, cx + cardW / 2, cardY + 25);
 
       // Name
@@ -715,7 +719,7 @@ export function drawHUD(ctx, s, deps) {
       ctx.fillText(u.name, cx + cardW / 2, cardY + 65);
 
       // Description
-      ctx.fillStyle = '#cccccc'; ctx.font = '14px "Courier New"';
+      ctx.fillStyle = '#cccccc'; ctx.font = '16px "Courier New"';
       // Word wrap description
       const words = u.desc.split(' ');
       let line = '', lineY = cardY + 100;
@@ -745,17 +749,20 @@ export function drawHUD(ctx, s, deps) {
 
     ctx.fillStyle = '#666'; ctx.font = '14px "Courier New"';
     ctx.fillText('<  ARROW KEYS  >', W / 2, cardY + cardH + 25);
-    if (Math.sin(Date.now() * 0.005) > 0) {
-      ctx.fillStyle = '#ffcc00'; ctx.font = 'bold 18px "Courier New"';
+    {
+      const alpha = 0.6 + 0.4 * Math.sin(Date.now() * 0.005);
+      ctx.globalAlpha = alpha;
+      ctx.fillStyle = '#ffcc00'; ctx.font = 'bold 22px "Courier New"';
       ctx.fillText('PRESS ENTER TO SELECT', W / 2, cardY + cardH + 55);
+      ctx.globalAlpha = 1;
     }
     // Reroll indicator
     if (s.rerolls > 0) {
-      ctx.fillStyle = '#88ccff'; ctx.font = 'bold 14px "Courier New"';
-      ctx.fillText(`[R] REROLL (${s.rerolls} left)`, W / 2, cardY + cardH + 80);
+      ctx.fillStyle = '#88ccff'; ctx.font = 'bold 18px "Courier New"';
+      ctx.fillText(`Press R for NEW CHOICES! (${s.rerolls} left)`, W / 2, cardY + cardH + 80);
     } else {
       ctx.fillStyle = '#444'; ctx.font = '14px "Courier New"';
-      ctx.fillText('No rerolls remaining', W / 2, cardY + cardH + 80);
+      ctx.fillText('No new choices left', W / 2, cardY + cardH + 80);
     }
   }
 
@@ -766,7 +773,7 @@ export function drawHUD(ctx, s, deps) {
     ctx.textAlign = 'center';
 
     // Rarity label
-    const rarityNames = { common: 'COMMON', uncommon: 'UNCOMMON', rare: 'RARE', legendary: 'LEGENDARY' };
+    const rarityNames = { common: 'SMALL', uncommon: 'COOL', rare: 'AWESOME', legendary: 'MEGA' };
     const rarityMenuColors = { common: '#ffffff', uncommon: '#44ff44', rare: '#4488ff', legendary: '#ff8800' };
     const csRarity = s.chargeShrineCurrent ? s.chargeShrineCurrent.rarity : 'common';
     const rarColor = rarityMenuColors[csRarity] || '#ffffff';
@@ -774,7 +781,7 @@ export function drawHUD(ctx, s, deps) {
     ctx.fillStyle = rarColor; ctx.font = 'bold 32px "Courier New"';
     ctx.fillText('SHRINE ACTIVATED', W / 2, 100);
     ctx.fillStyle = rarColor; ctx.font = 'bold 18px "Courier New"';
-    ctx.fillText(`${rarityNames[csRarity] || 'COMMON'} SHRINE`, W / 2, 130);
+    ctx.fillText(`${rarityNames[csRarity] || 'SMALL'} SHRINE`, W / 2, 130);
     ctx.fillStyle = '#ffffff'; ctx.font = '16px "Courier New"';
     ctx.fillText('Choose an upgrade:', W / 2, 155);
 
@@ -814,9 +821,12 @@ export function drawHUD(ctx, s, deps) {
 
     ctx.fillStyle = '#666'; ctx.font = '14px "Courier New"';
     ctx.fillText('<  ARROW KEYS  >', W / 2, csCardY + csCardH + 25);
-    if (Math.sin(Date.now() * 0.005) > 0) {
-      ctx.fillStyle = '#ffcc00'; ctx.font = 'bold 18px "Courier New"';
+    {
+      const alpha = 0.6 + 0.4 * Math.sin(Date.now() * 0.005);
+      ctx.globalAlpha = alpha;
+      ctx.fillStyle = '#ffcc00'; ctx.font = 'bold 22px "Courier New"';
       ctx.fillText('PRESS ENTER TO SELECT', W / 2, csCardY + csCardH + 55);
+      ctx.globalAlpha = 1;
     }
     ctx.textAlign = 'left';
   }

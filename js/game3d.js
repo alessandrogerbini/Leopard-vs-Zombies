@@ -3837,7 +3837,7 @@ export function launch3DGame(options) {
         if (!ownedIds.has(id)) {
           const def = WEAPON_TYPES[id];
           pool.push({
-            category: 'NEW WEAPON',
+            category: 'NEW!',
             name: def.name,
             color: def.color,
             desc: def.desc,
@@ -3855,7 +3855,7 @@ export function launch3DGame(options) {
       if (w.level < def.maxLevel) {
         const nextDesc = def.levelDescs[w.level - 1] || '+Upgrade';
         pool.push({
-          category: 'UPGRADE',
+          category: 'BETTER!',
           name: `${def.name} LV${w.level + 1}`,
           color: def.color,
           desc: nextDesc,
@@ -3869,7 +3869,7 @@ export function launch3DGame(options) {
       const def = HOWL_TYPES[id];
       if (st.howls[id] < def.maxLevel) {
         pool.push({
-          category: 'HOWL',
+          category: 'POWER!',
           name: def.name,
           color: def.color,
           desc: def.desc,
@@ -3898,14 +3898,14 @@ export function launch3DGame(options) {
         category: 'HEAL',
         name: 'HEAL',
         color: '#44ff44',
-        desc: 'Restore 30 HP',
+        desc: 'Feel better!',
         apply: s => { s.hp = Math.min(s.hp + 30, s.maxHp); }
       });
       pool.push({
         category: 'HEAL',
         name: 'MAX HP +10',
         color: '#88ff88',
-        desc: '+10 Max HP',
+        desc: 'More hearts!',
         apply: s => { s.maxHp += 10; s.hp = Math.min(s.hp + 10, s.maxHp); }
       });
     }
