@@ -920,7 +920,7 @@ export function launch3DGame(options) {
       const segBot = baseH + seg * segH;
       const segMid = segBot + segH / 2;
       const sideColor = getSideColor(segBot);
-      const sideMat = new THREE.MeshLambertMaterial({ color: sideColor, transparent: true, opacity: 0.55 });
+      const sideMat = new THREE.MeshLambertMaterial({ color: sideColor });
 
       // Front side (positive Z)
       const front = new THREE.Mesh(new THREE.BoxGeometry(pw, segH, wallThick), sideMat);
