@@ -435,6 +435,46 @@ export function launch3DGame(options) {
     localStorage.setItem('avz3d-leaderboard', JSON.stringify(st.leaderboard3d));
   }
 
+  // === FLOATING TEXT HELPER (BD-136) ===
+  // Caps visible floating texts and deduplicates rapid identical messages.
+  const MAX_FLOATING_TEXTS = 15;
+  const _recentTexts = []; // tracks {text, time} for dedup
+
+  /**
+   * Add a floating text to the 3D scene with cap and dedup protection.
+   * @param {string} text - The display text.
+   * @param {string} color - CSS color string.
+   * @param {number} x - World X position.
+   * @param {number} y - World Y position.
+   * @param {number} z - World Z position.
+   * @param {number} life - Lifetime in seconds.
+   * @param {boolean} [important=false] - If true, bypass dedup (item pickups, boss kills, totem, shrine, level-up).
+   */
+  function addFloatingText(text, color, x, y, z, life, important = false) {
+    const now = performance.now() / 1000;
+
+    // Deduplicate rapid identical texts (skip if same text within 0.3s), unless important
+    if (!important) {
+      for (let i = _recentTexts.length - 1; i >= 0; i--) {
+        if (now - _recentTexts[i].time > 0.3) {
+          _recentTexts.splice(i, 1);
+        } else if (_recentTexts[i].text === text) {
+          return; // suppress duplicate
+        }
+      }
+    }
+
+    // Track this text for dedup
+    _recentTexts.push({ text, time: now });
+
+    // Hard cap — remove oldest to make room
+    if (st.floatingTexts3d.length >= MAX_FLOATING_TEXTS) {
+      st.floatingTexts3d.splice(0, st.floatingTexts3d.length - MAX_FLOATING_TEXTS + 1);
+    }
+
+    st.floatingTexts3d.push({ text, color, x, y, z, life });
+  }
+
   // Animal-specific starting weapon (ANIMAL_WEAPONS imported from 3d/constants.js)
   const startWeapon = ANIMAL_WEAPONS[animalId] || 'clawSwipe';
   st.weapons.push({ typeId: startWeapon, level: 1, cooldownTimer: 0 });
@@ -585,14 +625,7 @@ export function launch3DGame(options) {
           }
           // Show floating text
           if (st.chargeShrineCurrent) {
-            st.floatingTexts3d.push({
-              text: chosen.name,
-              color: chosen.color,
-              x: st.chargeShrineCurrent.x,
-              y: terrainHeight(st.chargeShrineCurrent.x, st.chargeShrineCurrent.z) + 3,
-              z: st.chargeShrineCurrent.z,
-              life: 2.0,
-            });
+            addFloatingText(chosen.name, chosen.color, st.chargeShrineCurrent.x, terrainHeight(st.chargeShrineCurrent.x, st.chargeShrineCurrent.z) + 3, st.chargeShrineCurrent.z, 2.0, true);
           }
           playSound('sfx_level_up'); // Celebration sound
         }
@@ -2108,7 +2141,7 @@ export function launch3DGame(options) {
         if (c.material && c.material.emissive !== undefined) c.material.emissive.set(0x000000);
         if (c.material) c.material.color.set(0x444444);
       });
-      st.floatingTexts3d.push({ text: 'BOSS DEFEATED!', color: '#ffcc00', x: e.group.position.x, y: e.group.position.y + 3, z: e.group.position.z, life: 3 });
+      addFloatingText('BOSS DEFEATED!', '#ffcc00', e.group.position.x, e.group.position.y + 3, e.group.position.z, 3, true);
     }
 
     playSound((e.tier || 1) >= 5 ? 'sfx_zombie_death_high' : 'sfx_zombie_death_low');
@@ -2135,7 +2168,7 @@ export function launch3DGame(options) {
     // Whoopee Cushion: 20% chance enemies explode on death (AoE)
     if (st.items.cushion && Math.random() < 0.20) {
       spawnExplosion(e.group.position.x, e.group.position.z, 2.5, 15 * getPlayerDmgMult());
-      st.floatingTexts3d.push({ text: 'BOOM!', color: '#ff88cc', x: e.group.position.x, y: e.group.position.y + 2, z: e.group.position.z, life: 1 });
+      addFloatingText('BOOM!', '#ff88cc', e.group.position.x, e.group.position.y + 2, e.group.position.z, 0.5);
     }
     // Loot drop roll — higher tier zombies drop more often
     // Lucky Charm: +50% chance to drop, Lucky Penny: +8% per stack
@@ -2157,7 +2190,7 @@ export function launch3DGame(options) {
       } else if (roll < 0.80) {
         // Health orb — heal 15% max HP
         st.hp = Math.min(st.hp + st.maxHp * 0.15, st.maxHp);
-        st.floatingTexts3d.push({ text: '+HEALTH', color: '#44ff44', x: dropX, y: terrainHeight(dropX, dropZ) + 2, z: dropZ, life: 1.5 });
+        addFloatingText('+HEALTH', '#44ff44', dropX, terrainHeight(dropX, dropZ) + 2, dropZ, 1.5);
       } else {
         // XP burst — bonus XP gems
         for (let g = 0; g < 3; g++) {
@@ -2619,7 +2652,7 @@ export function launch3DGame(options) {
           boltDmg = Math.max(1, boltDmg);
           st.hp -= boltDmg;
           if (st.hp < 0) st.hp = 0;
-          st.floatingTexts3d.push({ text: '-' + Math.round(boltDmg), color: '#ff0044', x: st.playerX, y: st.playerY + 2, z: st.playerZ, life: 1 });
+          addFloatingText('-' + Math.round(boltDmg), '#ff0044', st.playerX, st.playerY + 2, st.playerZ, 0.5);
           disposeSceneObject(p.mesh);
           st.weaponProjectiles.splice(i, 1);
           playSound('sfx_explosion');
@@ -4066,7 +4099,7 @@ export function launch3DGame(options) {
                   shockDmg = Math.max(1, shockDmg);
                   st.hp -= shockDmg;
                   if (st.hp < 0) st.hp = 0;
-                  st.floatingTexts3d.push({ text: '-' + Math.round(shockDmg), color: '#ff2200', x: st.playerX, y: st.playerY + 2, z: st.playerZ, life: 1 });
+                  addFloatingText('-' + Math.round(shockDmg), '#ff2200', st.playerX, st.playerY + 2, st.playerZ, 0.5);
                 }
                 playSound('sfx_explosion');
               }
@@ -4183,7 +4216,7 @@ export function launch3DGame(options) {
         if (dist < 1.0 * (tierData.scale || 1) && dy < 1.5 && st.invincible <= 0) {
           // Turbo Sneakers: 10% dodge chance
           if (st.dodgeChance > 0 && Math.random() < st.dodgeChance) {
-            st.floatingTexts3d.push({ text: 'DODGE!', color: '#00ffaa', x: st.playerX, y: st.playerY + 2, z: st.playerZ, life: 0.8 });
+            addFloatingText('DODGE!', '#00ffaa', st.playerX, st.playerY + 2, st.playerZ, 0.8);
             st.invincible = 0.2;
           } else {
             let dmg = 15 * tierData.dmgMult * st.zombieDmgMult * (e.bossDmgMult || 1) * dt;
@@ -4196,7 +4229,7 @@ export function launch3DGame(options) {
               dmg = 0;
               st.shieldBraceletReady = false;
               st.shieldBraceletTimer = 30;
-              st.floatingTexts3d.push({ text: 'BLOCKED!', color: '#4488ff', x: st.playerX, y: st.playerY + 2, z: st.playerZ, life: 1.5 });
+              addFloatingText('BLOCKED!', '#4488ff', st.playerX, st.playerY + 2, st.playerZ, 1.5);
             }
             st.hp -= dmg;
             // Thorned Vest: reflect 20% damage back
@@ -4289,12 +4322,7 @@ export function launch3DGame(options) {
                 playSound(newTier <= 2 ? 'sfx_zombie_merge_low' : newTier <= 4 ? 'sfx_zombie_merge_mid' : 'sfx_zombie_merge_high');
                 // Floating text announcement
                 const tierName = ZOMBIE_TIERS[newTier - 1].name;
-                st.floatingTexts3d.push({
-                  text: tierName.toUpperCase() + '!',
-                  color: '#ff8800',
-                  x: mx, y: terrainHeight(mx, mz) + 2.5, z: mz,
-                  life: 1.5,
-                });
+                addFloatingText(tierName.toUpperCase() + '!', '#ff8800', mx, terrainHeight(mx, mz) + 2.5, mz, 1.5);
                 break;
               }
             } else {
@@ -4561,12 +4589,7 @@ export function launch3DGame(options) {
           st.collectedGemKeys[g.chunkKey].add(g.gemIndex);
           playSound('sfx_xp_pickup');
           // Floating text
-          st.floatingTexts3d.push({
-            text: `+${xpGain} XP`,
-            color: '#aa44ff',
-            x: g.x, y: terrainHeight(g.x, g.z) + 1.5, z: g.z,
-            life: 1.0,
-          });
+          addFloatingText(`+${xpGain} XP`, '#aa44ff', g.x, terrainHeight(g.x, g.z) + 1.5, g.z, 0.5);
           // Level-up check
           if (st.xp >= st.xpToNext) {
             st.xp -= st.xpToNext;
@@ -4668,8 +4691,8 @@ export function launch3DGame(options) {
           else if (it.slot === 'scarf') st.items.scarf = true;
           // Floating text for item pickup (color by rarity)
           const rarityColor = (ITEM_RARITIES[it.rarity] || ITEM_RARITIES.common).color;
-          st.floatingTexts3d.push({ text: it.name, color: rarityColor, x: item.x, y: st.playerY + 2.5, z: item.z, life: 2 });
-          st.floatingTexts3d.push({ text: it.desc, color: '#ffffff', x: item.x, y: st.playerY + 2, z: item.z, life: 2 });
+          addFloatingText(it.name, rarityColor, item.x, st.playerY + 2.5, item.z, 2, true);
+          addFloatingText(it.desc, '#ffffff', item.x, st.playerY + 2, item.z, 2, true);
           playSound('sfx_item_pickup');
           updateItemVisuals(playerModel, st.items, animalData.id);
           item.alive = false;
@@ -4716,12 +4739,7 @@ export function launch3DGame(options) {
             aug.apply(st);
             st.augments[aug.id] = (st.augments[aug.id] || 0) + 1;
             // Floating text
-            st.floatingTexts3d.push({
-              text: aug.name,
-              color: aug.color,
-              x: shrine.x, y: terrainHeight(shrine.x, shrine.z) + 2.5, z: shrine.z,
-              life: 2
-            });
+            addFloatingText(aug.name, aug.color, shrine.x, terrainHeight(shrine.x, shrine.z) + 2.5, shrine.z, 2, true);
             scene.remove(shrine.group);
             shrine.group.traverse(c => { if (c.geometry) c.geometry.dispose(); if (c.material) c.material.dispose(); });
             st.shrines.splice(i, 1);
@@ -4753,8 +4771,8 @@ export function launch3DGame(options) {
             st.totemSpawnMult *= TOTEM_EFFECT.spawnRateMult;
             st.totemXpMult *= TOTEM_EFFECT.xpBonusMult;
             st.totemScoreMult *= TOTEM_EFFECT.scoreBonusMult;
-            st.floatingTexts3d.push({ text: 'NOT HARD ENOUGH!', color: '#ff2222', x: totem.x, y: totem.y + 3, z: totem.z, life: 3 });
-            st.floatingTexts3d.push({ text: '+25% XP & SCORE', color: '#ffcc00', x: totem.x, y: totem.y + 2.5, z: totem.z, life: 3 });
+            addFloatingText('NOT HARD ENOUGH!', '#ff2222', totem.x, totem.y + 3, totem.z, 3, true);
+            addFloatingText('+25% XP & SCORE', '#ffcc00', totem.x, totem.y + 2.5, totem.z, 3, true);
             scene.remove(totem.group);
             totem.group.traverse(c => { if (c.geometry) c.geometry.dispose(); if (c.material) c.material.dispose(); });
             st.totems.splice(i, 1);
@@ -4858,7 +4876,7 @@ export function launch3DGame(options) {
           cs.group.children.forEach(c => {
             if (c.material && c.material.emissive !== undefined) c.material.emissive = new THREE.Color(0xff0000);
           });
-          st.floatingTexts3d.push({ text: 'BOSS SPAWNED!', color: '#ff0000', x: cs.x, y: terrainHeight(cs.x, cs.z) + 6, z: cs.z, life: 3 });
+          addFloatingText('BOSS SPAWNED!', '#ff0000', cs.x, terrainHeight(cs.x, cs.z) + 6, cs.z, 3, true);
         }
       }
 
@@ -4881,7 +4899,7 @@ export function launch3DGame(options) {
         st.shieldBraceletTimer -= dt;
         if (st.shieldBraceletTimer <= 0) {
           st.shieldBraceletReady = true;
-          st.floatingTexts3d.push({ text: 'SHIELD READY!', color: '#4488ff', x: st.playerX, y: st.playerY + 2, z: st.playerZ, life: 1.5 });
+          addFloatingText('SHIELD READY!', '#4488ff', st.playerX, st.playerY + 2, st.playerZ, 1.5, true);
         }
       }
 
