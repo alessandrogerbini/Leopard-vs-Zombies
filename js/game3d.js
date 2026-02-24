@@ -285,6 +285,7 @@ export function launch3DGame(options) {
     xp: 0, xpToNext: 10, level: 1,
     enemies: [],
     xpGems: [],
+    gemMergeTimer: 0,         // BD-144: timer for periodic gem merging
     mapGems: [],              // Active map gem objects [{mesh, x, z, xpValue, chunkKey, gemIndex, alive}]
     collectedGemKeys: {},     // Track collected gems: {"cx,cz": Set of indices}
     attackLines: [],
@@ -1663,7 +1664,7 @@ export function launch3DGame(options) {
     const h = terrainHeight(x, z);
     mesh.position.set(x, h + 0.5, z);
     scene.add(mesh);
-    return { mesh, bobPhase: Math.random() * Math.PI * 2 };
+    return { mesh, bobPhase: Math.random() * Math.PI * 2, xpValue: 1, baseScale: 1.0 };
   }
 
   // (mapGemGeo, mapGemMat, createMapGem moved above generateMapGems)
@@ -2114,12 +2115,29 @@ export function launch3DGame(options) {
     playSound((e.tier || 1) >= 5 ? 'sfx_zombie_death_high' : 'sfx_zombie_death_low');
     const pts = Math.floor((10 + st.wave * 2) * (e.tier || 1) * st.scoreMult * (st.totemScoreMult || 1));
     st.score += pts;
-    // Zombie Magnet: 2x XP gem drops
+    // Zombie Magnet: 2x XP gem drops — BD-144: hard cap at 80 gems
     const gemMult = st.items.zombiemagnet ? 2 : 1;
-    for (let m = 0; m < gemMult; m++) {
-      st.xpGems.push(createXpGem(e.group.position.x + (m > 0 ? (Math.random() - 0.5) * 0.5 : 0), e.group.position.z + (m > 0 ? (Math.random() - 0.5) * 0.5 : 0)));
-      for (let g = 1; g < (e.tier || 1); g++) {
-        st.xpGems.push(createXpGem(e.group.position.x + (Math.random() - 0.5), e.group.position.z + (Math.random() - 0.5)));
+    const gemsToSpawn = gemMult * Math.max(1, (e.tier || 1));
+    if (st.xpGems.length > 80) {
+      // Over cap: add value to nearest existing gem instead
+      let nearest = null, nearDist = Infinity;
+      for (const g of st.xpGems) {
+        const gd = Math.abs(g.mesh.position.x - e.group.position.x) + Math.abs(g.mesh.position.z - e.group.position.z);
+        if (gd < nearDist) { nearDist = gd; nearest = g; }
+      }
+      if (nearest) {
+        nearest.xpValue += gemsToSpawn;
+        const targetScale = Math.min(1.0 + nearest.xpValue * 0.05, 1.8);
+        nearest.baseScale = targetScale;
+        if (nearest.mesh.material === gemMat) nearest.mesh.material = gemMat.clone();
+        nearest.mesh.material.emissiveIntensity = Math.min(0.3 + nearest.xpValue * 0.05, 1.0);
+      }
+    } else {
+      for (let m = 0; m < gemMult; m++) {
+        st.xpGems.push(createXpGem(e.group.position.x + (m > 0 ? (Math.random() - 0.5) * 0.5 : 0), e.group.position.z + (m > 0 ? (Math.random() - 0.5) * 0.5 : 0)));
+        for (let g = 1; g < (e.tier || 1); g++) {
+          st.xpGems.push(createXpGem(e.group.position.x + (Math.random() - 0.5), e.group.position.z + (Math.random() - 0.5)));
+        }
       }
     }
     st.totalKills++;
@@ -2159,10 +2177,21 @@ export function launch3DGame(options) {
         st.hp = Math.min(st.hp + st.maxHp * 0.15, st.maxHp);
         st.floatingTexts3d.push({ text: '+HEALTH', color: '#44ff44', x: dropX, y: terrainHeight(dropX, dropZ) + 2, z: dropZ, life: 1.5 });
       } else {
-        // XP burst — bonus XP gems
-        for (let g = 0; g < 3; g++) {
-          st.xpGems.push(createXpGem(dropX + (Math.random() - 0.5) * 2, dropZ + (Math.random() - 0.5) * 2));
+        // XP burst — bonus XP gems (BD-144: respect 80-gem cap)
+        if (st.xpGems.length > 80) {
+          // Over cap: add to nearest
+          let nearest = null, nearDist = Infinity;
+          for (const g of st.xpGems) {
+            const gd = Math.abs(g.mesh.position.x - dropX) + Math.abs(g.mesh.position.z - dropZ);
+            if (gd < nearDist) { nearDist = gd; nearest = g; }
+          }
+          if (nearest) nearest.xpValue += 3;
+        } else {
+          for (let g = 0; g < 3; g++) {
+            st.xpGems.push(createXpGem(dropX + (Math.random() - 0.5) * 2, dropZ + (Math.random() - 0.5) * 2));
+          }
         }
+        st.floatingTexts3d.push({ text: '+XP', color: '#aa88ff', x: dropX, y: terrainHeight(dropX, dropZ) + 2, z: dropZ, life: 0.5 });
       }
     }
     disposeEnemy(e);
@@ -4499,9 +4528,39 @@ export function launch3DGame(options) {
         }
       }
 
+      // === XP GEM MERGE (BD-144) ===
+      // Periodically merge nearby gems to reduce draw calls and object count.
+      st.gemMergeTimer -= dt;
+      if (st.gemMergeTimer <= 0) {
+        st.gemMergeTimer = 0.25; // merge every 0.25s
+        for (let i = st.xpGems.length - 1; i >= 0; i--) {
+          const a = st.xpGems[i];
+          for (let j = i - 1; j >= 0; j--) {
+            const b = st.xpGems[j];
+            const mdx = a.mesh.position.x - b.mesh.position.x;
+            const mdz = a.mesh.position.z - b.mesh.position.z;
+            if (mdx * mdx + mdz * mdz < 9.0) { // 3.0^2 — aggressive merge radius
+              // Absorb b into a
+              a.xpValue += b.xpValue;
+              const targetScale = Math.min(1.0 + a.xpValue * 0.05, 1.8);
+              a.baseScale = targetScale;
+              // Clone material for merged gem glow (only if still shared)
+              if (a.mesh.material === gemMat) a.mesh.material = gemMat.clone();
+              a.mesh.material.emissiveIntensity = Math.min(0.3 + a.xpValue * 0.05, 1.0);
+              // Dispose merged gem
+              scene.remove(b.mesh);
+              if (b.mesh.material !== gemMat) b.mesh.material.dispose();
+              st.xpGems.splice(j, 1);
+              i--; // adjust outer index since we removed below it
+              break; // one merge per gem per cycle
+            }
+          }
+        }
+      }
+
       // === XP GEMS ===
       // XP gems bob, spin, and are magnetically pulled toward the player when within 2x collectRadius.
-      // Collection grants XP scaled by augmentXpMult, Fortune Howl, and totem bonuses.
+      // Collection grants XP scaled by xpValue, augmentXpMult, Fortune Howl, and totem bonuses.
       // Reaching xpToNext triggers level-up with upgrade menu.
       for (let i = st.xpGems.length - 1; i >= 0; i--) {
         const gem = st.xpGems[i];
@@ -4509,6 +4568,9 @@ export function launch3DGame(options) {
         const gh = getGroundAt(gem.mesh.position.x, gem.mesh.position.z);
         gem.mesh.position.y = gh + 0.4 + Math.sin(gem.bobPhase) * 0.15;
         gem.mesh.rotation.y += dt * 2;
+        // BD-144: apply scale from merging
+        const s = gem.baseScale || 1.0;
+        gem.mesh.scale.set(s, s, s);
         const dx = st.playerX - gem.mesh.position.x;
         const dz = st.playerZ - gem.mesh.position.z;
         const dist = Math.sqrt(dx * dx + dz * dz);
@@ -4519,8 +4581,10 @@ export function launch3DGame(options) {
           gem.mesh.position.z += (dz / dist) * pull;
         }
         if (dist < st.collectRadius) {
-          st.xp += Math.max(1, Math.round(st.augmentXpMult * getHowlXpMult() * (st.totemXpMult || 1)));
+          // BD-144: grant xpValue worth of XP (merged gems carry more)
+          st.xp += Math.max(1, Math.round((gem.xpValue || 1) * st.augmentXpMult * getHowlXpMult() * (st.totemXpMult || 1)));
           scene.remove(gem.mesh);
+          if (gem.mesh.material !== gemMat) gem.mesh.material.dispose();
           st.xpGems.splice(i, 1);
           playSound('sfx_xp_pickup');
           if (st.xp >= st.xpToNext) {
@@ -4533,6 +4597,7 @@ export function launch3DGame(options) {
         } else if (dist > 50) {
           // Cleanup far-away XP gems to prevent unbounded accumulation
           scene.remove(gem.mesh);
+          if (gem.mesh.material !== gemMat) gem.mesh.material.dispose();
           st.xpGems.splice(i, 1);
         }
       }
