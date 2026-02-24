@@ -280,6 +280,7 @@ export function launch3DGame(options) {
     waveEventTimer: 75,   // ~1.25 minutes until first wave event
     waveWarning: 0,       // countdown seconds (0 = no warning)
     initialBurstDone: false,
+    _inExplosionChain: false,  // BD-134: recursion guard for Whoopee Cushion chain explosions
     waveActive: false,
     ambientCrateTimer: 30 / (diffData.powerupFreqMult || 1.0),
     ambientItemTimer: 20,   // first item at 20s, then 45-60s cycle
@@ -2234,8 +2235,11 @@ export function launch3DGame(options) {
       }
     }
     // Whoopee Cushion: 20% chance enemies explode on death (AoE)
-    if (st.items.cushion && Math.random() < 0.20) {
+    // Guard prevents chain reaction: explosion kills → more explosions → infinite recursion (BD-134)
+    if (st.items.cushion && Math.random() < 0.20 && !st._inExplosionChain) {
+      st._inExplosionChain = true;
       spawnExplosion(e.group.position.x, e.group.position.z, 2.5, 15 * getPlayerDmgMult());
+      st._inExplosionChain = false;
       st.floatingTexts3d.push({ text: 'BOOM!', color: '#ff88cc', x: e.group.position.x, y: e.group.position.y + 2, z: e.group.position.z, life: 1 });
     }
     // Loot drop roll — tier-based rates (BD-95): T1=1%, T2=2%, T3=3%, T4+=5%
