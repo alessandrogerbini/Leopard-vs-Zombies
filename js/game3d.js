@@ -2139,7 +2139,7 @@ export function launch3DGame(options) {
     }
     // Loot drop roll — higher tier zombies drop more often
     // Lucky Charm: +50% chance to drop, Lucky Penny: +8% per stack
-    let dropChance = [0.03, 0.06, 0.10, 0.15, 0.15, 0.20, 0.20, 0.30, 0.30, 0.50][(e.tier || 1) - 1];
+    let dropChance = [0.01, 0.02, 0.04, 0.06, 0.06, 0.08, 0.08, 0.10, 0.10, 0.15][(e.tier || 1) - 1];
     if (st.items.charm) dropChance *= 1.5;
     if (st.items.luckyPenny > 0) dropChance *= (1 + st.items.luckyPenny * 0.08);
     if (Math.random() < dropChance) {
