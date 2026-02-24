@@ -353,6 +353,7 @@ export function launch3DGame(options) {
     showFullMap: false,
     // Auto-attack + power attack
     autoAttackTimer: 0,
+    attackAnimTimer: 0,
     charging: false,
     chargeTime: 0,
     chargeGlow: null,
@@ -2565,20 +2566,24 @@ export function launch3DGame(options) {
           if (dx * dx + dz * dz > 0.01) {
             fireWeapon(w);
             w.cooldownTimer = getWeaponCooldown(w);
+            st.attackAnimTimer = 0.15;
           }
         } else if (w.typeId === 'snowballTurret') {
           // Snowball Turret spawns orbiting turrets, doesn't need direct target
           fireWeapon(w);
           w.cooldownTimer = getWeaponCooldown(w);
+          st.attackAnimTimer = 0.15;
         } else if (w.typeId === 'turdMine') {
           // Turd Mine drops at player position, no target needed
           fireWeapon(w);
           w.cooldownTimer = getWeaponCooldown(w);
+          st.attackAnimTimer = 0.15;
         } else {
           const hasTarget = findNearestEnemy(getWeaponRange(w));
           if (hasTarget) {
             fireWeapon(w);
             w.cooldownTimer = getWeaponCooldown(w);
+            st.attackAnimTimer = 0.15;
           } else {
             w.cooldownTimer = 0.1; // retry soon
           }
@@ -3508,6 +3513,7 @@ export function launch3DGame(options) {
 
       // Invincibility timer
       if (st.invincible > 0) st.invincible -= dt;
+      if (st.attackAnimTimer > 0) st.attackAnimTimer -= dt;
 
       // === ACTIVE POWERUP TIMER ===
       if (st.activePowerup) {
@@ -4382,6 +4388,7 @@ export function launch3DGame(options) {
           }
 
           st.autoAttackTimer = 1 / (st.attackSpeed * st.atkSpeedBoost);
+          st.attackAnimTimer = 0.15;
         }
       }
 
