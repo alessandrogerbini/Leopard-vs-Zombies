@@ -414,6 +414,11 @@ export function launch3DGame(options) {
     // Feedback state (game-over screen)
     feedbackSelection: 0, // 0=Yes, 1=Maybe, 2=No
     feedbackSaved: false,
+    // FPS debug counter (toggle with backtick key)
+    showFps: false,
+    _fpsFrames: 0,
+    _fpsTime: 0,
+    _fpsDisplay: 0,
   };
 
   // Load 3D leaderboard (single unified key — no per-difficulty split)
@@ -715,6 +720,10 @@ export function launch3DGame(options) {
       if (!st.gameOver && !st.upgradeMenu && !st.pauseMenu && !st.chargeShrineMenu) {
         st.showFullMap = !st.showFullMap;
       }
+    }
+    // Backtick key toggles FPS debug counter (BD-140)
+    if (e.code === 'Backquote') {
+      st.showFps = !st.showFps;
     }
   }
   /**
@@ -3493,6 +3502,15 @@ export function launch3DGame(options) {
 
     // NOTE: dt is capped at 0.05s (20fps minimum) to prevent physics tunneling on lag spikes
     const dt = Math.min(clock.getDelta(), 0.05);
+
+    // FPS tracking (runs regardless of pause/gameOver for accurate profiling)
+    st._fpsFrames++;
+    st._fpsTime += dt;
+    if (st._fpsTime >= 0.5) {
+      st._fpsDisplay = Math.round(st._fpsFrames / st._fpsTime);
+      st._fpsFrames = 0;
+      st._fpsTime = 0;
+    }
 
     if (!st.paused && !st.gameOver) {
       st.gameTime += dt;
