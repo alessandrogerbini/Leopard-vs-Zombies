@@ -609,10 +609,16 @@ export function drawHUD(ctx, s, deps) {
     }
 
     // --- Controls Hint (bottom-center, auto-hide after 30s) ---
+    // BD-109: Dark background strip so text is legible against any terrain.
     if (s.gameTime < 30) {
       ctx.textAlign = 'center';
-      ctx.fillStyle = 'rgba(255,255,255,0.85)'; ctx.font = 'bold 20px ' + GAME_FONT;
-      ctx.fillText('WASD Move | SPACE Jump | B Attack', W / 2, H - 10);
+      ctx.font = 'bold 20px ' + GAME_FONT;
+      const hintText = 'WASD Move | SPACE Jump | B Attack';
+      const hintW = ctx.measureText(hintText).width + 20;
+      ctx.fillStyle = 'rgba(0,0,0,0.4)';
+      ctx.fillRect(W / 2 - hintW / 2, H - 28, hintW, 24);
+      ctx.fillStyle = 'rgba(255,255,255,0.85)';
+      ctx.fillText(hintText, W / 2, H - 10);
     }
 
     // === MINIMAP (BD-76 + BD-97 fog-of-war) ===
