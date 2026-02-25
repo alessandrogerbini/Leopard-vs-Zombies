@@ -162,6 +162,19 @@ const SOUND_MAP = {
   sfx_boss_phase_transition: [
     'rawr-2.ogg',
   ],
+  // --- Boss (Overlord) ---
+  sfx_boss_death_bolt: [
+    'big-pew-1.ogg',
+  ],
+  sfx_boss_shadow_zone: [
+    'gas-1.ogg',
+  ],
+  sfx_boss_summon: [
+    'zombie-5.ogg',
+  ],
+  sfx_boss_death_beam: [
+    'pew-5x-1.ogg',
+  ],
 };
 
 // --- Module state ---

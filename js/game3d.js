@@ -2046,6 +2046,11 @@ export function launch3DGame(options) {
       e._fissureData = [];
     }
     e._fissureState = null;
+    // BD-223: Clean up Death Beam mesh if active when Overlord dies
+    if (e._deathBeamMesh) {
+      disposeSceneObject(e._deathBeamMesh);
+      e._deathBeamMesh = null;
+    }
     scene.remove(e.group);
     e.group.traverse(c => { if (c.geometry) c.geometry.dispose(); if (c.material) c.material.dispose(); });
   }
@@ -2635,6 +2640,14 @@ export function launch3DGame(options) {
    * @see disposeEnemy
    */
   function killEnemy(e) {
+    // BD-223: Summoned zombies give no rewards (no score, XP, loot, kill tracking)
+    if (e.noReward) {
+      playSound((e.tier || 1) >= 5 ? 'sfx_zombie_death_high' : 'sfx_zombie_death_low');
+      e.dying = true;
+      e.deathTimer = 0.3;
+      return;
+    }
+
     // Boss death reward (BD-77)
     if (e.isBoss && e.bossShrine) {
       e.bossShrine.bossDefeated = true;
@@ -4172,6 +4185,31 @@ export function launch3DGame(options) {
         }
       }
 
+      // BD-222: Shadow Zones — dark circles that damage player while standing in them
+      if (eff.type === 'bossShadowZone') {
+        // Tick-based damage to player
+        eff.tickTimer -= dt;
+        if (eff.tickTimer <= 0) {
+          eff.tickTimer = eff.tickInterval;
+          // Check if player is within the zone radius
+          const pdx = st.playerX - eff.x;
+          const pdz = st.playerZ - eff.z;
+          if (pdx * pdx + pdz * pdz < eff.radius * eff.radius) {
+            damagePlayer(eff.dmgPerTick, '#440066', { type: 'shadowZone', tierName: ZOMBIE_TIERS[9].name, tier: 10, color: ZOMBIE_TIERS[9].eye });
+          }
+        }
+        // Pulsing visual effect
+        if (eff.mesh.material) {
+          const pulse = 0.4 + 0.2 * Math.sin(performance.now() * 0.005);
+          // Fade out in final 0.5s
+          if (eff.life <= eff.fadeStart) {
+            eff.mesh.material.opacity = pulse * (eff.life / eff.fadeStart);
+          } else {
+            eff.mesh.material.opacity = pulse;
+          }
+        }
+      }
+
       if (eff.type === 'bee') {
         // Bee chases nearest enemy and deals damage on contact
         let nearestE = null, nearDistSq = Infinity;
@@ -5348,6 +5386,26 @@ export function launch3DGame(options) {
           }
           continue; // Skip all attack/movement logic during entrance
         }
+
+        // BD-223: Summoned zombie lifetime — fade and despawn when timer expires
+        if (e.isSummoned && e.summonLifetime !== undefined) {
+          e.summonLifetime -= gameDt;
+          // Fade out over final 1s
+          if (e.summonLifetime <= 1.0) {
+            const fadeAlpha = Math.max(0, e.summonLifetime / 1.0);
+            e.group.traverse(c => {
+              if (c.isMesh && c.material) {
+                c.material.transparent = true;
+                c.material.opacity = fadeAlpha;
+              }
+            });
+          }
+          if (e.summonLifetime <= 0) {
+            disposeEnemy(e);
+            continue;
+          }
+        }
+
         // Mud slow timer decrement — restore speed when expired
         if (e._mudSlowed) {
           e._mudSlowTimer -= gameDt;
@@ -5779,8 +5837,95 @@ export function launch3DGame(options) {
               e._attackFlashTimer = 0.2;
             }
 
-            // BD-220/221: Phase-gated attack selection for tier 9
-            if (e.tier === 9) {
+            if (e.tier >= 10) {
+              // === BD-222: Overlord phase-gated attack pool ===
+              const attackPool = ['deathBoltVolley', 'shadowZones'];
+              if (e.bossPhase >= 2) attackPool.push('summonBurst');
+              if (isChill ? e.bossPhase >= 4 : e.bossPhase >= 3) attackPool.push('deathBeam');
+
+              // Weighted random, no consecutive repeat
+              let chosenAttack;
+              do {
+                chosenAttack = attackPool[Math.floor(Math.random() * attackPool.length)];
+              } while (chosenAttack === e._lastAttack && attackPool.length > 1);
+              e._lastAttack = chosenAttack;
+              e._overlordAttack = chosenAttack;
+
+              // BD-179: First-encounter floating labels for each attack
+              const attackLabels = {
+                deathBoltVolley: { text: 'DEATH VOLLEY!', color: '#ff0044' },
+                shadowZones: { text: 'SHADOW ZONE!', color: '#440066' },
+                summonBurst: { text: 'SUMMON BURST!', color: '#aa00ff' },
+                deathBeam: { text: 'DEATH BEAM!', color: '#ff0000' },
+              };
+              const labelInfo = attackLabels[chosenAttack];
+              const labelKey = 'overlord_' + chosenAttack;
+              if (labelInfo && !st.attackFirstSeen[labelKey]) {
+                st.attackFirstSeen[labelKey] = true;
+                addFloatingText(labelInfo.text, labelInfo.color, e.group.position.x, e.group.position.y + 4, e.group.position.z, 2.5, true);
+              }
+
+              // Set telegraph based on chosen attack
+              if (chosenAttack === 'deathBoltVolley') {
+                // Death Bolt Volley telegraph — flat aim strip toward predicted position
+                e.specialAttackTelegraphTimer = 0.5 * telegraphDurMult;
+                const leadTime = 0.5;
+                const predX = st.playerX + (st.playerVelX || 0) * leadTime;
+                const predZ = st.playerZ + (st.playerVelZ || 0) * leadTime;
+                e.specialAttackTargetX = predX;
+                e.specialAttackTargetZ = predZ;
+                const stripDx = predX - e.group.position.x;
+                const stripDz = predZ - e.group.position.z;
+                const stripLen = Math.sqrt(stripDx * stripDx + stripDz * stripDz) || 1;
+                const stripGeo = new THREE.BoxGeometry(0.3, 0.1, stripLen);
+                const stripMat = new THREE.MeshBasicMaterial({ color: 0xff0000, transparent: true, opacity: 0.6 });
+                const strip = new THREE.Mesh(stripGeo, stripMat);
+                strip.position.set(
+                  (e.group.position.x + predX) / 2, 0.15,
+                  (e.group.position.z + predZ) / 2
+                );
+                strip.rotation.y = Math.atan2(stripDx, stripDz);
+                scene.add(strip);
+                e.specialAttackMesh = strip;
+              } else if (chosenAttack === 'shadowZones') {
+                // Shadow Zones telegraph — dark circles appear near player
+                e.specialAttackTelegraphTimer = 1.5 * telegraphDurMult;
+                const zoneCount = isChill ? (2 + Math.floor(Math.random() * 2)) : (3 + Math.floor(Math.random() * 3));
+                const zoneGroup = new THREE.Group();
+                e._shadowZonePositions = [];
+                for (let sz = 0; sz < zoneCount; sz++) {
+                  const szAngle = Math.random() * Math.PI * 2;
+                  const szDist = 2 + Math.random() * 4;
+                  const szX = st.playerX + Math.cos(szAngle) * szDist;
+                  const szZ = st.playerZ + Math.sin(szAngle) * szDist;
+                  e._shadowZonePositions.push({ x: szX, z: szZ });
+                  const circleGeo = new THREE.CircleGeometry(3, 24);
+                  circleGeo.rotateX(-Math.PI / 2);
+                  const circleMat = new THREE.MeshBasicMaterial({ color: 0x220033, transparent: true, opacity: 0.3, side: THREE.DoubleSide, depthWrite: false });
+                  const circle = new THREE.Mesh(circleGeo, circleMat);
+                  circle.position.set(szX, 0.05, szZ);
+                  zoneGroup.add(circle);
+                }
+                scene.add(zoneGroup);
+                e.specialAttackMesh = zoneGroup;
+                e.specialAttackMesh.isGroup = true;
+              } else if (chosenAttack === 'summonBurst') {
+                // Summon Burst telegraph — body tilt back, dark particles converge
+                e.specialAttackTelegraphTimer = 2.0 * telegraphDurMult;
+                e._summonChannelTimer = 2.0 * telegraphDurMult;
+                // Visual: tilted body + dark particle convergence (handled in telegraph anim)
+                e.specialAttackMesh = null; // no external telegraph mesh, anim is on enemy body
+              } else if (chosenAttack === 'deathBeam') {
+                // Death Beam telegraph — converging red particles, emissive ramp
+                const chargeDur = isChill ? 3.0 : 2.0;
+                e.specialAttackTelegraphTimer = chargeDur * telegraphDurMult;
+                e._deathBeamChargeDur = chargeDur * telegraphDurMult;
+                e._deathBeamBaseAngle = Math.atan2(st.playerX - e.group.position.x, st.playerZ - e.group.position.z);
+                e.specialAttackMesh = null; // charge uses particles, no external mesh
+              }
+
+            } else if (e.tier === 9) {
+              // BD-220/221: Phase-gated attack selection for tier 9
               // Build attack pool based on boss phase
               const attackPool = ['slam', 'shockwave']; // Phase 1: always available
               if (e.bossPhase >= 2) attackPool.push('boneBarrage');
@@ -5928,34 +6073,6 @@ export function launch3DGame(options) {
                 continue; // skip normal attack flow
               }
               playSound('sfx_player_growl');
-            } else if (e.tier >= 10) {
-              // BD-179: First-encounter floating label for Overlord
-              const labelKey = 'tier10';
-              if (!st.attackFirstSeen[labelKey]) {
-                st.attackFirstSeen[labelKey] = true;
-                addFloatingText('DEATH BOLT!', '#ff0044', e.group.position.x, e.group.position.y + 4, e.group.position.z, 2.5, true);
-              }
-              // Overlord: Death Bolt telegraph — flat aim strip toward predicted position
-              e.specialAttackTelegraphTimer = 1.0 * telegraphDurMult;
-              const leadTime = 0.5;
-              const predX = st.playerX + (st.playerVelX || 0) * leadTime;
-              const predZ = st.playerZ + (st.playerVelZ || 0) * leadTime;
-              e.specialAttackTargetX = predX;
-              e.specialAttackTargetZ = predZ;
-              const stripDx = predX - e.group.position.x;
-              const stripDz = predZ - e.group.position.z;
-              const stripLen = Math.sqrt(stripDx * stripDx + stripDz * stripDz) || 1;
-              const stripGeo = new THREE.BoxGeometry(0.3, 0.1, stripLen);
-              const stripMat = new THREE.MeshBasicMaterial({ color: 0xff0000, transparent: true, opacity: 0.6 });
-              const strip = new THREE.Mesh(stripGeo, stripMat);
-              strip.position.set(
-                (e.group.position.x + predX) / 2, 0.15,
-                (e.group.position.z + predZ) / 2
-              );
-              strip.rotation.y = Math.atan2(stripDx, stripDz);
-              scene.add(strip);
-              e.specialAttackMesh = strip;
-              playSound('sfx_player_growl');
             }
           }
 
@@ -5963,35 +6080,82 @@ export function launch3DGame(options) {
             e.specialAttackTelegraphTimer -= gameDt;
 
             // Animate telegraph visuals
-            if (e.specialAttackMesh) {
-              const t = performance.now() * 0.01;
-              if (e.tier >= 10) {
+            if (e.tier >= 10) {
+              const chosenAttack = e._overlordAttack;
+              if (chosenAttack === 'deathBoltVolley' && e.specialAttackMesh) {
                 // Pulse the death bolt strip opacity
+                const t = performance.now() * 0.01;
                 e.specialAttackMesh.material.opacity = 0.3 + 0.4 * Math.sin(t);
-              } else if (e.tier === 9) {
-                if (e._currentAttack === 'shockwave') {
-                  // Shockwave: rapid expansion to show the ring will travel far
-                  const baseDur = 1.0 * telegraphDurMult;
-                  const progress = 1 - (e.specialAttackTelegraphTimer / baseDur);
-                  const ringScale = 1 + progress * 12;
-                  e.specialAttackMesh.scale.set(ringScale, 1, ringScale);
-                  e.specialAttackMesh.material.opacity = 0.5 * (1 - progress * 0.3);
-                } else if (e._currentAttack === 'slam') {
-                  // Slam: expand ring outward to show AoE radius
-                  const baseDur = 1.5 * telegraphDurMult;
-                  const progress = 1 - (e.specialAttackTelegraphTimer / baseDur);
-                  const ringScale = 1 + progress * 7;
-                  e.specialAttackMesh.scale.set(ringScale, 1, ringScale);
-                  e.specialAttackMesh.material.opacity = 0.5 * (1 - progress * 0.5);
-                } else if (e._currentAttack === 'boneBarrage') {
-                  // BD-220: Pulse bone barrage ground markers
-                  if (e.specialAttackMesh.isGroup) {
-                    e.specialAttackMesh.children.forEach(child => {
-                      if (child.material) {
-                        child.material.opacity = 0.3 + 0.3 * Math.abs(Math.sin(t));
-                      }
-                    });
-                  }
+              } else if (chosenAttack === 'shadowZones' && e.specialAttackMesh && e.specialAttackMesh.isGroup) {
+                // Pulse shadow zone circles
+                const t = performance.now() * 0.006;
+                e.specialAttackMesh.children.forEach((c, ci) => {
+                  if (c.material) c.material.opacity = 0.2 + 0.25 * Math.sin(t + ci * 1.5);
+                });
+              } else if (chosenAttack === 'summonBurst') {
+                // Channel animation: tilt body back, dark particles converge inward
+                if (e.group) {
+                  const channelProgress = 1 - (e.specialAttackTelegraphTimer / e._summonChannelTimer);
+                  e.group.rotation.x = -0.3 * channelProgress; // tilt back
+                }
+                // Dark particle convergence toward boss
+                if (Math.random() < 0.15) {
+                  const pa = Math.random() * Math.PI * 2;
+                  const pr = 3 + Math.random() * 3;
+                  spawnFireParticle(
+                    0x440066,
+                    e.group.position.x + Math.cos(pa) * pr,
+                    e.group.position.y + 1 + Math.random() * 2,
+                    e.group.position.z + Math.sin(pa) * pr,
+                    0.4,
+                    { transparent: true, opacity: 0.7 }
+                  );
+                }
+              } else if (chosenAttack === 'deathBeam') {
+                // Charge animation: converging red particles, body emissive ramp
+                const chargeProgress = 1 - (e.specialAttackTelegraphTimer / e._deathBeamChargeDur);
+                if (e.body && e.body.material.emissive) {
+                  const emR = Math.floor(chargeProgress * 255);
+                  e.body.material.emissive.setRGB(emR / 255, 0, 0);
+                }
+                // Red particles converge toward the boss
+                if (Math.random() < 0.2) {
+                  const pa = Math.random() * Math.PI * 2;
+                  const pr = 4 + Math.random() * 3;
+                  spawnFireParticle(
+                    0xff0000,
+                    e.group.position.x + Math.cos(pa) * pr,
+                    e.group.position.y + 0.5 + Math.random() * 2,
+                    e.group.position.z + Math.sin(pa) * pr,
+                    0.5,
+                    { transparent: true, opacity: 0.8 }
+                  );
+                }
+              }
+            } else if (e.tier === 9 && e.specialAttackMesh) {
+              const t = performance.now() * 0.01;
+              if (e._currentAttack === 'shockwave') {
+                // Shockwave: rapid expansion to show the ring will travel far
+                const baseDur = 1.0 * telegraphDurMult;
+                const progress = 1 - (e.specialAttackTelegraphTimer / baseDur);
+                const ringScale = 1 + progress * 12;
+                e.specialAttackMesh.scale.set(ringScale, 1, ringScale);
+                e.specialAttackMesh.material.opacity = 0.5 * (1 - progress * 0.3);
+              } else if (e._currentAttack === 'slam') {
+                // Slam: expand ring outward to show AoE radius
+                const baseDur = 1.5 * telegraphDurMult;
+                const progress = 1 - (e.specialAttackTelegraphTimer / baseDur);
+                const ringScale = 1 + progress * 7;
+                e.specialAttackMesh.scale.set(ringScale, 1, ringScale);
+                e.specialAttackMesh.material.opacity = 0.5 * (1 - progress * 0.5);
+              } else if (e._currentAttack === 'boneBarrage') {
+                // BD-220: Pulse bone barrage ground markers
+                if (e.specialAttackMesh.isGroup) {
+                  e.specialAttackMesh.children.forEach(child => {
+                    if (child.material) {
+                      child.material.opacity = 0.3 + 0.3 * Math.abs(Math.sin(t));
+                    }
+                  });
                 }
               }
             }
@@ -5999,27 +6163,152 @@ export function launch3DGame(options) {
             if (e.specialAttackTelegraphTimer <= 0) {
               // Telegraph finished — fire the attack
               if (e.tier >= 10) {
-                // BD-211: Overlord Death Bolt — fires toward PREDICTED position (target leading)
-                const boltGeo = new THREE.SphereGeometry(0.5, 8, 6);
-                const boltMat = new THREE.MeshBasicMaterial({ color: 0xff0044, emissive: 0xff0022 });
-                const bolt = new THREE.Mesh(boltGeo, boltMat);
-                bolt.position.set(e.group.position.x, 1.5, e.group.position.z);
-                scene.add(bolt);
-                const bdx = e.specialAttackTargetX - e.group.position.x;
-                const bdz = e.specialAttackTargetZ - e.group.position.z;
-                const bDist = Math.sqrt(bdx * bdx + bdz * bdz) || 1;
-                st.weaponProjectiles.push({
-                  mesh: bolt,
-                  x: e.group.position.x, y: 1.5, z: e.group.position.z,
-                  vx: (bdx / bDist) * 18, vy: 0, vz: (bdz / bDist) * 18,
-                  damage: 45 * diffDmgMult,
-                  range: 1.5,
-                  life: 3,
-                  type: 'deathBolt',
-                  isEnemyProjectile: true,
-                  sourceEnemy: e, // BD-235: enemy ref for damagePlayer source tracking
-                  originX: e.group.position.x, originZ: e.group.position.z, // BD-235: origin position at fire time
-                });
+                const chosenAttack = e._overlordAttack;
+
+                if (chosenAttack === 'deathBoltVolley') {
+                  // === BD-222: Death Bolt Volley — multi-bolt spread ===
+                  const boltCount = e.bossPhase >= 3 ? (isChill ? 3 : 5) : (isChill ? 2 : 3);
+                  const spreadAngle = e.bossPhase >= 3 ? (30 * Math.PI / 180) : (15 * Math.PI / 180);
+                  const bdx = e.specialAttackTargetX - e.group.position.x;
+                  const bdz = e.specialAttackTargetZ - e.group.position.z;
+                  const bDist = Math.sqrt(bdx * bdx + bdz * bdz) || 1;
+                  const baseAngle = Math.atan2(bdx, bdz);
+                  const boltSpeed = isChill ? 10 : 16;
+                  const boltDmg = isChill ? 15 : 30;
+
+                  for (let bi = 0; bi < boltCount; bi++) {
+                    const angleOffset = boltCount === 1 ? 0 :
+                      -spreadAngle / 2 + (spreadAngle / (boltCount - 1)) * bi;
+                    const bAngle = baseAngle + angleOffset;
+                    const boltGeo = new THREE.SphereGeometry(0.4, 8, 6);
+                    const boltMat = new THREE.MeshBasicMaterial({ color: 0xff0044 });
+                    const bolt = new THREE.Mesh(boltGeo, boltMat);
+                    bolt.position.set(e.group.position.x, 1.5, e.group.position.z);
+                    scene.add(bolt);
+                    st.weaponProjectiles.push({
+                      mesh: bolt,
+                      x: e.group.position.x, y: 1.5, z: e.group.position.z,
+                      vx: Math.sin(bAngle) * boltSpeed,
+                      vy: 0,
+                      vz: Math.cos(bAngle) * boltSpeed,
+                      damage: boltDmg * diffDmgMult,
+                      range: 1.5,
+                      life: 3,
+                      type: 'deathBolt',
+                      isEnemyProjectile: true,
+                      sourceEnemy: e, // BD-235: enemy ref for damagePlayer source tracking
+                      originX: e.group.position.x, originZ: e.group.position.z, // BD-235: origin position at fire time
+                    });
+                  }
+                  playSound('sfx_boss_death_bolt');
+
+                } else if (chosenAttack === 'shadowZones') {
+                  // === BD-222: Shadow Zones — dark damaging circles on ground ===
+                  // Check max 2 active shadow zone sets
+                  const activeShadowSets = st.weaponEffects.filter(eff => eff.type === 'bossShadowZone').length;
+                  if (activeShadowSets < 2 && e._shadowZonePositions) {
+                    for (const pos of e._shadowZonePositions) {
+                      const zoneGeo = new THREE.CircleGeometry(3, 24);
+                      zoneGeo.rotateX(-Math.PI / 2);
+                      const zoneMat = new THREE.MeshBasicMaterial({
+                        color: 0x330044, transparent: true, opacity: 0.6,
+                        side: THREE.DoubleSide, depthWrite: false
+                      });
+                      const zoneMesh = new THREE.Mesh(zoneGeo, zoneMat);
+                      zoneMesh.position.set(pos.x, 0.08, pos.z);
+                      scene.add(zoneMesh);
+                      const zoneDuration = 3.0;
+                      st.weaponEffects.push({
+                        mesh: zoneMesh,
+                        x: pos.x,
+                        z: pos.z,
+                        radius: 3,
+                        life: zoneDuration,
+                        maxLife: zoneDuration,
+                        type: 'bossShadowZone',
+                        dmgPerTick: isChill ? 5 : 10,
+                        tickInterval: isChill ? 0.75 : 0.5,
+                        tickTimer: 0,
+                        fadeStart: 0.5, // fade out in final 0.5s
+                      });
+                    }
+                    e._shadowZonePositions = null;
+                  }
+                  playSound('sfx_boss_shadow_zone');
+
+                } else if (chosenAttack === 'summonBurst') {
+                  // === BD-223: Summon Burst — spawn ring of zombies ===
+                  // Reset body tilt from channel animation
+                  if (e.group) e.group.rotation.x = 0;
+
+                  // Count currently alive summoned zombies
+                  const summonedAlive = st.enemies.filter(en => en.alive && !en.dying && en.isSummoned).length;
+                  const maxSummoned = 6;
+                  if (summonedAlive < maxSummoned) {
+                    const spawnCount = isChill ? 3 : (4 + Math.floor(Math.random() * 3)); // 4-6 normal, 3 chill
+                    const actualSpawn = Math.min(spawnCount, maxSummoned - summonedAlive);
+                    const spawnDist = 6;
+                    const maxSummonTier = isChill ? 1 : 3;
+                    const summonLifetime = isChill ? 10 : 15;
+                    for (let si = 0; si < actualSpawn; si++) {
+                      const spAngle = (si / actualSpawn) * Math.PI * 2;
+                      const sx = e.group.position.x + Math.cos(spAngle) * spawnDist;
+                      const sz = e.group.position.z + Math.sin(spAngle) * spawnDist;
+                      const sTier = isChill ? 1 : (1 + Math.floor(Math.random() * maxSummonTier));
+                      const sBaseHp = 8 * sTier;
+                      const summoned = createEnemy(sx, sz, sBaseHp, sTier);
+                      summoned.hp = summoned.hp * 0.5; // 50% HP
+                      summoned.maxHp = summoned.hp;
+                      summoned.isSummoned = true;
+                      summoned.noReward = true;
+                      summoned.summonLifetime = summonLifetime;
+                      st.enemies.push(summoned);
+                    }
+                  }
+                  playSound('sfx_boss_summon');
+
+                } else if (chosenAttack === 'deathBeam') {
+                  // === BD-223: Death Beam — sweeping beam attack ===
+                  // Reset emissive from charge
+                  if (e.body && e.body.material.emissive) {
+                    e.body.material.emissive.setHex(0x000000);
+                  }
+                  // Enter fire state for beam sweep
+                  e.specialAttackState = 'fire';
+                  const sweepDur = isChill ? 3.0 : 2.0;
+                  e._deathBeamSweepTimer = sweepDur;
+                  e._deathBeamSweepDur = sweepDur;
+                  e._deathBeamHasHit = false;
+                  const sweepAngle = 60 * Math.PI / 180;
+                  e._deathBeamStartAngle = e._deathBeamBaseAngle - sweepAngle / 2;
+                  e._deathBeamEndAngle = e._deathBeamBaseAngle + sweepAngle / 2;
+                  e._deathBeamDamage = (isChill ? 20 : 40) * diffDmgMult;
+                  e._deathBeamWidth = isChill ? 0.6 : 0.8;
+
+                  // Create beam mesh
+                  const beamLen = 30;
+                  const beamGeo = new THREE.BoxGeometry(e._deathBeamWidth, 0.6, beamLen);
+                  const beamMat = new THREE.MeshBasicMaterial({ color: 0xff0000, transparent: true, opacity: 0.8 });
+                  const beamMesh = new THREE.Mesh(beamGeo, beamMat);
+                  beamMesh.position.set(
+                    e.group.position.x + Math.sin(e._deathBeamStartAngle) * beamLen / 2,
+                    1.5,
+                    e.group.position.z + Math.cos(e._deathBeamStartAngle) * beamLen / 2
+                  );
+                  beamMesh.rotation.y = e._deathBeamStartAngle;
+                  scene.add(beamMesh);
+                  e._deathBeamMesh = beamMesh;
+                  triggerScreenShake(0.2, 0.3);
+                  playSound('sfx_boss_death_beam');
+
+                  // Skip the normal telegraph cleanup + cooldown for beam (handled in fire state)
+                  // Remove telegraph mesh only
+                  if (e.specialAttackMesh) {
+                    disposeTelegraph(e);
+                  }
+                  continue; // Skip movement while firing beam
+                }
+
               } else if (e.tier === 9) {
                 if (e._currentAttack === 'shockwave') {
                   // BD-211: Titan Shockwave — expanding ring that damages on contact
@@ -6132,9 +6421,20 @@ export function launch3DGame(options) {
                 e.specialAttackMesh = null;
               }
 
-              // BD-220/221: Attack-specific cooldowns with phase multiplier
-              let baseCooldown;
-              if (e.tier === 9) {
+              // BD-222: Phase-based cooldown multiplier for Overlord attacks
+              if (e.tier >= 10) {
+                const attackCooldowns = {
+                  deathBoltVolley: 4,
+                  shadowZones: 8,
+                  summonBurst: 12,
+                  deathBeam: 10,
+                };
+                const phaseMult = e.bossPhase <= 1 ? 1.0 : e.bossPhase <= 2 ? 0.9 : 0.8;
+                const chillMult = isChill ? 1.5 : 1.0;
+                const baseCooldown = attackCooldowns[e._overlordAttack] || 4;
+                e.specialAttackTimer = baseCooldown * phaseMult * chillMult + Math.random() * 1;
+              } else if (e.tier === 9) {
+                // BD-220/221: Attack-specific cooldowns with phase multiplier
                 const attackCooldowns = {
                   slam: 2.5,
                   shockwave: 2.5,
@@ -6142,14 +6442,68 @@ export function launch3DGame(options) {
                   titanCharge: 10,
                   groundFissures: 8,
                 };
-                baseCooldown = (attackCooldowns[e._currentAttack] || 2.5) * phaseCooldownMult * (isChill ? 1.5 : 1);
-              } else {
-                baseCooldown = 1.5; // Overlord
+                const baseCooldown = (attackCooldowns[e._currentAttack] || 2.5) * phaseCooldownMult * (isChill ? 1.5 : 1);
+                e.specialAttackTimer = baseCooldown + Math.random() * 1;
               }
-              e.specialAttackTimer = baseCooldown + Math.random() * 1;
               e.specialAttackState = 'idle';
             } else {
               // Still telegraphing — skip normal movement (enemy stands still)
+              continue;
+            }
+          }
+
+          // === BD-223: Death Beam fire state — sweep the beam ===
+          if (e.specialAttackState === 'fire' && e._overlordAttack === 'deathBeam' && e._deathBeamMesh) {
+            e._deathBeamSweepTimer -= dt;
+            const sweepProgress = 1 - (e._deathBeamSweepTimer / e._deathBeamSweepDur);
+            const currentAngle = e._deathBeamStartAngle + (e._deathBeamEndAngle - e._deathBeamStartAngle) * sweepProgress;
+
+            // Update beam position and rotation
+            const beamLen = 30;
+            e._deathBeamMesh.position.set(
+              e.group.position.x + Math.sin(currentAngle) * beamLen / 2,
+              1.5,
+              e.group.position.z + Math.cos(currentAngle) * beamLen / 2
+            );
+            e._deathBeamMesh.rotation.y = currentAngle;
+
+            // Hit detection via angle comparison (single hit per sweep)
+            if (!e._deathBeamHasHit) {
+              const pdx = st.playerX - e.group.position.x;
+              const pdz = st.playerZ - e.group.position.z;
+              const playerAngle = Math.atan2(pdx, pdz);
+              let angleDiff = Math.abs(playerAngle - currentAngle);
+              if (angleDiff > Math.PI) angleDiff = 2 * Math.PI - angleDiff;
+              const playerDist = Math.sqrt(pdx * pdx + pdz * pdz);
+              // Hit if player is within beam width angle and within beam range
+              const beamAngleWidth = Math.atan2(e._deathBeamWidth, playerDist);
+              if (angleDiff < beamAngleWidth && playerDist < beamLen) {
+                damagePlayer(e._deathBeamDamage, '#ff0000', { type: 'deathBeam', tierName: ZOMBIE_TIERS[9].name, tier: 10, color: ZOMBIE_TIERS[9].eye });
+                e._deathBeamHasHit = true;
+              }
+            }
+
+            // Fade beam opacity near end
+            if (e._deathBeamSweepTimer <= 0.5) {
+              e._deathBeamMesh.material.opacity = Math.max(0, e._deathBeamSweepTimer / 0.5 * 0.8);
+            }
+
+            if (e._deathBeamSweepTimer <= 0) {
+              // Beam finished — dispose and return to idle
+              disposeSceneObject(e._deathBeamMesh);
+              e._deathBeamMesh = null;
+              // Reset emissive
+              if (e.body && e.body.material.emissive) {
+                e.body.material.emissive.setHex(0x000000);
+              }
+
+              // Set cooldown
+              const phaseMult = e.bossPhase <= 1 ? 1.0 : e.bossPhase <= 2 ? 0.9 : 0.8;
+              const chillMult = isChill ? 1.5 : 1.0;
+              e.specialAttackTimer = 10 * phaseMult * chillMult + Math.random() * 1;
+              e.specialAttackState = 'idle';
+            } else {
+              // Still firing beam — skip normal movement
               continue;
             }
           }
