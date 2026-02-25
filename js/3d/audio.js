@@ -14,8 +14,16 @@
  * Exports: initAudio, playSound, setVolume, getVolume, toggleMute, isMuted, disposeAudio, checkAudioHealth
  */
 
-/** Maximum simultaneous sounds to prevent audio overload. */
-const MAX_CONCURRENT = 12;
+/**
+ * Maximum simultaneous sounds to prevent audio overload.
+ *
+ * Raised from 12 to 16 for boss fight support (BD-227). Boss worst-case
+ * scenario: phase transition sound + attack sound (e.g. bone barrage) +
+ * multiple bone impact sounds + shadow zone eruptions can all overlap
+ * simultaneously. 12 slots risked audio dropout during these moments;
+ * 16 provides comfortable headroom without excessive resource usage.
+ */
+const MAX_CONCURRENT = 16;
 
 /** localStorage keys for persisting user preferences. */
 const VOLUME_KEY = 'avz-volume';
@@ -142,6 +150,66 @@ const SOUND_MAP = {
   ],
   sfx_comedic_drop: [
     'poop-1.ogg',
+  ],
+
+  // --- Boss (BD-227: consolidated boss audio section) ---
+  // Audio design rationale: each attack category uses a different frequency/character
+  // so players learn to identify attacks by sound alone.
+  //   - Ground attacks (Slam, Fissures, Dark Nova): low-register sounds
+  //   - Projectile attacks (Death Bolt, Bone Barrage): sharp/percussive sounds
+  //   - Sustained attacks (Death Beam, Shadow Zones): continuous-sounding files
+  //   - Creature effects (Summon, Charge): vocal sounds
+  //   - Transitions (Entrance, Phase change): dramatic sounds
+  //
+  // playSound call audit (where each event fires in game3d.js):
+  //   sfx_boss_entrance         -> boss entrance sequence, when entranceActive is first set
+  //   sfx_boss_phase_transition -> when e.bossPhase increases (HP threshold crossed)
+  //   sfx_boss_slam_impact      -> Titan Slam attack trigger; Bone Barrage telegraph begin;
+  //                                Ground Fissure eruption
+  //   sfx_boss_charge_telegraph -> Titan Charge telegraph begin
+  //   sfx_boss_death_bolt       -> Overlord Death Bolt Volley fires
+  //   sfx_boss_shadow_zone      -> Overlord Shadow Zones appear
+  //   sfx_boss_summon           -> Overlord Summon Burst channel begins
+  //   sfx_boss_death_beam       -> Overlord Death Beam charge begins
+  //   sfx_boss_dark_nova        -> Overlord Dark Nova float-up begins
+  //
+  // Sound Pack Beta replacement priority (ordered by impact):
+  //   1. sfx_boss_death_beam       -- needs a distinct charging/firing sound
+  //   2. sfx_boss_dark_nova        -- currently shares file with sfx_boss_entrance
+  //   3. sfx_boss_charge_telegraph -- needs a heavier, more threatening growl
+  //   4. sfx_boss_shadow_zone      -- needs a darker, more ominous ambient tone
+  //   5. sfx_boss_phase_transition -- needs a dramatic chord sting
+  //   6. sfx_boss_entrance         -- needs deep rumbling crescendo
+  //   7. sfx_boss_summon           -- needs creepy groan building
+  //   8. sfx_boss_death_bolt       -- needs rising whine / energy charge sound
+  //   9. sfx_boss_slam_impact      -- needs heavy boom with debris sounds
+
+  sfx_boss_entrance: [
+    'zombie-4.ogg',
+  ],
+  sfx_boss_phase_transition: [
+    'rawr-2.ogg',
+  ],
+  sfx_boss_charge_telegraph: [
+    'leapord-growl-1.ogg',
+  ],
+  sfx_boss_slam_impact: [
+    'explode-1.ogg',
+  ],
+  sfx_boss_death_bolt: [
+    'big-pew-1.ogg',
+  ],
+  sfx_boss_shadow_zone: [
+    'gas-1.ogg',
+  ],
+  sfx_boss_summon: [
+    'zombie-5.ogg',
+  ],
+  sfx_boss_death_beam: [
+    'pew-5x-1.ogg',
+  ],
+  sfx_boss_dark_nova: [
+    'zombie-4.ogg',
   ],
 };
 
