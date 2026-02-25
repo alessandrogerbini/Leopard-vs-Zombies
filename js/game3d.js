@@ -99,7 +99,7 @@ import { initAudio, playSound, toggleMute, isMuted, getVolume, disposeAudio } fr
  * @property {Array.<Enemy>} enemies        - All live zombie enemies.
  * @property {Array.<XpGem>} xpGems         - All active XP gem pickups.
  * @property {Array} mapGems               - Non-respawning map gem collectibles [{mesh, x, z, xpValue, chunkKey, gemIndex, alive}].
- * @property {Object.<string, Set>} collectedGemKeys - Collected gem indices by chunk key (persists across chunk load/unload).
+ * @property {Map.<string, Set>} collectedGemKeys - Collected gem indices by chunk key (persists across chunk load/unload).
  * @property {Array} attackLines            - Visual attack line effects.
  * @property {Array} powerupCrates          - Breakable powerup crate objects.
  * @property {Array} itemPickups            - Floating item pickup objects.
@@ -178,7 +178,7 @@ import { initAudio, playSound, toggleMute, isMuted, getVolume, disposeAudio } fr
  *
  * --- Shrines + Augments ---
  * @property {Array} shrines                - All shrine objects (pre-placed at start).
- * @property {Object} shrinesByChunk        - Shrine lookup by chunk key (legacy, now unused).
+ * @property {Map} shrinesByChunk            - Shrine lookup by chunk key (legacy, now unused).
  * @property {Object.<string, number>} augments - Augment counts by augment ID.
  * @property {number} augmentXpMult         - Cumulative XP multiplier from augments.
  * @property {number} augmentDmgMult        - Cumulative damage multiplier from augments.
@@ -296,7 +296,7 @@ export function launch3DGame(options) {
     xpGems: [],
     gemMergeTimer: 0,
     mapGems: [],              // Active map gem objects [{mesh, x, z, xpValue, chunkKey, gemIndex, alive}]
-    collectedGemKeys: {},     // Track collected gems: {"cx,cz": Set of indices}
+    collectedGemKeys: new Map(),  // Track collected gems: Map<"cx,cz", Set of indices>
     attackLines: [],
     powerupCrates: [],
     itemPickups: [],
@@ -395,7 +395,7 @@ export function launch3DGame(options) {
     weaponEffects: [],
     // Shrines
     shrines: [],
-    shrinesByChunk: {},
+    shrinesByChunk: new Map(),
     augments: {},
     augmentXpMult: 1,
     augmentDmgMult: 1,
@@ -943,7 +943,7 @@ export function launch3DGame(options) {
   // and visible earth/stone sides. Heights are 1-4 units (1 unit ~ zombie height ~ 1.0 world units).
   // The platforms array and collision system remain unchanged for compatibility.
   const platforms = [];
-  const platformsByChunk = {};
+  const platformsByChunk = new Map();
 
   // Colors for plateau construction
   const PLATEAU_TOP_COLOR = 0x556633;    // mossy earth green (forest)
@@ -1085,12 +1085,12 @@ export function launch3DGame(options) {
    */
   function generatePlatforms(cx, cz) {
     const key = getChunkKey(cx, cz);
-    if (platformsByChunk[key]) return;
+    if (platformsByChunk.has(key)) return;
     // Skip chunks outside map bounds
     const cpMinX = cx * CHUNK_SIZE, cpMaxX = cpMinX + CHUNK_SIZE;
     const cpMinZ = cz * CHUNK_SIZE, cpMaxZ = cpMinZ + CHUNK_SIZE;
     if (cpMaxX < -MAP_HALF || cpMinX > MAP_HALF || cpMaxZ < -MAP_HALF || cpMinZ > MAP_HALF) return;
-    platformsByChunk[key] = [];
+    platformsByChunk.set(key, []);
 
     const ox = cx * CHUNK_SIZE, oz = cz * CHUNK_SIZE;
     const numPlats = Math.floor(noise2D(cx * 5 + 31, cz * 5 + 37) * 3); // 0-2
@@ -1131,13 +1131,13 @@ export function launch3DGame(options) {
       // Store as platform for collision (topMesh is allMeshes[0])
       const plat = { mesh: allMeshes[0], meshes: allMeshes, x: px, y: topY, z: pz, w: pw, d: pd };
       platforms.push(plat);
-      platformsByChunk[key].push(plat);
+      platformsByChunk.get(key).push(plat);
 
       // BD-133: Register ramp steps as walkable platforms
       for (const sp of result.stepPlatforms) {
         const stepPlat = { mesh: null, meshes: [], x: sp.x, y: sp.y, z: sp.z, w: sp.w, d: sp.d };
         platforms.push(stepPlat);
-        platformsByChunk[key].push(stepPlat);
+        platformsByChunk.get(key).push(stepPlat);
       }
 
       // Occasional stacking: a smaller plateau on top of this one (10% chance)
@@ -1152,13 +1152,13 @@ export function launch3DGame(options) {
 
         const stackPlat = { mesh: stackMeshes[0], meshes: stackMeshes, x: px, y: stackTopY, z: pz, w: stackW, d: stackD };
         platforms.push(stackPlat);
-        platformsByChunk[key].push(stackPlat);
+        platformsByChunk.get(key).push(stackPlat);
 
         // BD-133: Register stacked plateau ramp steps as walkable platforms
         for (const sp of stackResult.stepPlatforms) {
           const stepPlat = { mesh: null, meshes: [], x: sp.x, y: sp.y, z: sp.z, w: sp.w, d: sp.d };
           platforms.push(stepPlat);
-          platformsByChunk[key].push(stepPlat);
+          platformsByChunk.get(key).push(stepPlat);
         }
       }
     }
@@ -1172,7 +1172,7 @@ export function launch3DGame(options) {
    */
   function unloadPlatforms(cx, cz) {
     const key = getChunkKey(cx, cz);
-    const plats = platformsByChunk[key];
+    const plats = platformsByChunk.get(key);
     if (!plats) return;
     plats.forEach(p => {
       // Dispose all meshes in the plateau (top + sides)
@@ -1191,7 +1191,7 @@ export function launch3DGame(options) {
       const idx = platforms.indexOf(p);
       if (idx >= 0) platforms.splice(idx, 1);
     });
-    delete platformsByChunk[key];
+    platformsByChunk.delete(key);
   }
 
   /**
@@ -1219,7 +1219,7 @@ export function launch3DGame(options) {
     // Unload far platforms + shrines + map gems
     // Collect keys first to avoid mutation-during-iteration
     const platformKeysToUnload = [];
-    for (const key in platformsByChunk) {
+    for (const key of platformsByChunk.keys()) {
       const [cx, cz] = key.split(',').map(Number);
       if (Math.abs(cx - Math.floor(px / CHUNK_SIZE)) > VIEW_DIST + 1 ||
           Math.abs(cz - Math.floor(pz / CHUNK_SIZE)) > VIEW_DIST + 1) {
@@ -1233,7 +1233,7 @@ export function launch3DGame(options) {
     }
     // Unload far map gems
     const gemKeysToUnload = [];
-    for (const key in mapGemsByChunk) {
+    for (const key of mapGemsByChunk.keys()) {
       const [cx, cz] = key.split(',').map(Number);
       if (Math.abs(cx - Math.floor(px / CHUNK_SIZE)) > VIEW_DIST + 1 ||
           Math.abs(cz - Math.floor(pz / CHUNK_SIZE)) > VIEW_DIST + 1) {
@@ -1247,7 +1247,7 @@ export function launch3DGame(options) {
     // Also unload shrines in chunks not covered by platforms
     // Collect keys first to avoid mutation-during-iteration
     const shrineKeysToUnload = [];
-    for (const key in st.shrinesByChunk) {
+    for (const key of st.shrinesByChunk.keys()) {
       const [cx, cz] = key.split(',').map(Number);
       if (Math.abs(cx - Math.floor(px / CHUNK_SIZE)) > VIEW_DIST + 1 ||
           Math.abs(cz - Math.floor(pz / CHUNK_SIZE)) > VIEW_DIST + 1) {
@@ -1336,7 +1336,7 @@ export function launch3DGame(options) {
 
   // === MAP GEMS (non-respawning per-chunk XP collectibles) ===
   // Track which chunks have had gems generated (to avoid re-generating on re-entry).
-  const mapGemsByChunk = {};
+  const mapGemsByChunk = new Map();
 
   // Shared geometry and material for all map gems (purple, slightly transparent).
   const mapGemGeo = new THREE.BoxGeometry(0.25, 0.25, 0.25);
@@ -1372,14 +1372,14 @@ export function launch3DGame(options) {
    */
   function generateMapGems(cx, cz) {
     const key = getChunkKey(cx, cz);
-    if (mapGemsByChunk[key]) return;
+    if (mapGemsByChunk.has(key)) return;
     // Skip chunks outside map bounds
     const cpMinX = cx * CHUNK_SIZE, cpMaxX = cpMinX + CHUNK_SIZE;
     const cpMinZ = cz * CHUNK_SIZE, cpMaxZ = cpMinZ + CHUNK_SIZE;
     if (cpMaxX < -MAP_HALF || cpMinX > MAP_HALF || cpMaxZ < -MAP_HALF || cpMinZ > MAP_HALF) return;
-    mapGemsByChunk[key] = [];
+    mapGemsByChunk.set(key, []);
 
-    const collected = st.collectedGemKeys[key] || new Set();
+    const collected = st.collectedGemKeys.get(key) || new Set();
     // 3-5 gems per chunk (base MAP_GEMS_PER_CHUNK ±1)
     const gemCount = MAP_GEMS_PER_CHUNK - 1 + Math.floor(Math.random() * 3); // 3,4,5
     for (let gi = 0; gi < gemCount; gi++) {
@@ -1391,7 +1391,7 @@ export function launch3DGame(options) {
       gem.chunkKey = key;
       gem.gemIndex = gi;
       st.mapGems.push(gem);
-      mapGemsByChunk[key].push(gem);
+      mapGemsByChunk.get(key).push(gem);
     }
   }
 
@@ -1404,7 +1404,7 @@ export function launch3DGame(options) {
    */
   function unloadMapGems(cx, cz) {
     const key = getChunkKey(cx, cz);
-    const gems = mapGemsByChunk[key];
+    const gems = mapGemsByChunk.get(key);
     if (!gems) return;
     for (const g of gems) {
       if (g.alive && g.mesh) {
@@ -1414,7 +1414,7 @@ export function launch3DGame(options) {
       const idx = st.mapGems.indexOf(g);
       if (idx >= 0) st.mapGems.splice(idx, 1);
     }
-    delete mapGemsByChunk[key];
+    mapGemsByChunk.delete(key);
   }
 
   // === DIFFICULTY TOTEMS ===
@@ -1959,30 +1959,26 @@ export function launch3DGame(options) {
   function disposeEnemy(e) {
     e.alive = false;
     // BD-84/BD-166: Clean up special attack telegraph mesh (added to scene, not e.group)
+    // BD-24: Use disposeSceneObject for recursive disposal of nested groups
     if (e.specialAttackMesh) {
-      if (e.specialAttackMesh.isGroup) {
-        e.specialAttackMesh.children.forEach(c => {
-          if (c.geometry) c.geometry.dispose();
-          if (c.material) c.material.dispose();
-        });
-      } else {
-        if (e.specialAttackMesh.geometry) e.specialAttackMesh.geometry.dispose();
-        if (e.specialAttackMesh.material) e.specialAttackMesh.material.dispose();
-      }
-      scene.remove(e.specialAttackMesh);
+      disposeSceneObject(e.specialAttackMesh);
       e.specialAttackMesh = null;
     }
     // BD-145: Clean up Grave Burst markers and any other special attack markers
     if (e.specialAttackMarkers && e.specialAttackMarkers.length > 0) {
       for (const m of e.specialAttackMarkers) {
-        scene.remove(m);
-        if (m.geometry) m.geometry.dispose();
-        if (m.material) m.material.dispose();
+        disposeSceneObject(m);
       }
       e.specialAttackMarkers = [];
     }
     scene.remove(e.group);
-    e.group.traverse(c => { if (c.geometry) c.geometry.dispose(); if (c.material) c.material.dispose(); });
+    e.group.traverse(c => {
+      if (c.geometry) c.geometry.dispose();
+      if (c.material) {
+        if (Array.isArray(c.material)) c.material.forEach(mat => mat.dispose());
+        else c.material.dispose();
+      }
+    });
   }
 
   // === XP GEM ===
@@ -3508,18 +3504,28 @@ export function launch3DGame(options) {
   }
 
   /**
-   * Remove an object from the scene and dispose all its geometries/materials.
-   * Works for both individual Meshes and Groups with children.
+   * Remove an object from the scene and recursively dispose all geometries and materials.
+   * Handles Groups with nested children, array materials, and standalone Meshes.
+   * BD-24: Ensures GPU memory is fully freed for complex object hierarchies.
    *
    * @param {THREE.Object3D} obj - The mesh or group to dispose.
    */
   function disposeSceneObject(obj) {
     scene.remove(obj);
     if (obj.traverse) {
-      obj.traverse(c => { if (c.geometry) c.geometry.dispose(); if (c.material) c.material.dispose(); });
+      obj.traverse(c => {
+        if (c.geometry) c.geometry.dispose();
+        if (c.material) {
+          if (Array.isArray(c.material)) c.material.forEach(m => m.dispose());
+          else c.material.dispose();
+        }
+      });
     } else {
       if (obj.geometry) obj.geometry.dispose();
-      if (obj.material) obj.material.dispose();
+      if (obj.material) {
+        if (Array.isArray(obj.material)) obj.material.forEach(m => m.dispose());
+        else obj.material.dispose();
+      }
     }
   }
 
@@ -3531,19 +3537,15 @@ export function launch3DGame(options) {
   /** Apply damage to the player with armor/augment reduction and floating text. */
   // damagePlayer() consolidated at line ~2445 (BD-155)
 
-  /** Remove a telegraph mesh from the scene and dispose its resources. */
+  /** Remove a telegraph mesh from the scene and dispose its resources (BD-24: recursive). */
   function disposeTelegraph(e) {
     if (e.specialAttackMesh) {
-      scene.remove(e.specialAttackMesh);
-      if (e.specialAttackMesh.geometry) e.specialAttackMesh.geometry.dispose();
-      if (e.specialAttackMesh.material) e.specialAttackMesh.material.dispose();
+      disposeSceneObject(e.specialAttackMesh);
       e.specialAttackMesh = null;
     }
     if (e.specialAttackMarkers && e.specialAttackMarkers.length > 0) {
       for (const m of e.specialAttackMarkers) {
-        scene.remove(m);
-        if (m.geometry) m.geometry.dispose();
-        if (m.material) m.material.dispose();
+        disposeSceneObject(m);
       }
       e.specialAttackMarkers = [];
     }
@@ -3896,8 +3898,7 @@ export function launch3DGame(options) {
     // Remove the corresponding marker if it still exists
     if (e.specialAttackMarkers && e.specialAttackMarkers[index]) {
       const m = e.specialAttackMarkers[index];
-      scene.remove(m);
-      m.traverse(c => { if (c.geometry) c.geometry.dispose(); if (c.material) c.material.dispose(); });
+      disposeSceneObject(m);
       e.specialAttackMarkers[index] = null;
     }
     playSound('sfx_explosion');
@@ -4944,11 +4945,7 @@ export function launch3DGame(options) {
         // Remove clones when powerup ends
         if (st.mirrorCloneGroups.length > 0) {
           for (const cloneData of st.mirrorCloneGroups) {
-            cloneData.group.traverse(child => {
-              if (child.geometry) child.geometry.dispose();
-              if (child.material) child.material.dispose();
-            });
-            scene.remove(cloneData.group);
+            disposeSceneObject(cloneData.group);
           }
           st.mirrorCloneGroups = [];
         }
@@ -5384,19 +5381,9 @@ export function launch3DGame(options) {
                 }
               }
 
-              // Remove telegraph mesh
+              // Remove telegraph mesh (BD-24: recursive disposal)
               if (e.specialAttackMesh) {
-                if (e.specialAttackMesh.isGroup) {
-                  e.specialAttackMesh.children.forEach(c => {
-                    if (c.geometry) c.geometry.dispose();
-                    if (c.material) c.material.dispose();
-                  });
-                  scene.remove(e.specialAttackMesh);
-                } else {
-                  scene.remove(e.specialAttackMesh);
-                  if (e.specialAttackMesh.geometry) e.specialAttackMesh.geometry.dispose();
-                  if (e.specialAttackMesh.material) e.specialAttackMesh.material.dispose();
-                }
+                disposeSceneObject(e.specialAttackMesh);
                 e.specialAttackMesh = null;
               }
 
@@ -5883,8 +5870,8 @@ export function launch3DGame(options) {
           const xpGain = Math.max(1, Math.round(g.xpValue * st.augmentXpMult * getHowlXpMult() * getWearableXpMult() * (st.totemXpMult || 1)));
           st.xp += xpGain;
           // Track as collected so it won't respawn when chunk reloads
-          if (!st.collectedGemKeys[g.chunkKey]) st.collectedGemKeys[g.chunkKey] = new Set();
-          st.collectedGemKeys[g.chunkKey].add(g.gemIndex);
+          if (!st.collectedGemKeys.has(g.chunkKey)) st.collectedGemKeys.set(g.chunkKey, new Set());
+          st.collectedGemKeys.get(g.chunkKey).add(g.gemIndex);
           playSound('sfx_xp_pickup');
           // Floating text
           addFloatingText(`+${xpGain} XP`, '#aa44ff', g.x, terrainHeight(g.x, g.z) + 1.5, g.z, 0.5);
@@ -5929,16 +5916,14 @@ export function launch3DGame(options) {
             if (c.ptype.name && c.ptype.name.includes('Wings')) playSound('sfx_powerup_wings');
             else if (c.ptype.name && c.ptype.name.includes('Race Car')) playSound('sfx_powerup_racecar');
             else playSound('sfx_powerup_generic');
-            scene.remove(c.group);
-            c.group.traverse(ch => { if (ch.geometry) ch.geometry.dispose(); if (ch.material) ch.material.dispose(); });
+            disposeSceneObject(c.group);
             st.powerupCrates.splice(i, 1);
           }
         }
         // Cleanup far crates
         if (distSq > 3600) { // 60*60
           c.alive = false;
-          scene.remove(c.group);
-          c.group.traverse(ch => { if (ch.geometry) ch.geometry.dispose(); if (ch.material) ch.material.dispose(); });
+          disposeSceneObject(c.group);
           st.powerupCrates.splice(i, 1);
         }
       }
@@ -6119,8 +6104,7 @@ export function launch3DGame(options) {
             playSound('sfx_item_pickup');
             updateWearableVisuals(playerModel, st.wearables);
             wp.alive = false;
-            scene.remove(wp.mesh);
-            wp.mesh.traverse(c => { if (c.geometry) c.geometry.dispose(); if (c.material) c.material.dispose(); });
+            disposeSceneObject(wp.mesh);
             st.wearablePickups.splice(i, 1);
             continue;
           }
@@ -6128,8 +6112,7 @@ export function launch3DGame(options) {
         // Cleanup far pickups
         if (wDistSq > 3600) { // 60*60
           wp.alive = false;
-          scene.remove(wp.mesh);
-          wp.mesh.traverse(c => { if (c.geometry) c.geometry.dispose(); if (c.material) c.material.dispose(); });
+          disposeSceneObject(wp.mesh);
           st.wearablePickups.splice(i, 1);
         }
       }
@@ -6165,8 +6148,7 @@ export function launch3DGame(options) {
             st.augments[aug.id] = (st.augments[aug.id] || 0) + 1;
             // Floating text
             addFloatingText(aug.name, aug.color, shrine.x, terrainHeight(shrine.x, shrine.z) + 2.5, shrine.z, 1.0, true);
-            scene.remove(shrine.group);
-            shrine.group.traverse(c => { if (c.geometry) c.geometry.dispose(); if (c.material) c.material.dispose(); });
+            disposeSceneObject(shrine.group);
             st.shrines.splice(i, 1);
           }
         }
@@ -6199,8 +6181,7 @@ export function launch3DGame(options) {
             st.totemScoreMult *= TOTEM_EFFECT.scoreBonusMult;
             addFloatingText('NOT HARD ENOUGH!', '#ff2222', totem.x, totem.y + 3, totem.z, 3, true);
             addFloatingText('+25% XP & SCORE', '#ffcc00', totem.x, totem.y + 2.5, totem.z, 3, true);
-            scene.remove(totem.group);
-            totem.group.traverse(c => { if (c.geometry) c.geometry.dispose(); if (c.material) c.material.dispose(); });
+            disposeSceneObject(totem.group);
             st.totems.splice(i, 1);
           }
         }
@@ -6509,12 +6490,9 @@ export function launch3DGame(options) {
     st.bombTrailBombs.forEach(b => disposeSceneObject(b.mesh));
     // Dispose map gems (shared geo/mat disposed via scene.traverse below)
     st.mapGems.forEach(g => { if (g.mesh) scene.remove(g.mesh); });
-    // Dispose wearable pickups
+    // Dispose wearable pickups (BD-24: recursive disposal)
     st.wearablePickups.forEach(wp => {
-      if (wp.mesh) {
-        scene.remove(wp.mesh);
-        wp.mesh.traverse(c => { if (c.geometry) c.geometry.dispose(); if (c.material) c.material.dispose(); });
-      }
+      if (wp.mesh) disposeSceneObject(wp.mesh);
     });
 
     // Dispose weapon projectiles and effects
@@ -6524,29 +6502,13 @@ export function launch3DGame(options) {
     st.poisonPools.forEach(p => disposeSceneObject(p.mesh));
     // Dispose charge glow
     if (st.chargeGlow) disposeSceneObject(st.chargeGlow);
-    // Dispose charge shrine meshes
+    // Dispose charge shrine meshes (BD-24: recursive disposal via disposeSceneObject)
     st.chargeShrines.forEach(cs => {
-      if (cs.group) {
-        scene.remove(cs.group);
-        cs.group.traverse(child => {
-          if (child.isMesh) {
-            if (child.geometry) child.geometry.dispose();
-            if (child.material) child.material.dispose();
-          }
-        });
-      }
+      if (cs.group) disposeSceneObject(cs.group);
     });
-    // Dispose challenge shrine meshes (BD-77)
+    // Dispose challenge shrine meshes (BD-77, BD-24: recursive disposal)
     st.challengeShrines.forEach(cs => {
-      if (cs.group) {
-        scene.remove(cs.group);
-        cs.group.traverse(child => {
-          if (child.isMesh) {
-            if (child.geometry) child.geometry.dispose();
-            if (child.material) child.material.dispose();
-          }
-        });
-      }
+      if (cs.group) disposeSceneObject(cs.group);
     });
 
     // Clear geometry/material caches (BD-184) before scene traverse
