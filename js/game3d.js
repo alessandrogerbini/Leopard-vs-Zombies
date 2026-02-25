@@ -1942,11 +1942,12 @@ export function launch3DGame(options) {
       group.add(bossAuraMesh);
     }
 
+    const enemySpeed = td.speed + Math.random() * 0.3;
     return {
       group, body: eBody, head: eHead, armL, armR, legL, legR,
       hp: totalHp,
       maxHp: totalHp,
-      speed: td.speed + Math.random() * 0.3,
+      speed: enemySpeed,
       hurtTimer: 0,
       hurtFlashCooldown: 0,
       alive: true,
@@ -1993,6 +1994,15 @@ export function launch3DGame(options) {
       _fissureState: null,
       _fissureTimer: 0,
       _fissureData: [],
+      // BD-226: Dark Nova state
+      _bossDarkNovaHintShown: false, // First-time "GET CLOSE!" hint for Dark Nova
+      _bossBaseSpeed: enemySpeed, // Store base speed for phase 4 boost
+      _darkNovaState: null, // 'floatUp', 'slam', 'ring', null
+      _darkNovaTimer: 0,
+      _darkNovaRingMesh: null,
+      _darkNovaRingRadius: 0,
+      _darkNovaHasHit: false,
+      _darkNovaOriginY: 0,
     };
   }
 
@@ -2030,6 +2040,13 @@ export function launch3DGame(options) {
     if (e._volleyFanLines) {
       for (const line of e._volleyFanLines) disposeTempMesh(line);
       e._volleyFanLines = null;
+    }
+    // BD-226: Clean up Dark Nova ring mesh if enemy dies mid-attack
+    if (e._darkNovaRingMesh) {
+      scene.remove(e._darkNovaRingMesh);
+      if (e._darkNovaRingMesh.geometry) e._darkNovaRingMesh.geometry.dispose();
+      if (e._darkNovaRingMesh.material) e._darkNovaRingMesh.material.dispose();
+      e._darkNovaRingMesh = null;
     }
     scene.remove(e.group);
     e.group.traverse(c => { if (c.geometry) c.geometry.dispose(); if (c.material) c.material.dispose(); });
@@ -2878,6 +2895,7 @@ export function launch3DGame(options) {
     }
     return dmg;
   }
+
   /**
    * Fire a weapon, creating appropriate visuals and dealing damage.
    * Each weapon type has a unique attack pattern:
@@ -5493,6 +5511,10 @@ export function launch3DGame(options) {
           newPhase = Math.max(e.bossPhase, newPhase);
           if (newPhase > e.bossPhase) {
             e.bossPhase = newPhase;
+            // BD-226: Phase 4 speed boost — +30% movement speed for Overlord
+            if (newPhase === 4 && e.tier >= 10) {
+              e.speed = (e._bossBaseSpeed || e.speed) * 1.3;
+            }
             // Phase transition effects
             const tierName = e.tier >= 10 ? 'OVERLORD' : 'TITAN';
             const phaseLabels = e.tier >= 10
@@ -5823,7 +5845,103 @@ export function launch3DGame(options) {
             }
           }
 
-          if (e.specialAttackState === 'idle' && e.specialAttackTimer <= 0 && atkDist < triggerRange && !e._chargeState && !e._fissureState) {
+          // === BD-226: Dark Nova state machine (runs independently for Overlord) ===
+          if (e.tier >= 10 && e._darkNovaState) {
+            e._darkNovaTimer -= dt;
+
+            if (e._darkNovaState === 'floatUp') {
+              // Float boss upward over 1s (2s Chill)
+              const floatDur = isChill ? 2.0 : 1.0;
+              const floatProgress = 1 - (e._darkNovaTimer / floatDur);
+              e.group.position.y = e._darkNovaOriginY + Math.min(floatProgress, 1) * 3;
+              // Converging dark red particles
+              if (Math.random() < 0.3) {
+                const pa = Math.random() * Math.PI * 2;
+                const pr = 3 + Math.random() * 5;
+                spawnFireParticle(
+                  0x880000,
+                  e.group.position.x + Math.cos(pa) * pr,
+                  e.group.position.y + Math.random() * 2,
+                  e.group.position.z + Math.sin(pa) * pr,
+                  0.6
+                );
+              }
+              if (e._darkNovaTimer <= 0) {
+                // Slam down
+                e._darkNovaState = 'slam';
+                e._darkNovaTimer = 0.1; // brief slam moment
+                e.group.position.y = e._darkNovaOriginY;
+                // Maximum screen shake
+                triggerScreenShake(0.5, 0.5);
+                playSound('sfx_explosion');
+                // Create expanding ring mesh
+                const ringGeo = new THREE.RingGeometry(3.5, 4.5, 48);
+                ringGeo.rotateX(-Math.PI / 2);
+                const ringMat = new THREE.MeshBasicMaterial({
+                  color: 0x880000, transparent: true, opacity: 0.8, side: THREE.DoubleSide
+                });
+                const ringMesh = new THREE.Mesh(ringGeo, ringMat);
+                ringMesh.position.set(e.group.position.x, 0.2, e.group.position.z);
+                scene.add(ringMesh);
+                e._darkNovaRingMesh = ringMesh;
+                e._darkNovaRingRadius = 4;
+                e._darkNovaHasHit = false;
+                // BD-226: First-time "GET CLOSE!" hint
+                if (!e._bossDarkNovaHintShown) {
+                  e._bossDarkNovaHintShown = true;
+                  addFloatingText('GET CLOSE!', '#44ff44', e.group.position.x, e.group.position.y + 5, e.group.position.z, 3, true);
+                }
+              }
+            } else if (e._darkNovaState === 'slam') {
+              // Brief pause, then transition to ring expansion
+              if (e._darkNovaTimer <= 0) {
+                e._darkNovaState = 'ring';
+                const ringDur = isChill ? 3.0 : 2.0;
+                e._darkNovaTimer = ringDur;
+              }
+            } else if (e._darkNovaState === 'ring') {
+              // Expand ring from radius 4 to 30
+              const ringDur = isChill ? 3.0 : 2.0;
+              const ringProgress = 1 - (e._darkNovaTimer / ringDur);
+              e._darkNovaRingRadius = 4 + ringProgress * 26; // 4 -> 30
+              if (e._darkNovaRingMesh) {
+                const scale = e._darkNovaRingRadius / 4; // base ring is radius 4
+                e._darkNovaRingMesh.scale.set(scale, 1, scale);
+                e._darkNovaRingMesh.material.opacity = 0.8 * (1 - ringProgress * 0.7);
+              }
+              // Damage check — safe zone within 4 units (6 in Chill) of boss
+              if (!e._darkNovaHasHit) {
+                const pdx = st.playerX - e.group.position.x;
+                const pdz = st.playerZ - e.group.position.z;
+                const playerDist = Math.sqrt(pdx * pdx + pdz * pdz);
+                const safeRadius = isChill ? 6 : 4;
+                const ringInner = e._darkNovaRingRadius - 2;
+                const ringOuter = e._darkNovaRingRadius + 1;
+                // Player gets hit if within the ring band AND outside safe zone
+                if (playerDist >= ringInner && playerDist <= ringOuter && playerDist > safeRadius) {
+                  const novaDmg = isChill ? 25 : 50;
+                  damagePlayer(novaDmg, '#880000', { type: 'darkNova', tierName: ZOMBIE_TIERS[9].name, tier: 10, color: ZOMBIE_TIERS[9].eye });
+                  e._darkNovaHasHit = true;
+                }
+              }
+              if (e._darkNovaTimer <= 0) {
+                // Cleanup ring mesh
+                if (e._darkNovaRingMesh) {
+                  disposeTempMesh(e._darkNovaRingMesh);
+                  e._darkNovaRingMesh = null;
+                }
+                e._darkNovaState = null;
+                e.specialAttackState = 'idle';
+                // Dark Nova has 15s cooldown (22.5s Chill), with phase multiplier
+                const phaseMult = e.bossPhase <= 1 ? 1.0 : e.bossPhase <= 2 ? 0.9 : 0.8;
+                const chillMult = isChill ? 1.5 : 1.0;
+                e.specialAttackTimer = 15 * phaseMult * chillMult + Math.random() * 2;
+              }
+            }
+            continue; // Skip movement during Dark Nova
+          }
+
+          if (e.specialAttackState === 'idle' && e.specialAttackTimer <= 0 && atkDist < triggerRange && !e._chargeState && !e._fissureState && !e._darkNovaState) {
             // Start telegraph phase
             e.specialAttackState = 'telegraph';
             e.specialAttackTargetX = st.playerX;
@@ -5843,6 +5961,8 @@ export function launch3DGame(options) {
               const attackPool = ['deathBoltVolley', 'shadowZones'];
               if (e.bossPhase >= 2) attackPool.push('summonBurst');
               if (isChill ? e.bossPhase >= 4 : e.bossPhase >= 3) attackPool.push('deathBeam');
+              // BD-226: Dark Nova available at phase 4
+              if (e.bossPhase >= 4) attackPool.push('darkNova');
 
               // Weighted random, no consecutive repeat
               let chosenAttack;
@@ -5858,6 +5978,7 @@ export function launch3DGame(options) {
                 shadowZones: { text: 'SHADOW ZONE!', color: '#440066' },
                 summonBurst: { text: 'SUMMON BURST!', color: '#aa00ff' },
                 deathBeam: { text: 'DEATH BEAM!', color: '#ff0000' },
+                darkNova: { text: 'DARK NOVA!', color: '#880000' },
               };
               const labelInfo = attackLabels[chosenAttack];
               const labelKey = 'overlord_' + chosenAttack;
@@ -5867,7 +5988,20 @@ export function launch3DGame(options) {
               }
 
               // Set telegraph based on chosen attack
-              if (chosenAttack === 'deathBoltVolley') {
+              if (chosenAttack === 'darkNova') {
+                // BD-226: Dark Nova — skip telegraph, go directly to float-up state
+                e.specialAttackState = 'idle'; // Will be managed by _darkNovaState
+                e._darkNovaState = 'floatUp';
+                e._darkNovaTimer = isChill ? 2.0 : 1.0;
+                e._darkNovaOriginY = e.group.position.y;
+                playSound('sfx_boss_dark_nova');
+                // BD-226: First-time "GET CLOSE!" hint handled in Dark Nova state machine
+                // Set cooldown so attack doesn't immediately re-trigger
+                const phaseMult = e.bossPhase <= 1 ? 1.0 : e.bossPhase <= 2 ? 0.9 : 0.8;
+                const chillMult = isChill ? 1.5 : 1.0;
+                e.specialAttackTimer = 15 * phaseMult * chillMult + Math.random() * 2;
+                continue; // skip normal attack flow, Dark Nova manages itself
+              } else if (chosenAttack === 'deathBoltVolley') {
                 // Death Bolt Volley telegraph — flat aim strip toward predicted position
                 e.specialAttackTelegraphTimer = 0.5 * telegraphDurMult;
                 const leadTime = 0.5;
