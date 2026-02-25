@@ -1645,6 +1645,13 @@ export function launch3DGame(options) {
   const playerGroup = playerModel.group;
   playerModel.itemMeshes = {};
 
+  // BD-214: Store true original colors permanently for hurt flash restoration
+  playerGroup.traverse(child => {
+    if (child.isMesh && child.material) {
+      child.userData._trueColor = child.material.color.getHex();
+    }
+  });
+
   // === OBJECT POOL UTILITY (BD-185) ===
   /**
    * Create a simple object pool. Acquires objects from the pool or creates new ones
@@ -4571,33 +4578,27 @@ export function launch3DGame(options) {
       if (st.wearableFlash.body > 0) st.wearableFlash.body = Math.max(0, st.wearableFlash.body - dt);
       if (st.wearableFlash.feet > 0) st.wearableFlash.feet = Math.max(0, st.wearableFlash.feet - dt);
 
-      // BD-208: Player hurt flash — constant 50% white tint (replaces BD-192 strobe)
+      // BD-214: Player hurt flash — use permanent _trueColor, not ephemeral _origColor
       if (st.playerHurtFlashCooldown > 0) st.playerHurtFlashCooldown -= dt;
       if (st.playerHurtFlash > 0) {
         st.playerHurtFlash -= dt;
         playerGroup.traverse(child => {
-          if (child.isMesh && child.material) {
-            if (!child.userData._origColor) {
-              child.userData._origColor = child.material.color.getHex();
-            }
-            const origColor = child.userData._origColor;
+          if (child.isMesh && child.material && child.userData._trueColor !== undefined) {
+            const origColor = child.userData._trueColor;
             const r = ((origColor >> 16) & 0xff) * 0.5 + 255 * 0.5;
             const g = ((origColor >> 8) & 0xff) * 0.5 + 255 * 0.5;
             const b = (origColor & 0xff) * 0.5 + 255 * 0.5;
             child.material.color.setHex((Math.round(r) << 16) | (Math.round(g) << 8) | Math.round(b));
           }
         });
-      } else if (playerGroup.userData._flashCleared !== true && st.playerHurtFlash <= 0) {
-        // Restore original colors once flash ends
+      } else {
+        // Always restore to true colors when flash is not active
         playerGroup.traverse(child => {
-          if (child.isMesh && child.material && child.userData._origColor !== undefined) {
-            child.material.color.setHex(child.userData._origColor);
-            delete child.userData._origColor;
+          if (child.isMesh && child.material && child.userData._trueColor !== undefined) {
+            child.material.color.setHex(child.userData._trueColor);
           }
         });
-        playerGroup.userData._flashCleared = true;
       }
-      if (st.playerHurtFlash > 0) playerGroup.userData._flashCleared = false;
 
       // BD-107: Name entry input cooldown timer (moved to BD-189 — ticks outside gameOver gate)
       // BD-126: Attack lunge animation timer
