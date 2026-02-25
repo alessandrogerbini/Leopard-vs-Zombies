@@ -381,6 +381,7 @@ export function launch3DGame(options) {
     autoAttackTimer: 0, // kept for compatibility, no longer used
     interactionTimer: 0, // cooldown for shrine/totem hits
     attackAnimTimer: 0, // BD-126: attack lunge animation timer
+    attackAnimDuration: 0.15, // BD-126: lunge duration (0.15 for weapons, 0.25 for power attack)
     charging: false,
     chargeTime: 0,
     chargeGlow: null,
@@ -1909,6 +1910,8 @@ export function launch3DGame(options) {
       hurtTimer: 0,
       hurtFlashCooldown: 0,
       alive: true,
+      dying: false,     // BD-123: death animation state
+      deathTimer: 0,    // BD-123: countdown for shrink+sink animation
       tier,
       bodyColor: td.body,
       headColor: td.head,
@@ -2691,6 +2694,7 @@ export function launch3DGame(options) {
    * @param {boolean} [opts.skipProcs=false] - If true, skip Gloves crit and Hot Sauce ignite.
    */
   function damageEnemy(e, dmg, opts) {
+    if (e.dying) return; // BD-123: dying enemies take no further damage
     if (!opts || !opts.skipProcs) {
       if (st.items.gloves && Math.random() < 0.15) dmg *= 2;
     }
@@ -2820,7 +2824,7 @@ export function launch3DGame(options) {
       // Hit all enemies in range
       const rangeSqCS = range * range;
       for (const e of st.enemies) {
-        if (!e.alive) continue;
+        if (!e.alive || e.dying) continue;
         const dx = e.group.position.x - st.playerX;
         const dz = e.group.position.z - st.playerZ;
         if (dx * dx + dz * dz < rangeSqCS) damageEnemy(e, dmg);
@@ -2920,7 +2924,7 @@ export function launch3DGame(options) {
           prevX = ex; prevZ = ez;
           let nextNearest = null, nextDistSq = Infinity;
           for (const e of st.enemies) {
-            if (!e.alive || hit.has(e)) continue;
+            if (!e.alive || e.dying || hit.has(e)) continue;
             const dx2 = prevX - e.group.position.x;
             const dz2 = prevZ - e.group.position.z;
             const d2Sq = dx2 * dx2 + dz2 * dz2;
@@ -3143,24 +3147,24 @@ export function launch3DGame(options) {
           if (dx * dx + dz * dz > 0.01) {
             fireWeapon(w);
             w.cooldownTimer = getWeaponCooldown(w);
-            st.attackAnimTimer = 0.15;
+            st.attackAnimTimer = 0.15; st.attackAnimDuration = 0.15;
           }
         } else if (w.typeId === 'snowballTurret') {
           // Snowball Turret spawns orbiting turrets, doesn't need direct target
           fireWeapon(w);
           w.cooldownTimer = getWeaponCooldown(w);
-          st.attackAnimTimer = 0.15;
+          st.attackAnimTimer = 0.15; st.attackAnimDuration = 0.15;
         } else if (w.typeId === 'turdMine') {
           // Turd Mine drops at player position, no target needed
           fireWeapon(w);
           w.cooldownTimer = getWeaponCooldown(w);
-          st.attackAnimTimer = 0.15;
+          st.attackAnimTimer = 0.15; st.attackAnimDuration = 0.15;
         } else {
           const hasTarget = findNearestEnemy(getWeaponRange(w));
           if (hasTarget) {
             fireWeapon(w);
             w.cooldownTimer = getWeaponCooldown(w);
-            st.attackAnimTimer = 0.15;
+            st.attackAnimTimer = 0.15; st.attackAnimDuration = 0.15;
           } else {
             w.cooldownTimer = 0.1; // retry soon
           }
@@ -3253,7 +3257,7 @@ export function launch3DGame(options) {
         // Check enemy proximity for detonation
         let detonated = false;
         for (const e of st.enemies) {
-          if (!e.alive) continue;
+          if (!e.alive || e.dying) continue;
           const dx = e.group.position.x - p.x;
           const dz = e.group.position.z - p.z;
           if (dx * dx + dz * dz < p.mineRange * p.mineRange) {
@@ -3265,7 +3269,7 @@ export function launch3DGame(options) {
           // Explode: damage + slow all enemies in range
           const rangeSq = p.mineRange * p.mineRange;
           for (const e of st.enemies) {
-            if (!e.alive) continue;
+            if (!e.alive || e.dying) continue;
             const dx = e.group.position.x - p.x;
             const dz = e.group.position.z - p.z;
             if (dx * dx + dz * dz < rangeSq) {
@@ -3342,7 +3346,7 @@ export function launch3DGame(options) {
 
       // Hit enemies
       for (const e of st.enemies) {
-        if (!e.alive) continue;
+        if (!e.alive || e.dying) continue;
         const dx = p.mesh.position.x - e.group.position.x;
         const dz = p.mesh.position.z - e.group.position.z;
         if (dx * dx + dz * dz < 1.2) {
@@ -3369,7 +3373,7 @@ export function launch3DGame(options) {
               // Find nearest alive enemy that isn't the one we just hit
               let ricoTarget = null, ricoDistSq = Infinity;
               for (const re of st.enemies) {
-                if (!re.alive || re === e) continue;
+                if (!re.alive || re.dying || re === e) continue;
                 const rdx = p.mesh.position.x - re.group.position.x;
                 const rdz = p.mesh.position.z - re.group.position.z;
                 const rDistSq = rdx * rdx + rdz * rdz;
@@ -3429,7 +3433,7 @@ export function launch3DGame(options) {
 
     // Damage all enemies in radius
     for (const e of st.enemies) {
-      if (!e.alive) continue;
+      if (!e.alive || e.dying) continue;
       const dx = x - e.group.position.x;
       const dz = z - e.group.position.z;
       if (dx * dx + dz * dz < radius * radius) {
@@ -3450,7 +3454,7 @@ export function launch3DGame(options) {
     // Impact damage to all enemies in radius
     const radiusSq = radius * radius;
     for (const e of st.enemies) {
-      if (!e.alive) continue;
+      if (!e.alive || e.dying) continue;
       const dx = x - e.group.position.x;
       const dz = z - e.group.position.z;
       if (dx * dx + dz * dz < radiusSq) {
@@ -3908,7 +3912,7 @@ export function launch3DGame(options) {
       if (eff.type === 'cloud') {
         // DoT damage
         for (const e of st.enemies) {
-          if (!e.alive) continue;
+          if (!e.alive || e.dying) continue;
           const dx = eff.x - e.group.position.x;
           const dz = eff.z - e.group.position.z;
           if (dx * dx + dz * dz < eff.radius * eff.radius) {
@@ -3944,7 +3948,7 @@ export function launch3DGame(options) {
         // Slow enemies walking through the mud zone
         const radiusSq = eff.radius * eff.radius;
         for (const e of st.enemies) {
-          if (!e.alive) continue;
+          if (!e.alive || e.dying) continue;
           const dx = eff.x - e.group.position.x;
           const dz = eff.z - e.group.position.z;
           if (dx * dx + dz * dz < radiusSq) {
@@ -3992,7 +3996,7 @@ export function launch3DGame(options) {
         // Bee chases nearest enemy and deals damage on contact
         let nearestE = null, nearDistSq = Infinity;
         for (const e of st.enemies) {
-          if (!e.alive) continue;
+          if (!e.alive || e.dying) continue;
           const dx = eff.mesh.position.x - e.group.position.x;
           const dz = eff.mesh.position.z - e.group.position.z;
           const dSq = dx * dx + dz * dz;
@@ -4041,7 +4045,7 @@ export function launch3DGame(options) {
           let nearestE = null, nearDistSq = Infinity;
           const wRangeSq = eff.weaponRange * eff.weaponRange;
           for (const e of st.enemies) {
-            if (!e.alive) continue;
+            if (!e.alive || e.dying) continue;
             const dx = eff.mesh.position.x - e.group.position.x;
             const dz = eff.mesh.position.z - e.group.position.z;
             const dSq = dx * dx + dz * dz;
@@ -4074,7 +4078,7 @@ export function launch3DGame(options) {
           eff.dmgTickTimer = 0.3;
           const radiusSq = eff.radius * eff.radius;
           for (const e of st.enemies) {
-            if (!e.alive) continue;
+            if (!e.alive || e.dying) continue;
             const dx = eff.x - e.group.position.x;
             const dz = eff.z - e.group.position.z;
             if (dx * dx + dz * dz < radiusSq) {
@@ -4122,7 +4126,7 @@ export function launch3DGame(options) {
           const bz = eff.mesh.position.z;
           const explR = 1.5;
           for (const e of st.enemies) {
-            if (!e.alive) continue;
+            if (!e.alive || e.dying) continue;
             const dx = bx - e.group.position.x;
             const dz = bz - e.group.position.z;
             if (dx * dx + dz * dz < explR * explR) {
@@ -4663,7 +4667,7 @@ export function launch3DGame(options) {
         }
         // Damage nearby enemies
         for (const e of st.enemies) {
-          if (!e.alive) continue;
+          if (!e.alive || e.dying) continue;
           const dx = st.playerX - e.group.position.x;
           const dz = st.playerZ - e.group.position.z;
           if (dx * dx + dz * dz < 9) { // range 3
@@ -4687,7 +4691,7 @@ export function launch3DGame(options) {
       // === FROST NOVA (freeze nearby enemies on activation) ===
       if (st.frostNova) {
         for (const e of st.enemies) {
-          if (!e.alive) continue;
+          if (!e.alive || e.dying) continue;
           const dx = st.playerX - e.group.position.x;
           const dz = st.playerZ - e.group.position.z;
           if (dx * dx + dz * dz < 64) { // range 8
@@ -4771,7 +4775,7 @@ export function launch3DGame(options) {
           // Just landed - create shockwave!
           const stompDmg = st.attackDamage * st.dmgBoost * 1.5;
           for (const e of st.enemies) {
-            if (!e.alive) continue;
+            if (!e.alive || e.dying) continue;
             const dx = st.playerX - e.group.position.x;
             const dz = st.playerZ - e.group.position.z;
             if (dx * dx + dz * dz < 25) { // range 5
@@ -4814,7 +4818,7 @@ export function launch3DGame(options) {
           st.lightningShieldTimer = 0.5;
           let nearest = null, nearestDist = 25; // range 5 squared
           for (const e of st.enemies) {
-            if (!e.alive) continue;
+            if (!e.alive || e.dying) continue;
             const dx = st.playerX - e.group.position.x;
             const dz = st.playerZ - e.group.position.z;
             const distSq = dx * dx + dz * dz;
@@ -4912,7 +4916,7 @@ export function launch3DGame(options) {
           if (cloneData.attackTimer <= 0) {
             cloneData.attackTimer = 0.8;
             for (const e of st.enemies) {
-              if (!e.alive) continue;
+              if (!e.alive || e.dying) continue;
               const dx = cloneData.group.position.x - e.group.position.x;
               const dz = cloneData.group.position.z - e.group.position.z;
               if (dx * dx + dz * dz < 9) { // range 3
@@ -4961,7 +4965,7 @@ export function launch3DGame(options) {
         if (b.timer <= 0) {
           // Explode! Damage enemies within range 3
           for (const e of st.enemies) {
-            if (!e.alive) continue;
+            if (!e.alive || e.dying) continue;
             const dx = b.x - e.group.position.x;
             const dz = b.z - e.group.position.z;
             if (dx * dx + dz * dz < 9) {
@@ -5555,7 +5559,7 @@ export function launch3DGame(options) {
           }
         }
         // Kill enemies that fall too far behind
-        if (dist > 60) { disposeEnemy(e); }
+        if (dist > 60 && !e.dying) { disposeEnemy(e); }
       }
 
       // === ZOMBIE-ZOMBIE COLLISION: TIERED MERGE SYSTEM (BD-175: throttled to 0.5s) ===
@@ -5682,7 +5686,7 @@ export function launch3DGame(options) {
         // Hit all enemies in range (AoE power attack)
         const rangeSqPA = range * range;
         for (const e of st.enemies) {
-          if (!e.alive) continue;
+          if (!e.alive || e.dying) continue;
           const dx = st.playerX - e.group.position.x;
           const dz = st.playerZ - e.group.position.z;
           if (dx * dx + dz * dz < rangeSqPA) {
@@ -5697,6 +5701,8 @@ export function launch3DGame(options) {
           st.chargeGlowTimer = 0.1;
         }
         st.chargeTime = 0;
+        // BD-126: Larger/longer lunge for power attack
+        st.attackAnimTimer = 0.25; st.attackAnimDuration = 0.25;
       }
       // Charge glow flash timer countdown
       if (st.chargeGlowTimer > 0) {
@@ -5745,7 +5751,7 @@ export function launch3DGame(options) {
         }
         // Hit enemies
         for (const e of st.enemies) {
-          if (!e.alive || p.hitEnemies.has(e)) continue;
+          if (!e.alive || e.dying || p.hitEnemies.has(e)) continue;
           const dx = p.mesh.position.x - e.group.position.x;
           const dz = p.mesh.position.z - e.group.position.z;
           if (dx * dx + dz * dz < 1) {
