@@ -2004,52 +2004,32 @@ export function launch3DGame(options) {
   function disposeEnemy(e) {
     e.alive = false;
     // BD-84/BD-166: Clean up special attack telegraph mesh (added to scene, not e.group)
-    if (e.specialAttackMesh) {
-      if (e.specialAttackMesh.isGroup) {
-        e.specialAttackMesh.children.forEach(c => {
-          if (c.geometry) c.geometry.dispose();
-          if (c.material) c.material.dispose();
-        });
-      } else {
-        if (e.specialAttackMesh.geometry) e.specialAttackMesh.geometry.dispose();
-        if (e.specialAttackMesh.material) e.specialAttackMesh.material.dispose();
-      }
-      scene.remove(e.specialAttackMesh);
-      e.specialAttackMesh = null;
-    }
-    // BD-145: Clean up Grave Burst markers and any other special attack markers
-    if (e.specialAttackMarkers && e.specialAttackMarkers.length > 0) {
-      for (const m of e.specialAttackMarkers) {
-        scene.remove(m);
-        if (m.geometry) m.geometry.dispose();
-        if (m.material) m.material.dispose();
-      }
-      e.specialAttackMarkers = [];
-    }
+    // BD-225: Use disposeTelegraph for consistent cleanup
+    disposeTelegraph(e);
     // BD-221: Clean up Titan Charge telegraph mesh
     if (e._chargeTelegraphMesh) {
-      disposeSceneObject(e._chargeTelegraphMesh);
+      disposeTempMesh(e._chargeTelegraphMesh);
       e._chargeTelegraphMesh = null;
     }
     e._chargeState = null;
     // BD-221: Clean up Ground Fissure meshes
-    if (e._fissureMeshes && e._fissureMeshes.length > 0) {
-      for (const m of e._fissureMeshes) {
-        disposeSceneObject(m);
-      }
-      e._fissureMeshes = [];
-    }
     if (e._fissureData) {
       for (const fd of e._fissureData) {
-        if (fd.mesh) disposeSceneObject(fd.mesh);
+        if (fd.mesh) disposeTempMesh(fd.mesh);
       }
       e._fissureData = [];
     }
+    if (e._fissureMeshes) e._fissureMeshes = [];
     e._fissureState = null;
     // BD-223: Clean up Death Beam mesh if active when Overlord dies
     if (e._deathBeamMesh) {
-      disposeSceneObject(e._deathBeamMesh);
+      disposeTempMesh(e._deathBeamMesh);
       e._deathBeamMesh = null;
+    }
+    // BD-225: Clean up Death Bolt Volley fan lines
+    if (e._volleyFanLines) {
+      for (const line of e._volleyFanLines) disposeTempMesh(line);
+      e._volleyFanLines = null;
     }
     scene.remove(e.group);
     e.group.traverse(c => { if (c.geometry) c.geometry.dispose(); if (c.material) c.material.dispose(); });
@@ -2818,7 +2798,9 @@ export function launch3DGame(options) {
             e._attackFlashTimer = 0.4;
           }
           addFloatingText('PHASE ' + newPhase + '!', '#ff4400', e.group.position.x, e.group.position.y + 4, e.group.position.z, 2.0, true);
-          triggerScreenShake(0.2, 0.3);
+          triggerScreenShake(0.3, 0.4); // BD-225: Phase transition screen shake (was 0.2, 0.3)
+          // BD-225: Pause attack timer to prevent immediate attack during transition
+          if (e.specialAttackTimer !== undefined) e.specialAttackTimer += 0.5;
         }
       } else if (e.tier >= 10) {
         // Overlord: 4 phases — P2 at 75%, P3 at 50%, P4 at 25%
@@ -2832,6 +2814,8 @@ export function launch3DGame(options) {
           }
           addFloatingText('PHASE ' + newPhase + '!', '#ff0044', e.group.position.x, e.group.position.y + 4, e.group.position.z, 2.0, true);
           triggerScreenShake(0.3, 0.4);
+          // BD-225: Pause attack timer to prevent immediate attack during transition
+          if (e.specialAttackTimer !== undefined) e.specialAttackTimer += 0.5;
         }
       }
     }
@@ -3695,6 +3679,22 @@ export function launch3DGame(options) {
     }
   }
 
+  /**
+   * BD-225: Dispose a temporary mesh — geometry, material(s), and scene removal.
+   * Prevents geometry/material leaks for boss attack telegraphs and effects.
+   *
+   * @param {THREE.Mesh|null} mesh - The mesh to dispose. Safely handles null/undefined.
+   */
+  function disposeTempMesh(mesh) {
+    if (!mesh) return;
+    if (mesh.geometry) mesh.geometry.dispose();
+    if (mesh.material) {
+      if (Array.isArray(mesh.material)) mesh.material.forEach(m => m.dispose());
+      else mesh.material.dispose();
+    }
+    scene.remove(mesh);
+  }
+
 
   // ==========================================================================
   // BD-145: TIERED ZOMBIE SPECIAL ATTACKS (Tiers 2-6)
@@ -3707,16 +3707,17 @@ export function launch3DGame(options) {
   /** Remove a telegraph mesh from the scene and dispose its resources. */
   function disposeTelegraph(e) {
     if (e.specialAttackMesh) {
-      scene.remove(e.specialAttackMesh);
-      if (e.specialAttackMesh.geometry) e.specialAttackMesh.geometry.dispose();
-      if (e.specialAttackMesh.material) e.specialAttackMesh.material.dispose();
+      if (e.specialAttackMesh.isGroup) {
+        e.specialAttackMesh.children.forEach(c => disposeTempMesh(c));
+        scene.remove(e.specialAttackMesh);
+      } else {
+        disposeTempMesh(e.specialAttackMesh);
+      }
       e.specialAttackMesh = null;
     }
     if (e.specialAttackMarkers && e.specialAttackMarkers.length > 0) {
       for (const m of e.specialAttackMarkers) {
-        scene.remove(m);
-        if (m.geometry) m.geometry.dispose();
-        if (m.material) m.material.dispose();
+        disposeTempMesh(m);
       }
       e.specialAttackMarkers = [];
     }
@@ -5695,9 +5696,9 @@ export function launch3DGame(options) {
                 e._chargeSpeed = baseChargeSpeed;
                 e._chargeDistLeft = 15;
                 e.group.scale.setScalar(1.5); // restore scale
-                // Remove telegraph mesh
+                // BD-225: Remove telegraph mesh
                 if (e._chargeTelegraphMesh) {
-                  disposeSceneObject(e._chargeTelegraphMesh);
+                  disposeTempMesh(e._chargeTelegraphMesh);
                   e._chargeTelegraphMesh = null;
                 }
               }
@@ -5713,7 +5714,7 @@ export function launch3DGame(options) {
               if (cDx * cDx + cDz * cDz < 4) {
                 const chargeDmg = isChill ? 15 : 30;
                 damagePlayer(chargeDmg * diffDmgMult, '#ff4400', { type: 'titanCharge', tierName: ZOMBIE_TIERS[8].name, tier: 9, color: ZOMBIE_TIERS[8].eye });
-                triggerScreenShake(0.25, 0.2);
+                triggerScreenShake(0.4, 0.3); // BD-225: Titan Charge hit screen shake (was 0.25, 0.2)
               }
               // Spawn dust particles along charge path
               if (Math.random() < 0.4) {
@@ -5810,9 +5811,9 @@ export function launch3DGame(options) {
                 }
               }
               if (e._fissureTimer <= 0) {
-                // Dispose all fissure meshes
+                // BD-225: Dispose all fissure meshes using disposeTempMesh
                 for (const fd of e._fissureData) {
-                  if (fd.mesh) disposeSceneObject(fd.mesh);
+                  if (fd.mesh) disposeTempMesh(fd.mesh);
                 }
                 e._fissureData = [];
                 e._fissureMeshes = [];
@@ -5887,6 +5888,27 @@ export function launch3DGame(options) {
                 strip.rotation.y = Math.atan2(stripDx, stripDz);
                 scene.add(strip);
                 e.specialAttackMesh = strip;
+
+                // BD-225: Fan lines showing bolt spread directions during telegraph
+                const fanBoltCount = e.bossPhase >= 3 ? (isChill ? 3 : 5) : (isChill ? 2 : 3);
+                const fanSpreadAngle = e.bossPhase >= 3 ? (30 * Math.PI / 180) : (15 * Math.PI / 180);
+                const baseAngle = Math.atan2(stripDx, stripDz);
+                e._volleyFanLines = [];
+                for (let fi = 0; fi < fanBoltCount; fi++) {
+                  const angleOffset = fanBoltCount === 1 ? 0 :
+                    -fanSpreadAngle / 2 + (fanSpreadAngle / (fanBoltCount - 1)) * fi;
+                  const fAngle = baseAngle + angleOffset;
+                  const fanLineGeo = new THREE.BoxGeometry(0.15, 0.03, 20);
+                  const fanLineMat = new THREE.MeshBasicMaterial({ color: 0xff0044, transparent: true, opacity: 0.25 });
+                  const fanLine = new THREE.Mesh(fanLineGeo, fanLineMat);
+                  fanLine.position.set(
+                    e.group.position.x + Math.sin(fAngle) * 10, 1.5,
+                    e.group.position.z + Math.cos(fAngle) * 10
+                  );
+                  fanLine.rotation.y = fAngle;
+                  scene.add(fanLine);
+                  e._volleyFanLines.push(fanLine);
+                }
               } else if (chosenAttack === 'shadowZones') {
                 // Shadow Zones telegraph — dark circles appear near player
                 e.specialAttackTelegraphTimer = 1.5 * telegraphDurMult;
@@ -6032,6 +6054,7 @@ export function launch3DGame(options) {
                 lineMesh.rotation.y = Math.atan2(e._chargeDirX, e._chargeDirZ);
                 scene.add(lineMesh);
                 e._chargeTelegraphMesh = lineMesh;
+                triggerScreenShake(0.2, 0.2); // BD-225: Titan Charge start screen shake
                 playSound('sfx_boss_charge_telegraph');
                 // Reset cooldown with attack-specific cooldown
                 const baseCooldown = 10 * phaseCooldownMult * (isChill ? 1.5 : 1);
@@ -6200,7 +6223,13 @@ export function launch3DGame(options) {
                       originX: e.group.position.x, originZ: e.group.position.z, // BD-235: origin position at fire time
                     });
                   }
+                  // BD-225: Clean up fan lines when bolts fire
+                  if (e._volleyFanLines) {
+                    for (const line of e._volleyFanLines) disposeTempMesh(line);
+                    e._volleyFanLines = null;
+                  }
                   playSound('sfx_boss_death_bolt');
+                  triggerScreenShake(0.1, 0.1); // BD-225: Death Bolt Volley screen shake
 
                 } else if (chosenAttack === 'shadowZones') {
                   // === BD-222: Shadow Zones — dark damaging circles on ground ===
@@ -6235,6 +6264,7 @@ export function launch3DGame(options) {
                     e._shadowZonePositions = null;
                   }
                   playSound('sfx_boss_shadow_zone');
+                  triggerScreenShake(0.1, 0.1); // BD-225: Shadow Zone eruption screen shake
 
                 } else if (chosenAttack === 'summonBurst') {
                   // === BD-223: Summon Burst — spawn ring of zombies ===
@@ -6266,6 +6296,7 @@ export function launch3DGame(options) {
                     }
                   }
                   playSound('sfx_boss_summon');
+                  triggerScreenShake(0.15, 0.2); // BD-225: Summon Burst completion screen shake
 
                 } else if (chosenAttack === 'deathBeam') {
                   // === BD-223: Death Beam — sweeping beam attack ===
@@ -6332,6 +6363,7 @@ export function launch3DGame(options) {
                     sourceEnemy: e,
                   });
                   playSound('sfx_explosion');
+                  triggerScreenShake(0.15, 0.2); // BD-225: Shockwave launch screen shake
                 } else if (e._currentAttack === 'slam') {
                   // Titan: Slam damage check — hits player if within 8 units
                   const sdx = st.playerX - e.group.position.x;
@@ -6342,7 +6374,7 @@ export function launch3DGame(options) {
                       killerX: e.group.position.x, killerZ: e.group.position.z, enemyRef: e });
                   }
                   playSound('sfx_boss_slam_impact');
-                  triggerScreenShake(0.2, 0.2);
+                  triggerScreenShake(0.3, 0.3); // BD-225: Titan Slam screen shake (was 0.2, 0.2)
                   // Visual: ground slam impact particles
                   for (let i = 0; i < 12; i++) {
                     const pa = (i / 12) * Math.PI * 2;
@@ -6405,21 +6437,8 @@ export function launch3DGame(options) {
                 }
               }
 
-              // Remove telegraph mesh
-              if (e.specialAttackMesh) {
-                if (e.specialAttackMesh.isGroup) {
-                  e.specialAttackMesh.children.forEach(c => {
-                    if (c.geometry) c.geometry.dispose();
-                    if (c.material) c.material.dispose();
-                  });
-                  scene.remove(e.specialAttackMesh);
-                } else {
-                  scene.remove(e.specialAttackMesh);
-                  if (e.specialAttackMesh.geometry) e.specialAttackMesh.geometry.dispose();
-                  if (e.specialAttackMesh.material) e.specialAttackMesh.material.dispose();
-                }
-                e.specialAttackMesh = null;
-              }
+              // BD-225: Remove telegraph mesh using disposeTelegraph utility
+              disposeTelegraph(e);
 
               // BD-222: Phase-based cooldown multiplier for Overlord attacks
               if (e.tier >= 10) {
@@ -6489,8 +6508,8 @@ export function launch3DGame(options) {
             }
 
             if (e._deathBeamSweepTimer <= 0) {
-              // Beam finished — dispose and return to idle
-              disposeSceneObject(e._deathBeamMesh);
+              // BD-225: Beam finished — dispose using disposeTempMesh and return to idle
+              disposeTempMesh(e._deathBeamMesh);
               e._deathBeamMesh = null;
               // Reset emissive
               if (e.body && e.body.material.emissive) {
