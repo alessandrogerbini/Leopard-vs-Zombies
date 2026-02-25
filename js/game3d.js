@@ -4539,7 +4539,11 @@ export function launch3DGame(options) {
           st.playerVY = st.jumpForce * jumpMult;
           st.onGround = false;
           st.onPlatformY = null;
-          playSound('sfx_jump');
+          // BD-240: Tiered jump sounds — silent for low jumps
+          if (jumpMult > 3.5) playSound('sfx_jump_huge');
+          else if (jumpMult > 2.5) playSound('sfx_jump');
+          else if (jumpMult > 1.75) playSound('sfx_jump_soft');
+          // else: silent (base + 75% or below)
         }
         // Gravity
         st.playerVY -= GRAVITY_3D * dt;

@@ -73,6 +73,12 @@ const SOUND_MAP = {
     'bouncy-boots-1.ogg', 'bouncy-boots-2.ogg',
     'bouncy-boots-3.ogg', 'bouncy-boots-4.ogg',
   ],
+  sfx_jump_soft: [
+    'bouncy-boots-1.ogg',  // softest variant only
+  ],
+  sfx_jump_huge: [
+    'bouncy-boots-3.ogg', 'bouncy-boots-4.ogg',  // deepest variants
+  ],
   sfx_land: [
     'bouncy-boots-4.ogg',
   ],
