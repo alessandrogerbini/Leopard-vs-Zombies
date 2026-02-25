@@ -413,22 +413,32 @@ export function animatePlayer(model, st, clock, len, mx, mz) {
     const legLift = Math.abs(Math.sin(walkPhase)) * 0.08;
     if (legs[0]) { legs[0].position.z = legSwing * 0.25; legs[0].position.y = 0.25 + (len > 0 ? legLift : 0); }
     if (legs[1]) { legs[1].position.z = -legSwing * 0.25; legs[1].position.y = 0.25 + (len > 0 ? Math.abs(Math.sin(walkPhase + Math.PI)) * 0.08 : 0); }
-    // Arm swing (opposite to legs, bigger)
-    if (arms[0]) arms[0].position.z = -legSwing * 0.2;
-    if (arms[1]) arms[1].position.z = legSwing * 0.2;
-    // Body bob when walking
+    // Arm swing (opposite to legs, bigger) / idle arm sway (BD-122)
+    if (len > 0) {
+      if (arms[0]) arms[0].position.z = -legSwing * 0.2;
+      if (arms[1]) arms[1].position.z = legSwing * 0.2;
+    } else {
+      // BD-122: Subtle idle arm sway (slower than walk, independent rhythm)
+      if (arms[0]) arms[0].position.z = Math.sin(clock.elapsedTime * 1.5) * 0.03;
+      if (arms[1]) arms[1].position.z = Math.sin(clock.elapsedTime * 1.5 + Math.PI) * 0.03;
+    }
+    // Body bob when walking / idle breathing (BD-122)
     if (len > 0) {
       group.position.y = st.playerY + Math.abs(Math.sin(walkPhase * 2)) * 0.04;
     } else {
-      // Idle breathing
+      // BD-122: Idle breathing — gentle vertical bob
       const breathe = Math.sin(clock.elapsedTime * 2) * 0.02;
       group.position.y = st.playerY + breathe;
     }
   }
-  // Attack lunge
+  // BD-126: Attack lunge animation
   if (st.attackAnimTimer > 0) {
-    const t = st.attackAnimTimer / 0.15;
-    group.rotation.x = -0.2 * t;
+    const dur = st.attackAnimDuration || 0.15;
+    const t = Math.min(st.attackAnimTimer / dur, 1);
+    group.rotation.x = -0.2 * t; // lean forward, springs back
+    // Arms reach forward during lunge
+    if (arms[0]) arms[0].position.z += 0.15 * t;
+    if (arms[1]) arms[1].position.z += 0.15 * t;
   }
 
   // Tail wag always plays
@@ -459,11 +469,13 @@ export function animatePlayer(model, st, clock, len, mx, mz) {
     wingMeshes.wingR2.rotation.z = -0.35 - flap * 1.1;
     wingMeshes.wingR3.rotation.z = -0.45 - flap * 1.2;
   } else {
-    // Return to upright
-    if (Math.abs(group.rotation.x) > 0.01) {
-      group.rotation.x *= 0.85;
-    } else {
-      group.rotation.x = 0;
+    // Return to upright (skip during attack lunge — BD-126)
+    if (st.attackAnimTimer <= 0) {
+      if (Math.abs(group.rotation.x) > 0.01) {
+        group.rotation.x *= 0.85;
+      } else {
+        group.rotation.x = 0;
+      }
     }
     // Reset roll from flight banking
     if (Math.abs(group.rotation.z) > 0.01) {
