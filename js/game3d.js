@@ -447,6 +447,9 @@ export function launch3DGame(options) {
     _fpsFrames: 0,
     _fpsTime: 0,
     _fpsDisplay: 0,
+    // BD-218: Screen shake state
+    screenShake: 0,       // remaining shake duration (seconds)
+    screenShakeAmp: 0,    // current amplitude (world units)
   };
 
 
@@ -529,6 +532,18 @@ export function launch3DGame(options) {
     }
 
     st.floatingTexts3d.push({ text, color, x, y, z, life, important, spreadX, spawnTime: now });
+  }
+
+  // === BD-218: SCREEN SHAKE UTILITY ===
+  /**
+   * Trigger a screen shake effect. Uses max-of semantics so stronger/longer shakes
+   * override weaker ones rather than stacking additively.
+   * @param {number} amplitude - Shake intensity in world units (e.g. 0.3 for boss phase, 0.15 for slam).
+   * @param {number} duration - Shake duration in seconds (e.g. 0.4 for boss phase).
+   */
+  function triggerScreenShake(amplitude, duration) {
+    st.screenShake = Math.max(st.screenShake, duration);
+    st.screenShakeAmp = Math.max(st.screenShakeAmp, amplitude);
   }
 
   // Animal-specific starting weapon (ANIMAL_WEAPONS imported from 3d/constants.js)
@@ -1948,6 +1963,7 @@ export function launch3DGame(options) {
       specialAttackMarkers: [],
       specialAttackCount: 0, // BD-211: counts attacks for tier 9 slam/shockwave alternation
       bossAuraMesh: bossAuraMesh, // BD-211: persistent aura sphere for tier 9/10
+      bossPhase: (tier >= 9) ? 1 : 0, // BD-218: boss HP phase (1=initial, 2/3/4=enraged phases)
     };
   }
 
@@ -5184,6 +5200,50 @@ export function launch3DGame(options) {
           const auraPulse = 0.08 + 0.07 * Math.sin(performance.now() * 0.003);
           e.bossAuraMesh.material.opacity = auraPulse;
         }
+        // BD-218: Boss HP phase transition system for tier 9/10
+        if (e.tier >= 9 && e.bossPhase > 0) {
+          const hpPct = e.hp / e.maxHp;
+          const isChill = st.difficulty === 'chill';
+          let newPhase = 1;
+          if (e.tier >= 10) {
+            // Overlord: 4 phases
+            if (hpPct <= (isChill ? 0.12 : 0.25)) newPhase = 4;
+            else if (hpPct <= (isChill ? 0.30 : 0.50)) newPhase = 3;
+            else if (hpPct <= (isChill ? 0.55 : 0.75)) newPhase = 2;
+          } else {
+            // Titan: 3 phases
+            if (hpPct <= (isChill ? 0.15 : 0.30)) newPhase = 3;
+            else if (hpPct <= (isChill ? 0.40 : 0.60)) newPhase = 2;
+          }
+          // One-directional ratchet — phase only increases, never decreases
+          newPhase = Math.max(e.bossPhase, newPhase);
+          if (newPhase > e.bossPhase) {
+            e.bossPhase = newPhase;
+            // Phase transition effects
+            const tierName = e.tier >= 10 ? 'OVERLORD' : 'TITAN';
+            const phaseLabels = e.tier >= 10
+              ? { 2: `${tierName} AWAKENS!`, 3: `${tierName} ENRAGED!`, 4: `${tierName} BERSERK!` }
+              : { 2: `${tierName} ENRAGED!`, 3: `${tierName} BERSERK!` };
+            const phaseColors = e.tier >= 10
+              ? { 2: '#ff8800', 3: '#ff4400', 4: '#ff0000' }
+              : { 2: '#ff6600', 3: '#ff0000' };
+            const label = phaseLabels[newPhase] || `${tierName} PHASE ${newPhase}!`;
+            const color = phaseColors[newPhase] || '#ff0000';
+            addFloatingText(label, color, e.group.position.x, e.group.position.y + 4, e.group.position.z, 2.0, true);
+            triggerScreenShake(0.3, 0.4);
+            playSound('sfx_boss_phase_transition');
+            // Body flash to signal the phase change
+            e._attackFlashTimer = 0.3;
+            if (e.body) {
+              e.body.material.color.setHex(0xffffff);
+              if (e.body.material.emissive) e.body.material.emissive.setHex(0xffffff);
+            }
+            // Pause attack timer to prevent immediate attack during transition
+            if (e.specialAttackTimer !== undefined) {
+              e.specialAttackTimer += 0.5;
+            }
+          }
+        }
         // BD-211: Boss rumble — spawn subtle ground particles when boss is close
         if (e.tier >= 9 && !e.dying) {
           const rumbleDx = st.playerX - e.group.position.x;
@@ -6431,6 +6491,21 @@ export function launch3DGame(options) {
     camera.position.z += (camTargetZ - camera.position.z) * 0.05;
     camera.position.y += (camTargetY - camera.position.y) * 0.05;
     camera.lookAt(st.playerX, st.playerY, st.playerZ);
+
+    // BD-218: Screen shake — apply random offset to camera after positioning
+    if (st.screenShake > 0) {
+      st.screenShake -= dt;
+      // Linear decay of amplitude over 0.3s at end of shake
+      const decayT = Math.min(st.screenShake / 0.3, 1);
+      const amp = st.screenShakeAmp * decayT;
+      camera.position.x += (Math.random() - 0.5) * 2 * amp;
+      camera.position.y += (Math.random() - 0.5) * 2 * amp;
+      camera.position.z += (Math.random() - 0.5) * 2 * amp;
+      if (st.screenShake <= 0) {
+        st.screenShake = 0;
+        st.screenShakeAmp = 0;
+      }
+    }
 
     // Update directional light to follow player
     dirLight.position.set(st.playerX + 10, 20, st.playerZ + 10);

@@ -143,6 +143,11 @@ const SOUND_MAP = {
   sfx_comedic_drop: [
     'poop-1.ogg',
   ],
+
+  // --- Boss ---
+  sfx_boss_phase_transition: [
+    'rawr-2.ogg',
+  ],
 };
 
 // --- Module state ---
