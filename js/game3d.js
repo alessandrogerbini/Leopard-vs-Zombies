@@ -447,7 +447,6 @@ export function launch3DGame(options) {
     attackFirstSeen: {}, // { tierKey: true } — prevents repeat labels per run
     // BD-166/167: Active poison pools spawned by tier-5 enemies
     poisonPools: [],
-    // BD-224: Screen shake state
     // FPS debug counter (toggle with backtick key)
     showFps: false,
     _fpsFrames: 0,
@@ -1974,9 +1973,23 @@ export function launch3DGame(options) {
       bossAuraMesh: bossAuraMesh, // BD-211: persistent aura sphere for tier 9/10
       bossPhase: (tier >= 9) ? 1 : 0, // BD-218: boss HP phase (1=initial, 2/3/4=enraged phases)
       // BD-219: Store references for boss phase visual changes
-      eyeGlowMat: (tier >= 9) ? eyeGlowMat : null, // eye material for Titan phase 3 white eyes
-      crownMeshes: crownMeshes, // crown fire meshes for Overlord phase 3 color change
-      _bossScale: s, // store tier scale for phase visual mesh creation
+      eyeGlowMat: (tier >= 9) ? eyeGlowMat : null,
+      crownMeshes: crownMeshes,
+      _bossScale: s,
+      _lastAttack: null, // BD-220: prevent consecutive repeats
+      // BD-221: Titan Charge state machine
+      _chargeState: null,
+      _chargeTimer: 0,
+      _chargeDirX: 0,
+      _chargeDirZ: 0,
+      _chargeDistLeft: 0,
+      _chargeSpeed: 0,
+      _chargeTelegraphMesh: null,
+      // BD-221: Ground Fissures tracking
+      _fissureMeshes: [],
+      _fissureState: null,
+      _fissureTimer: 0,
+      _fissureData: [],
     };
   }
 
@@ -2010,6 +2023,26 @@ export function launch3DGame(options) {
       }
       e.specialAttackMarkers = [];
     }
+    // BD-221: Clean up Titan Charge telegraph mesh
+    if (e._chargeTelegraphMesh) {
+      disposeSceneObject(e._chargeTelegraphMesh);
+      e._chargeTelegraphMesh = null;
+    }
+    e._chargeState = null;
+    // BD-221: Clean up Ground Fissure meshes
+    if (e._fissureMeshes && e._fissureMeshes.length > 0) {
+      for (const m of e._fissureMeshes) {
+        disposeSceneObject(m);
+      }
+      e._fissureMeshes = [];
+    }
+    if (e._fissureData) {
+      for (const fd of e._fissureData) {
+        if (fd.mesh) disposeSceneObject(fd.mesh);
+      }
+      e._fissureData = [];
+    }
+    e._fissureState = null;
     scene.remove(e.group);
     e.group.traverse(c => { if (c.geometry) c.geometry.dispose(); if (c.material) c.material.dispose(); });
   }
@@ -2754,6 +2787,38 @@ export function launch3DGame(options) {
         e.igniteDps = 3 * st.items.hotSauce; // scales with stacks
       }
     }
+    // BD-220/221: Boss phase progression based on HP thresholds
+    if (e.tier >= 9 && e.hp > 0 && e.bossPhase !== undefined) {
+      const hpPct = e.hp / e.maxHp;
+      if (e.tier === 9) {
+        // Titan: 3 phases — P2 at 66%, P3 at 33%
+        const newPhase = hpPct <= 0.33 ? 3 : hpPct <= 0.66 ? 2 : 1;
+        if (newPhase > e.bossPhase) {
+          e.bossPhase = newPhase;
+          // Phase transition visual: brief red flash + floating text
+          if (e.body) {
+            e.body.material.color.setHex(0xff0000);
+            if (e.body.material.emissive) e.body.material.emissive.setHex(0xff0000);
+            e._attackFlashTimer = 0.4;
+          }
+          addFloatingText('PHASE ' + newPhase + '!', '#ff4400', e.group.position.x, e.group.position.y + 4, e.group.position.z, 2.0, true);
+          triggerScreenShake(0.2, 0.3);
+        }
+      } else if (e.tier >= 10) {
+        // Overlord: 4 phases — P2 at 75%, P3 at 50%, P4 at 25%
+        const newPhase = hpPct <= 0.25 ? 4 : hpPct <= 0.50 ? 3 : hpPct <= 0.75 ? 2 : 1;
+        if (newPhase > e.bossPhase) {
+          e.bossPhase = newPhase;
+          if (e.body) {
+            e.body.material.color.setHex(0xff0000);
+            if (e.body.material.emissive) e.body.material.emissive.setHex(0xff0000);
+            e._attackFlashTimer = 0.4;
+          }
+          addFloatingText('PHASE ' + newPhase + '!', '#ff0044', e.group.position.x, e.group.position.y + 4, e.group.position.z, 2.0, true);
+          triggerScreenShake(0.3, 0.4);
+        }
+      }
+    }
     if (e.hp <= 0 && e.alive) killEnemy(e);
   }
 
@@ -3232,6 +3297,66 @@ export function launch3DGame(options) {
       const p = st.weaponProjectiles[i];
       p.life -= dt;
 
+      // BD-220: Bone Barrage projectile — parabolic arc with gravity, damages on landing
+      if (p.type === 'boneBarrage' && p.isEnemyProjectile) {
+        p._elapsed = (p._elapsed || 0) + dt;
+        // Apply gravity to vertical velocity
+        p.vy -= GRAVITY_3D * dt;
+        p.x += p.vx * dt;
+        p.y += p.vy * dt;
+        p.z += p.vz * dt;
+        // Spin the bone as it flies
+        if (p.mesh.rotation) {
+          p.mesh.rotation.x += dt * 6;
+          p.mesh.rotation.z += dt * 4;
+        }
+        p.mesh.position.set(p.x, p.y, p.z);
+
+        // Check if bone has landed (below ground level or elapsed flight time)
+        const groundY = getGroundAt(p.x, p.z) + 0.1;
+        if (!p._landed && (p.y <= groundY || p._elapsed >= p._flightTime)) {
+          p._landed = true;
+          // Snap to ground
+          p.y = groundY;
+          p.mesh.position.y = groundY;
+
+          // Damage check: player within 2-unit radius of landing position
+          const ldx = st.playerX - p._landX;
+          const ldz = st.playerZ - p._landZ;
+          if (ldx * ldx + ldz * ldz < p.range * p.range) {
+            damagePlayer(p.damage, '#ccbb88', { type: 'boneBarrage', tierName: ZOMBIE_TIERS[8].name, tier: 9, color: ZOMBIE_TIERS[8].eye });
+          }
+
+          // Screen shake per impact
+          triggerScreenShake(0.15, 0.15);
+          playSound('sfx_boss_slam_impact');
+
+          // Cream-colored impact particles
+          for (let pi = 0; pi < 6; pi++) {
+            const pa = (pi / 6) * Math.PI * 2;
+            spawnFireParticle(
+              0xeeddcc,
+              p._landX + Math.cos(pa) * 0.8,
+              groundY + 0.3,
+              p._landZ + Math.sin(pa) * 0.8,
+              0.4
+            );
+          }
+
+          // Dispose mesh immediately after landing
+          disposeSceneObject(p.mesh);
+          st.weaponProjectiles.splice(i, 1);
+          continue;
+        }
+
+        // Safety: expire if life runs out
+        if (p.life <= 0) {
+          disposeSceneObject(p.mesh);
+          st.weaponProjectiles.splice(i, 1);
+        }
+        continue;
+      }
+
       // BD-84: Death Bolt enemy projectile — moves in a straight line, damages player on proximity
       // BD-84/BD-166: Enemy projectile — moves in a straight line, damages player on proximity
       if ((p.type === 'deathBolt' || p.type === 'boneSpit') && p.isEnemyProjectile) {
@@ -3553,6 +3678,7 @@ export function launch3DGame(options) {
       if (obj.material) obj.material.dispose();
     }
   }
+
 
   // ==========================================================================
   // BD-145: TIERED ZOMBIE SPECIAL ATTACKS (Tiers 2-6)
@@ -5462,13 +5588,162 @@ export function launch3DGame(options) {
 
           // BD-179: Chill mode telegraph duration multiplier
           const telegraphDurMult = st.difficulty === 'chill' ? 1.5 : 1.0;
+          const isChill = st.difficulty === 'chill';
           // BD-211: Massively expanded trigger ranges (was 12/18, now 25/35)
           const atkDx = st.playerX - e.group.position.x;
           const atkDz = st.playerZ - e.group.position.z;
           const atkDist = Math.sqrt(atkDx * atkDx + atkDz * atkDz);
           const triggerRange = e.tier >= 10 ? 35 : 25;
 
-          if (e.specialAttackState === 'idle' && e.specialAttackTimer <= 0 && atkDist < triggerRange) {
+          // BD-220/221: Phase-based cooldown multiplier
+          const phaseCooldownMult = e.bossPhase >= 3 ? 0.75 : e.bossPhase >= 2 ? 0.85 : 1.0;
+
+          // === BD-221: Titan Charge state machine (runs independently of specialAttackState) ===
+          if (e.tier === 9 && e._chargeState) {
+            if (e._chargeState === 'telegraph') {
+              e._chargeTimer -= dt;
+              // Hunch animation during telegraph
+              e.group.scale.set(1.5 * 1.1, 1.5 * 0.8, 1.5 * 1.1);
+              // Pulse aim line opacity
+              if (e._chargeTelegraphMesh && e._chargeTelegraphMesh.material) {
+                const tp = performance.now() * 0.012;
+                e._chargeTelegraphMesh.material.opacity = 0.3 + 0.4 * Math.abs(Math.sin(tp));
+              }
+              if (e._chargeTimer <= 0) {
+                // Transition to charging
+                e._chargeState = 'charging';
+                const baseChargeSpeed = ZOMBIE_TIERS[8].speed * (isChill ? 2 : 3);
+                e._chargeSpeed = baseChargeSpeed;
+                e._chargeDistLeft = 15;
+                e.group.scale.setScalar(1.5); // restore scale
+                // Remove telegraph mesh
+                if (e._chargeTelegraphMesh) {
+                  disposeSceneObject(e._chargeTelegraphMesh);
+                  e._chargeTelegraphMesh = null;
+                }
+              }
+              continue; // freeze during telegraph
+            } else if (e._chargeState === 'charging') {
+              const chargeDist = e._chargeSpeed * dt;
+              e.group.position.x += e._chargeDirX * chargeDist;
+              e.group.position.z += e._chargeDirZ * chargeDist;
+              e._chargeDistLeft -= chargeDist;
+              // Check player collision (2-unit radius)
+              const cDx = st.playerX - e.group.position.x;
+              const cDz = st.playerZ - e.group.position.z;
+              if (cDx * cDx + cDz * cDz < 4) {
+                const chargeDmg = isChill ? 15 : 30;
+                damagePlayer(chargeDmg * diffDmgMult, '#ff4400', { type: 'titanCharge', tierName: ZOMBIE_TIERS[8].name, tier: 9, color: ZOMBIE_TIERS[8].eye });
+                triggerScreenShake(0.25, 0.2);
+              }
+              // Spawn dust particles along charge path
+              if (Math.random() < 0.4) {
+                spawnFireParticle(0x886644, e.group.position.x + (Math.random() - 0.5), e.group.position.y + 0.2, e.group.position.z + (Math.random() - 0.5), 0.3);
+              }
+              if (e._chargeDistLeft <= 0) {
+                // Transition to recovery
+                e._chargeState = 'recovery';
+                e._chargeTimer = isChill ? 3 : 2;
+                e.group.scale.setScalar(1.5); // ensure scale is normal
+              }
+              continue; // skip normal movement during charge
+            } else if (e._chargeState === 'recovery') {
+              e._chargeTimer -= dt;
+              // Flash white during recovery — punishment window
+              if (e.body) {
+                const flashRate = Math.sin(performance.now() * 0.015) > 0;
+                e.body.material.color.setHex(flashRate ? 0xffffff : e.bodyColor);
+              }
+              if (e._chargeTimer <= 0) {
+                e._chargeState = null;
+                if (e.body) e.body.material.color.setHex(e.bodyColor);
+              }
+              continue; // frozen during recovery (punishment window)
+            }
+          }
+
+          // === BD-221: Ground Fissures state machine (runs independently) ===
+          if (e.tier === 9 && e._fissureState) {
+            if (e._fissureState === 'telegraph') {
+              e._fissureTimer -= dt;
+              // Pulse fissure line opacity during telegraph
+              for (const fd of e._fissureData) {
+                if (fd.mesh && fd.mesh.material) {
+                  fd.mesh.material.opacity = 0.3 + 0.3 * Math.abs(Math.sin(performance.now() * 0.01));
+                }
+              }
+              if (e._fissureTimer <= 0) {
+                // Eruption! Flash lines red-orange and deal damage
+                e._fissureState = 'erupting';
+                e._fissureTimer = 1.5;
+                triggerScreenShake(0.25, 0.25);
+                playSound('sfx_boss_slam_impact');
+                // Flash all fissure lines red-orange
+                for (const fd of e._fissureData) {
+                  if (fd.mesh && fd.mesh.material) {
+                    fd.mesh.material.color.setHex(0xff4400);
+                    fd.mesh.material.opacity = 0.8;
+                  }
+                }
+                // Damage check: perpendicular distance < 1 unit from each line
+                const fissureDmg = (isChill ? 10 : 20) * diffDmgMult;
+                let fissureHit = false;
+                for (const fd of e._fissureData) {
+                  // Line from (startX,startZ) to (endX,endZ), check perpendicular distance to player
+                  const lx = fd.endX - fd.startX;
+                  const lz = fd.endZ - fd.startZ;
+                  const lineLen = Math.sqrt(lx * lx + lz * lz) || 1;
+                  // Project player position onto line
+                  const px = st.playerX - fd.startX;
+                  const pz = st.playerZ - fd.startZ;
+                  const t = Math.max(0, Math.min(1, (px * lx + pz * lz) / (lineLen * lineLen)));
+                  const closestX = fd.startX + t * lx;
+                  const closestZ = fd.startZ + t * lz;
+                  const perpDx = st.playerX - closestX;
+                  const perpDz = st.playerZ - closestZ;
+                  const perpDist = Math.sqrt(perpDx * perpDx + perpDz * perpDz);
+                  if (perpDist < 1.0) {
+                    fissureHit = true;
+                    break;
+                  }
+                }
+                if (fissureHit) {
+                  damagePlayer(fissureDmg, '#884422', { type: 'groundFissures', tierName: ZOMBIE_TIERS[8].name, tier: 9, color: ZOMBIE_TIERS[8].eye });
+                }
+                // Spawn eruption particles along fissure lines
+                for (const fd of e._fissureData) {
+                  for (let pi = 0; pi < 6; pi++) {
+                    const t2 = pi / 5;
+                    const px2 = fd.startX + t2 * (fd.endX - fd.startX);
+                    const pz2 = fd.startZ + t2 * (fd.endZ - fd.startZ);
+                    spawnFireParticle(0xff4400, px2, 0.5, pz2, 0.6);
+                    spawnFireParticle(0x884422, px2 + (Math.random() - 0.5) * 0.5, 0.8, pz2 + (Math.random() - 0.5) * 0.5, 0.5);
+                  }
+                }
+              }
+              continue; // freeze during telegraph
+            } else if (e._fissureState === 'erupting') {
+              e._fissureTimer -= dt;
+              // Fade out fissure lines
+              for (const fd of e._fissureData) {
+                if (fd.mesh && fd.mesh.material) {
+                  fd.mesh.material.opacity = Math.max(0, 0.8 * (e._fissureTimer / 1.5));
+                }
+              }
+              if (e._fissureTimer <= 0) {
+                // Dispose all fissure meshes
+                for (const fd of e._fissureData) {
+                  if (fd.mesh) disposeSceneObject(fd.mesh);
+                }
+                e._fissureData = [];
+                e._fissureMeshes = [];
+                e._fissureState = null;
+              }
+              // Don't freeze during eruption visual persist — let enemy move
+            }
+          }
+
+          if (e.specialAttackState === 'idle' && e.specialAttackTimer <= 0 && atkDist < triggerRange && !e._chargeState && !e._fissureState) {
             // Start telegraph phase
             e.specialAttackState = 'telegraph';
             e.specialAttackTargetX = st.playerX;
@@ -5483,27 +5758,164 @@ export function launch3DGame(options) {
               e._attackFlashTimer = 0.2;
             }
 
-            // BD-179: First-encounter floating label for tier 9/10
-            if (e.tier >= 10) {
+            // BD-220/221: Phase-gated attack selection for tier 9
+            if (e.tier === 9) {
+              // Build attack pool based on boss phase
+              const attackPool = ['slam', 'shockwave']; // Phase 1: always available
+              if (e.bossPhase >= 2) attackPool.push('boneBarrage');
+              if (e.bossPhase >= 3) {
+                attackPool.push('titanCharge');
+                attackPool.push('groundFissures');
+              }
+              // Weighted random selection with no consecutive repeat
+              let chosenAttack;
+              do {
+                chosenAttack = attackPool[Math.floor(Math.random() * attackPool.length)];
+              } while (chosenAttack === e._lastAttack && attackPool.length > 1);
+              e._lastAttack = chosenAttack;
+              e._currentAttack = chosenAttack;
+
+              // BD-179: First-encounter floating label
+              const attackLabels = {
+                slam: { text: 'TITAN SLAM!', color: '#ff2200', key: 'tier9slam' },
+                shockwave: { text: 'SHOCKWAVE!', color: '#ff8800', key: 'tier9shockwave' },
+                boneBarrage: { text: 'BONE BARRAGE!', color: '#ccbb88', key: 'tier9boneBarrage' },
+                titanCharge: { text: 'TITAN CHARGE!', color: '#ff4400', key: 'tier9titanCharge' },
+                groundFissures: { text: 'GROUND FISSURES!', color: '#884422', key: 'tier9groundFissures' },
+              };
+              const label = attackLabels[chosenAttack];
+              if (label && !st.attackFirstSeen[label.key]) {
+                st.attackFirstSeen[label.key] = true;
+                addFloatingText(label.text, label.color, e.group.position.x, e.group.position.y + 4, e.group.position.z, 2.5, true);
+              }
+
+              // Set up telegraph based on chosen attack
+              if (chosenAttack === 'shockwave') {
+                e.specialAttackTelegraphTimer = 1.0 * telegraphDurMult;
+                const ringGeo = new THREE.RingGeometry(0.3, 0.8, 24);
+                ringGeo.rotateX(-Math.PI / 2);
+                const ringMat = new THREE.MeshBasicMaterial({ color: 0xff8800, transparent: true, opacity: 0.5, side: THREE.DoubleSide });
+                const ring = new THREE.Mesh(ringGeo, ringMat);
+                ring.position.set(e.group.position.x, 0.1, e.group.position.z);
+                scene.add(ring);
+                e.specialAttackMesh = ring;
+              } else if (chosenAttack === 'slam') {
+                e.specialAttackTelegraphTimer = 1.5 * telegraphDurMult;
+                const ringGeo = new THREE.RingGeometry(0.5, 1.0, 24);
+                ringGeo.rotateX(-Math.PI / 2);
+                const ringMat = new THREE.MeshBasicMaterial({ color: 0xff2200, transparent: true, opacity: 0.5, side: THREE.DoubleSide });
+                const ring = new THREE.Mesh(ringGeo, ringMat);
+                ring.position.set(e.group.position.x, 0.1, e.group.position.z);
+                scene.add(ring);
+                e.specialAttackMesh = ring;
+              } else if (chosenAttack === 'boneBarrage') {
+                // BD-220: Bone Barrage telegraph — red ring ground markers at landing positions
+                const telegraphTime = isChill ? 1.2 : 0.8;
+                e.specialAttackTelegraphTimer = telegraphTime;
+                const boneCount = isChill ? 4 : (4 + Math.floor(Math.random() * 3)); // 4-6 (4 chill)
+                // Predict player position slightly ahead
+                const leadTime = 0.3;
+                const predX = st.playerX + (st.playerVelX || 0) * leadTime;
+                const predZ = st.playerZ + (st.playerVelZ || 0) * leadTime;
+                e.specialAttackTargetX = predX;
+                e.specialAttackTargetZ = predZ;
+                // Spawn ground markers in a semicircle near player
+                const group = new THREE.Group();
+                e._boneBarrageLandingSpots = [];
+                const dirToPlayer = Math.atan2(predX - e.group.position.x, predZ - e.group.position.z);
+                for (let bi = 0; bi < boneCount; bi++) {
+                  // Semicircle spread: -PI/2 to PI/2 relative to direction to player
+                  const spreadAngle = dirToPlayer + ((bi / (boneCount - 1 || 1)) - 0.5) * Math.PI;
+                  const dist = 2 + Math.random() * 3; // 2-5 units from predicted position
+                  const landX = predX + Math.sin(spreadAngle) * dist;
+                  const landZ = predZ + Math.cos(spreadAngle) * dist;
+                  e._boneBarrageLandingSpots.push({ x: landX, z: landZ });
+                  // Red ring ground marker
+                  const markerGeo = new THREE.RingGeometry(0.3, 0.6, 16);
+                  markerGeo.rotateX(-Math.PI / 2);
+                  const markerMat = new THREE.MeshBasicMaterial({ color: 0xff0000, transparent: true, opacity: 0.5, side: THREE.DoubleSide });
+                  const marker = new THREE.Mesh(markerGeo, markerMat);
+                  marker.position.set(landX, 0.12, landZ);
+                  group.add(marker);
+                }
+                scene.add(group);
+                e.specialAttackMesh = group;
+                e.specialAttackMesh.isGroup = true;
+              } else if (chosenAttack === 'titanCharge') {
+                // BD-221: Titan Charge — lock direction, start telegraph
+                e.specialAttackState = 'idle'; // we handle charge via _chargeState
+                const chargeTime = isChill ? 2.25 : 1.5;
+                e._chargeState = 'telegraph';
+                e._chargeTimer = chargeTime;
+                // Lock direction toward player at telegraph start
+                const cdx = st.playerX - e.group.position.x;
+                const cdz = st.playerZ - e.group.position.z;
+                const cDist = Math.sqrt(cdx * cdx + cdz * cdz) || 1;
+                e._chargeDirX = cdx / cDist;
+                e._chargeDirZ = cdz / cDist;
+                // Create aim line on ground (thin red box mesh, 15 units long)
+                const lineLen = 15;
+                const lineGeo = new THREE.BoxGeometry(0.2, 0.08, lineLen);
+                const lineMat = new THREE.MeshBasicMaterial({ color: 0xff0000, transparent: true, opacity: 0.5 });
+                const lineMesh = new THREE.Mesh(lineGeo, lineMat);
+                lineMesh.position.set(
+                  e.group.position.x + e._chargeDirX * lineLen / 2,
+                  0.15,
+                  e.group.position.z + e._chargeDirZ * lineLen / 2
+                );
+                lineMesh.rotation.y = Math.atan2(e._chargeDirX, e._chargeDirZ);
+                scene.add(lineMesh);
+                e._chargeTelegraphMesh = lineMesh;
+                playSound('sfx_boss_charge_telegraph');
+                // Reset cooldown with attack-specific cooldown
+                const baseCooldown = 10 * phaseCooldownMult * (isChill ? 1.5 : 1);
+                e.specialAttackTimer = baseCooldown + Math.random() * 1;
+                continue; // skip normal attack flow
+              } else if (chosenAttack === 'groundFissures') {
+                // BD-221: Ground Fissures — create brown lines in forward arc
+                e.specialAttackState = 'idle'; // we handle fissures via _fissureState
+                const telegraphTime = isChill ? 1.8 : 1.2;
+                e._fissureState = 'telegraph';
+                e._fissureTimer = telegraphTime;
+                const fissureCount = isChill ? 2 : 3;
+                const arcSpread = isChill ? (80 * Math.PI / 180) : (120 * Math.PI / 180);
+                const fissureLen = 12;
+                const dirAngle = Math.atan2(st.playerX - e.group.position.x, st.playerZ - e.group.position.z);
+                e._fissureData = [];
+                e._fissureMeshes = [];
+                for (let fi = 0; fi < fissureCount; fi++) {
+                  const angleOffset = ((fi / (fissureCount - 1 || 1)) - 0.5) * arcSpread;
+                  const fAngle = dirAngle + angleOffset;
+                  const startX = e.group.position.x;
+                  const startZ = e.group.position.z;
+                  const endX = startX + Math.sin(fAngle) * fissureLen;
+                  const endZ = startZ + Math.cos(fAngle) * fissureLen;
+                  // Brown line mesh on ground
+                  const fGeo = new THREE.BoxGeometry(0.3, 0.1, fissureLen);
+                  const fMat = new THREE.MeshBasicMaterial({ color: 0x664422, transparent: true, opacity: 0.4 });
+                  const fMesh = new THREE.Mesh(fGeo, fMat);
+                  fMesh.position.set((startX + endX) / 2, 0.12, (startZ + endZ) / 2);
+                  fMesh.rotation.y = Math.atan2(Math.sin(fAngle), Math.cos(fAngle));
+                  scene.add(fMesh);
+                  e._fissureData.push({ startX, startZ, endX, endZ, mesh: fMesh });
+                  e._fissureMeshes.push(fMesh);
+                }
+                playSound('sfx_player_growl');
+                // Reset cooldown with attack-specific cooldown
+                const baseCooldown = 8 * phaseCooldownMult * (isChill ? 1.5 : 1);
+                e.specialAttackTimer = baseCooldown + Math.random() * 1;
+                continue; // skip normal attack flow
+              }
+              playSound('sfx_player_growl');
+            } else if (e.tier >= 10) {
+              // BD-179: First-encounter floating label for Overlord
               const labelKey = 'tier10';
               if (!st.attackFirstSeen[labelKey]) {
                 st.attackFirstSeen[labelKey] = true;
                 addFloatingText('DEATH BOLT!', '#ff0044', e.group.position.x, e.group.position.y + 4, e.group.position.z, 2.5, true);
               }
-            } else if (e.tier === 9) {
-              // Alternate label based on attack type
-              const isShockwave = e.specialAttackCount % 2 === 0;
-              const labelKey = isShockwave ? 'tier9shockwave' : 'tier9slam';
-              if (!st.attackFirstSeen[labelKey]) {
-                st.attackFirstSeen[labelKey] = true;
-                addFloatingText(isShockwave ? 'SHOCKWAVE!' : 'TITAN SLAM!', isShockwave ? '#ff8800' : '#ff2200', e.group.position.x, e.group.position.y + 4, e.group.position.z, 2.5, true);
-              }
-            }
-
-            if (e.tier >= 10) {
               // Overlord: Death Bolt telegraph — flat aim strip toward predicted position
               e.specialAttackTelegraphTimer = 1.0 * telegraphDurMult;
-              // BD-211: Lead the target — predict player position 0.5s ahead
               const leadTime = 0.5;
               const predX = st.playerX + (st.playerVelX || 0) * leadTime;
               const predZ = st.playerZ + (st.playerVelZ || 0) * leadTime;
@@ -5522,34 +5934,8 @@ export function launch3DGame(options) {
               strip.rotation.y = Math.atan2(stripDx, stripDz);
               scene.add(strip);
               e.specialAttackMesh = strip;
-            } else {
-              // Titan: Alternate between slam (odd) and shockwave (even)
-              const isShockwave = e.specialAttackCount % 2 === 0;
-              if (isShockwave) {
-                // Shockwave telegraph — orange expanding ring on ground
-                e.specialAttackTelegraphTimer = 1.0 * telegraphDurMult;
-                const ringGeo = new THREE.RingGeometry(0.3, 0.8, 24);
-                ringGeo.rotateX(-Math.PI / 2);
-                const ringMat = new THREE.MeshBasicMaterial({ color: 0xff8800, transparent: true, opacity: 0.5, side: THREE.DoubleSide });
-                const ring = new THREE.Mesh(ringGeo, ringMat);
-                ring.position.set(e.group.position.x, 0.1, e.group.position.z);
-                scene.add(ring);
-                e.specialAttackMesh = ring;
-                e._isShockwave = true;
-              } else {
-                // Slam telegraph — expanding red ring on ground (original)
-                e.specialAttackTelegraphTimer = 1.5 * telegraphDurMult;
-                const ringGeo = new THREE.RingGeometry(0.5, 1.0, 24);
-                ringGeo.rotateX(-Math.PI / 2);
-                const ringMat = new THREE.MeshBasicMaterial({ color: 0xff2200, transparent: true, opacity: 0.5, side: THREE.DoubleSide });
-                const ring = new THREE.Mesh(ringGeo, ringMat);
-                ring.position.set(e.group.position.x, 0.1, e.group.position.z);
-                scene.add(ring);
-                e.specialAttackMesh = ring;
-                e._isShockwave = false;
-              }
+              playSound('sfx_player_growl');
             }
-            playSound('sfx_player_growl');
           }
 
           if (e.specialAttackState === 'telegraph') {
@@ -5562,20 +5948,29 @@ export function launch3DGame(options) {
                 // Pulse the death bolt strip opacity
                 e.specialAttackMesh.material.opacity = 0.3 + 0.4 * Math.sin(t);
               } else if (e.tier === 9) {
-                if (e._isShockwave) {
+                if (e._currentAttack === 'shockwave') {
                   // Shockwave: rapid expansion to show the ring will travel far
                   const baseDur = 1.0 * telegraphDurMult;
                   const progress = 1 - (e.specialAttackTelegraphTimer / baseDur);
                   const ringScale = 1 + progress * 12;
                   e.specialAttackMesh.scale.set(ringScale, 1, ringScale);
                   e.specialAttackMesh.material.opacity = 0.5 * (1 - progress * 0.3);
-                } else {
+                } else if (e._currentAttack === 'slam') {
                   // Slam: expand ring outward to show AoE radius
                   const baseDur = 1.5 * telegraphDurMult;
                   const progress = 1 - (e.specialAttackTelegraphTimer / baseDur);
                   const ringScale = 1 + progress * 7;
                   e.specialAttackMesh.scale.set(ringScale, 1, ringScale);
                   e.specialAttackMesh.material.opacity = 0.5 * (1 - progress * 0.5);
+                } else if (e._currentAttack === 'boneBarrage') {
+                  // BD-220: Pulse bone barrage ground markers
+                  if (e.specialAttackMesh.isGroup) {
+                    e.specialAttackMesh.children.forEach(child => {
+                      if (child.material) {
+                        child.material.opacity = 0.3 + 0.3 * Math.abs(Math.sin(t));
+                      }
+                    });
+                  }
                 }
               }
             }
@@ -5595,9 +5990,9 @@ export function launch3DGame(options) {
                 st.weaponProjectiles.push({
                   mesh: bolt,
                   x: e.group.position.x, y: 1.5, z: e.group.position.z,
-                  vx: (bdx / bDist) * 18, vy: 0, vz: (bdz / bDist) * 18, // BD-211: faster bolt (was 15)
-                  damage: 45 * diffDmgMult, // BD-211: increased from 30
-                  range: 1.5, // BD-211: slightly larger hit radius
+                  vx: (bdx / bDist) * 18, vy: 0, vz: (bdz / bDist) * 18,
+                  damage: 45 * diffDmgMult,
+                  range: 1.5,
                   life: 3,
                   type: 'deathBolt',
                   isEnemyProjectile: true,
@@ -5605,15 +6000,14 @@ export function launch3DGame(options) {
                   originX: e.group.position.x, originZ: e.group.position.z, // BD-235: origin position at fire time
                 });
               } else if (e.tier === 9) {
-                if (e._isShockwave) {
+                if (e._currentAttack === 'shockwave') {
                   // BD-211: Titan Shockwave — expanding ring that damages on contact
                   const swGeo = new THREE.TorusGeometry(1.0, 0.3, 6, 24);
-                  swGeo.rotateX(Math.PI / 2); // lay flat
+                  swGeo.rotateX(Math.PI / 2);
                   const swMat = new THREE.MeshBasicMaterial({ color: 0xff6600, transparent: true, opacity: 0.6, side: THREE.DoubleSide });
                   const swMesh = new THREE.Mesh(swGeo, swMat);
                   swMesh.position.set(e.group.position.x, 0.3, e.group.position.z);
                   scene.add(swMesh);
-                  // Track shockwave as a weapon effect with custom expansion logic
                   st.weaponEffects.push({
                     mesh: swMesh,
                     x: e.group.position.x,
@@ -5621,23 +6015,24 @@ export function launch3DGame(options) {
                     life: 1.5,
                     maxLife: 1.5,
                     type: 'bossShockwave',
-                    radius: 1.0,        // current radius (expands)
-                    maxRadius: 20,       // max expansion radius
-                    damage: 20 * diffDmgMult, // BD-211: shockwave damage
-                    hasHitPlayer: false, // only hit once per shockwave
-                    sourceEnemy: e, // BD-235: enemy ref for damagePlayer source tracking
+                    radius: 1.0,
+                    maxRadius: 20,
+                    damage: 20 * diffDmgMult,
+                    hasHitPlayer: false,
+                    sourceEnemy: e,
                   });
                   playSound('sfx_explosion');
-                } else {
+                } else if (e._currentAttack === 'slam') {
                   // Titan: Slam damage check — hits player if within 8 units
                   const sdx = st.playerX - e.group.position.x;
                   const sdz = st.playerZ - e.group.position.z;
                   const distSq = sdx * sdx + sdz * sdz;
                   if (distSq < 64) {
                     damagePlayer(35 * diffDmgMult, '#ff2200', { type: 'slam', tierName: ZOMBIE_TIERS[8].name, tier: 9, color: ZOMBIE_TIERS[8].eye,
-                      killerX: e.group.position.x, killerZ: e.group.position.z, enemyRef: e }); // BD-211+216+235
+                      killerX: e.group.position.x, killerZ: e.group.position.z, enemyRef: e });
                   }
-                  playSound('sfx_explosion');
+                  playSound('sfx_boss_slam_impact');
+                  triggerScreenShake(0.2, 0.2);
                   // Visual: ground slam impact particles
                   for (let i = 0; i < 12; i++) {
                     const pa = (i / 12) * Math.PI * 2;
@@ -5649,6 +6044,54 @@ export function launch3DGame(options) {
                       0.5
                     );
                   }
+                } else if (e._currentAttack === 'boneBarrage') {
+                  // BD-220: Bone Barrage — spawn parabolic arc projectiles toward landing spots
+                  const landingSpots = e._boneBarrageLandingSpots || [];
+                  const boneDmg = (isChill ? 8 : 15) * diffDmgMult;
+                  for (const spot of landingSpots) {
+                    // Create bone projectile mesh (cream-colored small box cluster)
+                    const boneGroup = new THREE.Group();
+                    const boneMat = new THREE.MeshBasicMaterial({ color: 0xeeddcc });
+                    const bone1 = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.15, 0.5), boneMat);
+                    const bone2 = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.12, 0.12), boneMat);
+                    bone2.position.y = 0.08;
+                    boneGroup.add(bone1);
+                    boneGroup.add(bone2);
+                    boneGroup.position.set(e.group.position.x, e.group.position.y + 2, e.group.position.z);
+                    scene.add(boneGroup);
+
+                    // Calculate parabolic arc: need vx, vz, vy for arc trajectory
+                    const bDx = spot.x - e.group.position.x;
+                    const bDz = spot.z - e.group.position.z;
+                    const flightTime = 0.6 + Math.random() * 0.3; // 0.6-0.9s flight time
+                    const vx = bDx / flightTime;
+                    const vz = bDz / flightTime;
+                    // vy = (targetY - startY + 0.5*g*t^2) / t — arc up then down
+                    const startY = e.group.position.y + 2;
+                    const targetY = getGroundAt(spot.x, spot.z) + 0.1;
+                    const vy = ((targetY - startY) + 0.5 * GRAVITY_3D * flightTime * flightTime) / flightTime;
+
+                    st.weaponProjectiles.push({
+                      mesh: boneGroup,
+                      x: e.group.position.x,
+                      y: startY,
+                      z: e.group.position.z,
+                      vx: vx,
+                      vy: vy,
+                      vz: vz,
+                      damage: boneDmg,
+                      range: 2, // 2-unit damage radius on landing
+                      life: flightTime + 0.5, // a bit extra for safety
+                      type: 'boneBarrage',
+                      isEnemyProjectile: true,
+                      _landX: spot.x,
+                      _landZ: spot.z,
+                      _landed: false,
+                      _flightTime: flightTime,
+                      _elapsed: 0,
+                    });
+                  }
+                  e._boneBarrageLandingSpots = null;
                 }
               }
 
@@ -5668,9 +6111,21 @@ export function launch3DGame(options) {
                 e.specialAttackMesh = null;
               }
 
-              // BD-211: Reset timer with reduced cooldowns
-              const cooldowns = { 9: 2.5, 10: 1.5 };
-              e.specialAttackTimer = (cooldowns[e.tier] || 2.5) + Math.random() * 1;
+              // BD-220/221: Attack-specific cooldowns with phase multiplier
+              let baseCooldown;
+              if (e.tier === 9) {
+                const attackCooldowns = {
+                  slam: 2.5,
+                  shockwave: 2.5,
+                  boneBarrage: 6,
+                  titanCharge: 10,
+                  groundFissures: 8,
+                };
+                baseCooldown = (attackCooldowns[e._currentAttack] || 2.5) * phaseCooldownMult * (isChill ? 1.5 : 1);
+              } else {
+                baseCooldown = 1.5; // Overlord
+              }
+              e.specialAttackTimer = baseCooldown + Math.random() * 1;
               e.specialAttackState = 'idle';
             } else {
               // Still telegraphing — skip normal movement (enemy stands still)

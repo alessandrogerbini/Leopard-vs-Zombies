@@ -140,6 +140,12 @@ const SOUND_MAP = {
   sfx_boss_entrance: [
     'zombie-4.ogg',
   ],
+  sfx_boss_slam_impact: [
+    'explode-1.ogg',
+  ],
+  sfx_boss_charge_telegraph: [
+    'leapord-growl-1.ogg',
+  ],
   sfx_item_pickup: [
     // Needs Sound Pack Beta -- no suitable match in Alpha
   ],
