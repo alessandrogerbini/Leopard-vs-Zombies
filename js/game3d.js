@@ -2273,6 +2273,33 @@ export function launch3DGame(options) {
     return mult;
   }
 
+  // === SPAWN EXCLUSION ZONE (BD-217) ===
+
+  /**
+   * Calculate a valid spawn position that respects the minimum distance from
+   * the player. Retries up to 3 times with random angles; returns null if all
+   * attempts land inside the exclusion zone (e.g. player right at map edge).
+   *
+   * @param {number} baseDist - Desired spawn distance from the player.
+   * @param {number} playerX  - Current player X position.
+   * @param {number} playerZ  - Current player Z position.
+   * @returns {{x: number, z: number}|null} Valid position or null to skip.
+   */
+  function getValidSpawnPos(baseDist, playerX, playerZ) {
+    const MIN_SPAWN_DIST = 12;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const angle = Math.random() * Math.PI * 2;
+      const sx = Math.max(-MAP_HALF + 2, Math.min(MAP_HALF - 2, playerX + Math.cos(angle) * baseDist));
+      const sz = Math.max(-MAP_HALF + 2, Math.min(MAP_HALF - 2, playerZ + Math.sin(angle) * baseDist));
+      const dx = sx - playerX;
+      const dz = sz - playerZ;
+      if (dx * dx + dz * dz >= MIN_SPAWN_DIST * MIN_SPAWN_DIST) {
+        return { x: sx, z: sz };
+      }
+    }
+    return null; // Skip this zombie
+  }
+
   // === AMBIENT SPAWNING (constant trickle) ===
 
   /**
@@ -2285,10 +2312,9 @@ export function launch3DGame(options) {
     const count = Math.min(10, 6 + Math.floor(elapsedMin / 1.5));
     const baseHp = 8 + Math.floor(elapsedMin * 2.5);
     for (let i = 0; i < count; i++) {
-      const angle = Math.random() * Math.PI * 2;
       const dist = (elapsedMin < 2) ? (18 + Math.random() * 8) : (25 + Math.random() * 10);
-      const sx = Math.max(-MAP_HALF + 2, Math.min(MAP_HALF - 2, st.playerX + Math.cos(angle) * dist));
-      const sz = Math.max(-MAP_HALF + 2, Math.min(MAP_HALF - 2, st.playerZ + Math.sin(angle) * dist));
+      const pos = getValidSpawnPos(dist, st.playerX, st.playerZ);
+      if (!pos) continue; // BD-217: skip if too close to player
       // Progressive tier spawning: after wave 2, chance of higher tier ambient zombies
       let tier = 1;
       if (st.wave >= 2) {
@@ -2296,7 +2322,7 @@ export function launch3DGame(options) {
         const maxTier = Math.min(st.wave, 5);
         if (roll < 0.03 * st.wave) tier = Math.min(maxTier, 2 + Math.floor(Math.random() * (maxTier - 1)));
       }
-      st.enemies.push(createEnemy(sx, sz, baseHp * tier, tier));
+      st.enemies.push(createEnemy(pos.x, pos.z, baseHp * tier, tier));
     }
   }
 
@@ -2315,12 +2341,11 @@ export function launch3DGame(options) {
     const waveHp = Math.floor(baseHp * (1 + st.wave * 0.15));
     const count = 45 + st.wave * 20;
     for (let i = 0; i < count; i++) {
-      const angle = (i / count) * Math.PI * 2 + Math.random() * 0.3;
       const dist = 20 + Math.random() * 15;
-      const sx = Math.max(-MAP_HALF + 2, Math.min(MAP_HALF - 2, st.playerX + Math.cos(angle) * dist));
-      const sz = Math.max(-MAP_HALF + 2, Math.min(MAP_HALF - 2, st.playerZ + Math.sin(angle) * dist));
+      const pos = getValidSpawnPos(dist, st.playerX, st.playerZ);
+      if (!pos) continue; // BD-217: skip if too close to player
       const tier = Math.random() < 0.15 * st.wave ? Math.min(st.wave + 1, 5) : 1;
-      st.enemies.push(createEnemy(sx, sz, waveHp, tier));
+      st.enemies.push(createEnemy(pos.x, pos.z, waveHp, tier));
     }
     st.wave++;
     // Wave-driven difficulty escalation
@@ -4931,11 +4956,10 @@ export function launch3DGame(options) {
       if (!st.initialBurstDone) {
         st.initialBurstDone = true;
         for (let i = 0; i < 10; i++) {
-          const angle = (i / 10) * Math.PI * 2;
           const dist = 15 + Math.random() * 5;
-          const sx = Math.max(-MAP_HALF + 2, Math.min(MAP_HALF - 2, st.playerX + Math.cos(angle) * dist));
-          const sz = Math.max(-MAP_HALF + 2, Math.min(MAP_HALF - 2, st.playerZ + Math.sin(angle) * dist));
-          st.enemies.push(createEnemy(sx, sz, 8, 1));
+          const pos = getValidSpawnPos(dist, st.playerX, st.playerZ);
+          if (!pos) continue; // BD-217: skip if too close to player
+          st.enemies.push(createEnemy(pos.x, pos.z, 8, 1));
         }
       }
 
