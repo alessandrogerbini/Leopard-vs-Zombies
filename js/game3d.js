@@ -4630,8 +4630,26 @@ export function launch3DGame(options) {
       if (st.wearableFlash.feet > 0) st.wearableFlash.feet = Math.max(0, st.wearableFlash.feet - dt);
 
       // BD-214: Player hurt flash — use permanent _trueColor, not ephemeral _origColor
+      // BD-230: During death sequence, replace hurt flash with progressive gray-out desaturation
       if (st.playerHurtFlashCooldown > 0) st.playerHurtFlashCooldown -= dt;
-      if (st.playerHurtFlash > 0) {
+      if (st.deathSequence) {
+        // BD-230: Progressive gray-out desaturation during death
+        const deathProgress = 1 - (st.deathSequenceTimer / 1.5);
+        const grayMix = Math.min(deathProgress * 1.2, 0.7); // max 70% gray
+        playerGroup.traverse(child => {
+          if (child.isMesh && child.material && child.userData._trueColor !== undefined) {
+            const orig = child.userData._trueColor;
+            const r = (orig >> 16) & 0xff;
+            const g = (orig >> 8) & 0xff;
+            const b = orig & 0xff;
+            const gray = Math.round(r * 0.299 + g * 0.587 + b * 0.114);
+            const mr = Math.round(r + (gray - r) * grayMix);
+            const mg = Math.round(g + (gray - g) * grayMix);
+            const mb = Math.round(b + (gray - b) * grayMix);
+            child.material.color.setHex((mr << 16) | (mg << 8) | mb);
+          }
+        });
+      } else if (st.playerHurtFlash > 0) {
         st.playerHurtFlash -= dt;
         playerGroup.traverse(child => {
           if (child.isMesh && child.material && child.userData._trueColor !== undefined) {
