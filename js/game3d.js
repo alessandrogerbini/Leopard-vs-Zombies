@@ -3216,7 +3216,8 @@ export function launch3DGame(options) {
         if (dbdx * dbdx + dbdz * dbdz < p.range * p.range) {
           const _srcTier = p.type === 'deathBolt' ? 10 : 4;
           const _srcTd = ZOMBIE_TIERS[_srcTier - 1];
-          damagePlayer(p.damage, '#ff0044', { type: p.type, tierName: _srcTd.name, tier: _srcTier, color: _srcTd.eye });
+          damagePlayer(p.damage, '#ff0044', { type: p.type, tierName: _srcTd.name, tier: _srcTier, color: _srcTd.eye,
+            killerX: p.originX !== undefined ? p.originX : p.x, killerZ: p.originZ !== undefined ? p.originZ : p.z, enemyRef: p.sourceEnemy || null }); // BD-235
           disposeSceneObject(p.mesh);
           st.weaponProjectiles.splice(i, 1);
           playSound('sfx_explosion');
@@ -3242,7 +3243,8 @@ export function launch3DGame(options) {
         const bsdx = st.playerX - p.x;
         const bsdz = st.playerZ - p.z;
         if (bsdx * bsdx + bsdz * bsdz < p.range * p.range) {
-          damagePlayer(p.damage, '#ccbb88', { type: 'boneSpit', tierName: ZOMBIE_TIERS[3].name, tier: 4, color: ZOMBIE_TIERS[3].eye });
+          damagePlayer(p.damage, '#ccbb88', { type: 'boneSpit', tierName: ZOMBIE_TIERS[3].name, tier: 4, color: ZOMBIE_TIERS[3].eye,
+            killerX: p.originX !== undefined ? p.originX : p.x, killerZ: p.originZ !== undefined ? p.originZ : p.z, enemyRef: p.sourceEnemy || null }); // BD-235
           disposeSceneObject(p.mesh);
           st.weaponProjectiles.splice(i, 1);
           playSound('sfx_melee_hit');
@@ -3707,7 +3709,8 @@ export function launch3DGame(options) {
     const pdx = st.playerX - e.group.position.x;
     const pdz = st.playerZ - e.group.position.z;
     if (pdx * pdx + pdz * pdz < 2.25) { // 1.5^2
-      damagePlayer(5 * (diffDmgMult || 1), '#ffdd00', { type: 'lunge', tierName: ZOMBIE_TIERS[1].name, tier: 2, color: ZOMBIE_TIERS[1].eye });
+      damagePlayer(5 * (diffDmgMult || 1), '#ffdd00', { type: 'lunge', tierName: ZOMBIE_TIERS[1].name, tier: 2, color: ZOMBIE_TIERS[1].eye,
+        killerX: e.group.position.x, killerZ: e.group.position.z, enemyRef: e }); // BD-235
     }
     playSound('sfx_melee_hit');
   }
@@ -3737,7 +3740,8 @@ export function launch3DGame(options) {
     const pdx = st.playerX - ox;
     const pdz = st.playerZ - oz;
     if (pdx * pdx + pdz * pdz < 9) { // 3^2
-      damagePlayer(8 * (diffDmgMult || 1), '#ff4400', { type: 'slam', tierName: ZOMBIE_TIERS[2].name, tier: 3, color: ZOMBIE_TIERS[2].eye });
+      damagePlayer(8 * (diffDmgMult || 1), '#ff4400', { type: 'slam', tierName: ZOMBIE_TIERS[2].name, tier: 3, color: ZOMBIE_TIERS[2].eye,
+        killerX: e.group.position.x, killerZ: e.group.position.z, enemyRef: e }); // BD-235
     }
     // Visual: brief expanding shockwave ring effect
     const explGeo = new THREE.RingGeometry(0.5, 3, 20);
@@ -3785,6 +3789,8 @@ export function launch3DGame(options) {
       life: 3,
       type: 'boneSpit',
       isEnemyProjectile: true,
+      sourceEnemy: e, // BD-235: enemy ref for damagePlayer source tracking
+      originX: e.group.position.x, originZ: e.group.position.z, // BD-235: origin position at fire time
     });
     playSound('sfx_weapon_projectile');
   }
@@ -3882,7 +3888,8 @@ export function launch3DGame(options) {
     const pdx = st.playerX - pos.x;
     const pdz = st.playerZ - pos.z;
     if (pdx * pdx + pdz * pdz < 2.25) { // 1.5^2
-      damagePlayer(6 * (diffDmgMult || 1), '#ff2222', { type: 'graveBurst', tierName: ZOMBIE_TIERS[5].name, tier: 6, color: ZOMBIE_TIERS[5].eye });
+      damagePlayer(6 * (diffDmgMult || 1), '#ff2222', { type: 'graveBurst', tierName: ZOMBIE_TIERS[5].name, tier: 6, color: ZOMBIE_TIERS[5].eye,
+        killerX: pos.x, killerZ: pos.z, enemyRef: null }); // BD-235: grave burst has no living enemy
     }
     // Visual explosion at this position
     const explMesh = new THREE.Mesh(
@@ -4000,7 +4007,8 @@ export function launch3DGame(options) {
           const playerDist = Math.sqrt(pdx * pdx + pdz * pdz);
           // Hit if player is between (radius-2) and (radius+1) — the ring's "band"
           if (playerDist >= eff.radius - 2 && playerDist <= eff.radius + 1) {
-            damagePlayer(eff.damage, '#ff6600', { type: 'shockwave', tierName: ZOMBIE_TIERS[8].name, tier: 9, color: ZOMBIE_TIERS[8].eye }); // BD-216
+            damagePlayer(eff.damage, '#ff6600', { type: 'shockwave', tierName: ZOMBIE_TIERS[8].name, tier: 9, color: ZOMBIE_TIERS[8].eye,
+              killerX: eff.x, killerZ: eff.z, enemyRef: eff.sourceEnemy || null }); // BD-216+235
             eff.hasHitPlayer = true;
           }
         }
@@ -4122,7 +4130,8 @@ export function launch3DGame(options) {
           const pdx = st.playerX - eff.x;
           const pdz = st.playerZ - eff.z;
           if (pdx * pdx + pdz * pdz < eff.radius * eff.radius) {
-            damagePlayer(eff.dmgPerSec * 0.5, '#33cc33', { type: 'poison', tierName: ZOMBIE_TIERS[4].name, tier: 5, color: ZOMBIE_TIERS[4].eye }); // 4 dps * 0.5s = 2 per tick
+            damagePlayer(eff.dmgPerSec * 0.5, '#33cc33', { type: 'poison', tierName: ZOMBIE_TIERS[4].name, tier: 5, color: ZOMBIE_TIERS[4].eye,
+              killerX: eff.x, killerZ: eff.z, enemyRef: null }); // 4 dps * 0.5s = 2 per tick // BD-235
           }
         }
         // Fade out opacity near end of life, and pulse
@@ -5337,6 +5346,8 @@ export function launch3DGame(options) {
                   life: 3,
                   type: 'deathBolt',
                   isEnemyProjectile: true,
+                  sourceEnemy: e, // BD-235: enemy ref for damagePlayer source tracking
+                  originX: e.group.position.x, originZ: e.group.position.z, // BD-235: origin position at fire time
                 });
               } else if (e.tier === 9) {
                 if (e._isShockwave) {
@@ -5359,6 +5370,7 @@ export function launch3DGame(options) {
                     maxRadius: 20,       // max expansion radius
                     damage: 20 * diffDmgMult, // BD-211: shockwave damage
                     hasHitPlayer: false, // only hit once per shockwave
+                    sourceEnemy: e, // BD-235: enemy ref for damagePlayer source tracking
                   });
                   playSound('sfx_explosion');
                 } else {
@@ -5367,7 +5379,8 @@ export function launch3DGame(options) {
                   const sdz = st.playerZ - e.group.position.z;
                   const distSq = sdx * sdx + sdz * sdz;
                   if (distSq < 64) {
-                    damagePlayer(35 * diffDmgMult, '#ff2200', { type: 'slam', tierName: ZOMBIE_TIERS[8].name, tier: 9, color: ZOMBIE_TIERS[8].eye }); // BD-211+216
+                    damagePlayer(35 * diffDmgMult, '#ff2200', { type: 'slam', tierName: ZOMBIE_TIERS[8].name, tier: 9, color: ZOMBIE_TIERS[8].eye,
+                      killerX: e.group.position.x, killerZ: e.group.position.z, enemyRef: e }); // BD-211+216+235
                   }
                   playSound('sfx_explosion');
                   // Visual: ground slam impact particles
@@ -5527,7 +5540,8 @@ export function launch3DGame(options) {
         const tierData = ZOMBIE_TIERS[(e.tier || 1) - 1];
         if (dist < 1.0 * (tierData.scale || 1) && dy < 1.5) {
           const baseDmg = 15 * tierData.dmgMult * st.zombieDmgMult * (e.bossDmgMult || 1);
-          const dealt = damagePlayer(baseDmg, undefined, { type: 'contact', tierName: tierData.name, tier: e.tier || 1, color: tierData.eye });
+          const dealt = damagePlayer(baseDmg, undefined, { type: 'contact', tierName: tierData.name, tier: e.tier || 1, color: tierData.eye,
+            killerX: e.group.position.x, killerZ: e.group.position.z, enemyRef: e }); // BD-235
           if (dealt > 0) {
             // Thorned Vest: reflect 20% damage back
             if (st.items.vest) damageEnemy(e, dealt * 0.2, { skipProcs: true });

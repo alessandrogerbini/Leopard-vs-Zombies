@@ -65,6 +65,57 @@ const GAME_FONT = '"Fredoka One", "Comic Sans MS", "Arial Rounded MT Bold", sans
 
 // BD-165: Reuse a single Vector3 for HUD world-to-screen projections
 const _v = new THREE.Vector3();
+
+/**
+ * BD-232: Draw a simplified zombie silhouette icon using canvas 2D primitives.
+ * Mirrors the box-primitive construction of actual zombie models.
+ * Higher tiers get larger icons; tiers 7+ get spike triangles on shoulders.
+ *
+ * @param {CanvasRenderingContext2D} ctx - Canvas context.
+ * @param {number} cx - Center X position.
+ * @param {number} cy - Center Y position.
+ * @param {number} scale - Icon scale factor (increases with tier).
+ * @param {string} color - CSS color string for the zombie body.
+ * @param {number} tierIdx - Zero-based tier index (0-9).
+ */
+function drawZombieTierIcon(ctx, cx, cy, scale, color, tierIdx) {
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.scale(scale, scale);
+  // Body
+  ctx.fillStyle = color;
+  ctx.fillRect(-8, -10, 16, 20);
+  // Head
+  ctx.fillRect(-6, -20, 12, 12);
+  // Arms (raised menacing pose)
+  ctx.fillRect(-14, -8, 6, 14);
+  ctx.fillRect(8, -8, 6, 14);
+  // Legs
+  ctx.fillRect(-6, 10, 5, 12);
+  ctx.fillRect(1, 10, 5, 12);
+  // Eyes (glowing)
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(-4, -17, 3, 3);
+  ctx.fillRect(1, -17, 3, 3);
+  // Tiers 7+ (index 6+): spike triangles on shoulders
+  if (tierIdx >= 6) {
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.moveTo(-14, -8);
+    ctx.lineTo(-17, -18);
+    ctx.lineTo(-8, -8);
+    ctx.closePath();
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(8, -8);
+    ctx.lineTo(17, -18);
+    ctx.lineTo(14, -8);
+    ctx.closePath();
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
 export function drawHUD(ctx, s, deps) {
   const { W, H, animalData, camera, getWeaponCooldown, getGroundAt } = deps;
   ctx.clearRect(0, 0, W, H);
@@ -1259,12 +1310,38 @@ export function drawHUD(ctx, s, deps) {
     ctx.fillStyle = '#88ccff'; ctx.font = 'bold 14px ' + GAME_FONT;
     ctx.fillText(`Time: ${String(goMins).padStart(2, '0')}:${String(goSecs).padStart(2, '0')}`, W / 2, 138);
 
-    // BD-216: "DEFEATED BY" line showing what killed the player
+    // BD-216+232: "DEFEATED BY" line with zombie tier icon and color pill
     if (s.lastDamageSource && s.lastDamageSource.tierName) {
       const srcColor = '#' + (s.lastDamageSource.color || 0xff4444).toString(16).padStart(6, '0');
+      const tierIdx = (s.lastDamageSource.tier || 1) - 1;
+      const tierText = s.lastDamageSource.tierName.toUpperCase();
+      const defText = 'DEFEATED BY: ' + tierText;
+
+      // Measure text for pill sizing
+      ctx.font = 'bold 20px ' + GAME_FONT;
+      const textW = ctx.measureText(defText).width;
+
+      // BD-232: Zombie tier icon (left of text)
+      const iconScale = 1.2 + tierIdx * 0.1;
+      const iconCX = W / 2 - textW / 2 - 30 * iconScale;
+      const iconCY = 158;
+      drawZombieTierIcon(ctx, iconCX, iconCY, iconScale, srcColor, tierIdx);
+
+      // BD-232: Dark rounded pill behind tier name
+      const pillPad = 10;
+      const pillH = 28;
+      const pillX = W / 2 - textW / 2 - pillPad;
+      const pillY = 158 - pillH / 2 - 4;
+      const pillW = textW + pillPad * 2;
+      ctx.fillStyle = 'rgba(0,0,0,0.5)';
+      ctx.beginPath();
+      ctx.roundRect(pillX, pillY, pillW, pillH, 6);
+      ctx.fill();
+
+      // Text on top of pill
       ctx.fillStyle = srcColor;
-      ctx.font = 'bold 18px ' + GAME_FONT;
-      ctx.fillText('DEFEATED BY: ' + s.lastDamageSource.tierName.toUpperCase(), W / 2, 158);
+      ctx.font = 'bold 20px ' + GAME_FONT;
+      ctx.fillText(defText, W / 2, 158);
     }
     // --- Big total kills line ---
     ctx.fillStyle = '#ffcc44'; ctx.font = 'bold 28px ' + GAME_FONT;
