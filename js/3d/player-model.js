@@ -522,20 +522,21 @@ export function animatePlayer(model, st, clock, len, mx, mz) {
 }
 
 /**
- * Update muscle growth visual scaling based on player level using 5-tier system.
+ * Update muscle growth visual scaling based on player level using 5-tier logarithmic curves.
  *
- * Five growth tiers prevent the "blobby" look by scaling all body parts proportionally:
- * - **Tier 1: Core muscles** (chest, shoulders) — widest growth, non-uniform (wider > taller).
- *   Rate: +0.05/level, cap: 1.8x. Only scales parts NOT parented under arm/leg groups
- *   to avoid double-scaling biceps/thighs.
- * - **Tier 2: Full limb groups** (arms, legs) — moderate proportional growth.
- *   Rate: +0.035/level, cap: 1.5x. Applied to arm/leg group roots (biceps + thighs).
- * - **Tier 3: Extremities** (hands, feet) — subtle growth to keep proportions.
- *   Rate: +0.025/level, cap: 1.4x.
- * - **Tier 4: Head** — minimal growth to maintain face readability.
- *   Rate: +0.015/level, cap: 1.25x.
- * - **Tier 5: Cosmetic** (tail, features) — very subtle for flavor.
- *   Rate: +0.01/level, cap: 1.2x.
+ * Uses the formula: scale = 1 + maxGrowth * (1 - Math.exp(-growthRate * t))
+ * where t = level - 1 (so level 1 = no growth). This produces an asymptotic curve
+ * that never fully stops growing, replacing the old linear-with-hard-cap system that
+ * plateaued completely by level 17-21.
+ *
+ * Five growth tiers prevent the "blobby" look by scaling body parts at different rates:
+ * - **Tier 1: Core muscles** (chest, shoulders) — maxGrowth=1.2, rate=0.08, approaches 2.2x.
+ *   Non-uniform scaling (wider > taller, Y *= 0.7).
+ * - **Tier 2: Limbs** (biceps, thighs) — maxGrowth=0.9, rate=0.07, approaches 1.9x.
+ *   Slight Z-axis reduction (Z *= 0.9) on thighs to prevent boxy look.
+ * - **Tier 3: Extremities** (hands, feet) — maxGrowth=0.7, rate=0.06, approaches 1.7x.
+ * - **Tier 4: Head** — maxGrowth=0.4, rate=0.05, approaches 1.4x.
+ * - **Tier 5: Cosmetic** (tail, features) — maxGrowth=0.3, rate=0.04, approaches 1.3x.
  *
  * @param {PlayerModel} model - The player model object returned by buildPlayerModel.
  * @param {number} level - Current player level (1-based).
@@ -543,18 +544,22 @@ export function animatePlayer(model, st, clock, len, mx, mz) {
 export function updateMuscleGrowth(model, level) {
   const t = level - 1;
 
+  // Logarithmic growth helper: asymptotically approaches (1 + maxGrowth) but never caps
+  const logScale = (maxGrowth, growthRate) => 1 + maxGrowth * (1 - Math.exp(-growthRate * t));
+
   // Tier 1: Core muscles (chest, shoulders) — widest growth, non-uniform (wider > taller)
   // Only scale muscles that are NOT children of arm/leg groups (chest, shoulderL, shoulderR)
   // bicepL/R and thighL/R ARE the arm/leg array entries — skip them here to avoid double-scaling
-  const mS = Math.min(1.8, 1 + t * 0.05);
+  const mS = logScale(1.2, 0.08);
   if (model.muscles) {
     for (const key of ['chest', 'shoulderL', 'shoulderR']) {
       if (model.muscles[key]) model.muscles[key].scale.set(mS, mS * 0.7, mS);
     }
   }
 
-  // Tier 2: Full limb groups (arms, legs) — moderate proportional growth
-  const lS = Math.min(1.5, 1 + t * 0.035);
+  // Tier 2: Limbs (arms, legs) — moderate proportional growth
+  // Thighs use 90% Z-axis scale to prevent boxy look at high levels
+  const lS = logScale(0.9, 0.07);
   if (model.arms) {
     for (const arm of model.arms) {
       if (arm) arm.scale.set(lS, lS, lS);
@@ -562,12 +567,12 @@ export function updateMuscleGrowth(model, level) {
   }
   if (model.legs) {
     for (const leg of model.legs) {
-      if (leg) leg.scale.set(lS, lS, lS);
+      if (leg) leg.scale.set(lS, lS, lS * 0.9);
     }
   }
 
   // Tier 3: Extremities (hands, feet) — subtle growth
-  const eS = Math.min(1.4, 1 + t * 0.025);
+  const eS = logScale(0.7, 0.06);
   for (const arr of [model.hands, model.feet]) {
     if (arr) for (const part of arr) {
       if (part) part.scale.set(eS, eS, eS);
@@ -575,11 +580,11 @@ export function updateMuscleGrowth(model, level) {
   }
 
   // Tier 4: Head — minimal growth to maintain proportions
-  const hS = Math.min(1.25, 1 + t * 0.015);
+  const hS = logScale(0.4, 0.05);
   if (model.head) model.head.scale.set(hS, hS, hS);
 
   // Tier 5: Cosmetic (tail, features) — very subtle
-  const fS = Math.min(1.2, 1 + t * 0.01);
+  const fS = logScale(0.3, 0.04);
   if (model.tail) model.tail.scale.set(fS, fS, fS);
   if (model.features) {
     for (const k in model.features) {
