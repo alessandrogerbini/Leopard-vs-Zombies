@@ -143,6 +143,11 @@ const SOUND_MAP = {
   sfx_comedic_drop: [
     'poop-1.ogg',
   ],
+
+  // --- Boss ---
+  sfx_boss_dark_nova: [
+    'zombie-4.ogg',
+  ],
 };
 
 // --- Module state ---
