@@ -137,6 +137,9 @@ const SOUND_MAP = {
   sfx_shrine_break: [
     'explode-1.ogg',
   ],
+  sfx_boss_entrance: [
+    'zombie-4.ogg',
+  ],
   sfx_item_pickup: [
     // Needs Sound Pack Beta -- no suitable match in Alpha
   ],

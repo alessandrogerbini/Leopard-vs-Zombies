@@ -442,6 +442,9 @@ export function launch3DGame(options) {
     attackFirstSeen: {}, // { tierKey: true } — prevents repeat labels per run
     // BD-166/167: Active poison pools spawned by tier-5 enemies
     poisonPools: [],
+    // BD-224: Screen shake state
+    screenShakeTimer: 0,
+    screenShakeIntensity: 0,
     // FPS debug counter (toggle with backtick key)
     showFps: false,
     _fpsFrames: 0,
@@ -529,6 +532,17 @@ export function launch3DGame(options) {
     }
 
     st.floatingTexts3d.push({ text, color, x, y, z, life, important, spreadX, spawnTime: now });
+  }
+
+  // BD-224: Screen shake helper — offsets camera position temporarily
+  /**
+   * Trigger a screen shake effect.
+   * @param {number} duration - Duration in seconds.
+   * @param {number} intensity - Shake magnitude in world units.
+   */
+  function triggerScreenShake(duration, intensity) {
+    st.screenShakeTimer = duration;
+    st.screenShakeIntensity = intensity;
   }
 
   // Animal-specific starting weapon (ANIMAL_WEAPONS imported from 3d/constants.js)
@@ -5109,6 +5123,43 @@ export function launch3DGame(options) {
           continue;
         }
         if (e.frozen) continue; // Frost Nova: frozen enemies don't move
+        // BD-224: Boss entrance animation — scale up from near-zero over 1.5s
+        if (e.entranceActive) {
+          e.entranceTimer -= dt;
+          const t = 1 - (e.entranceTimer / 1.5); // 0 to 1 progress
+          const easeOut = 1 - Math.pow(1 - t, 3); // cubic ease-out
+          const targetScale = e.entranceTargetScale || BOSS_SCALE;
+          e.group.scale.setScalar(easeOut * targetScale);
+          // Brown ground crack particles radiating outward from boss feet
+          if (Math.random() < 0.3) {
+            const pa = Math.random() * Math.PI * 2;
+            const pr = Math.random() * 2.0 * easeOut; // spread grows with scale
+            const brownColors = [0x8B4513, 0x654321, 0x5C4033, 0x3E2723];
+            const pColor = brownColors[Math.floor(Math.random() * brownColors.length)];
+            spawnFireParticle(
+              pColor,
+              e.group.position.x + Math.cos(pa) * pr,
+              e.group.position.y + 0.1,
+              e.group.position.z + Math.sin(pa) * pr,
+              0.5
+            );
+          }
+          if (e.entranceTimer <= 0) {
+            e.entranceActive = false;
+            // Snap to full scale
+            e.group.scale.setScalar(targetScale);
+            // Screen shake on entrance completion
+            triggerScreenShake(0.4, 0.5);
+            // Title card floating text
+            const isTitan = (e.tier === 9);
+            const title = isTitan ? 'TITAN' : (e.tier >= 10 ? 'OVERLORD' : 'BOSS');
+            const titleColor = isTitan ? '#ffd700' : (e.tier >= 10 ? '#ff0000' : '#ff4400');
+            addFloatingText(title, titleColor, e.group.position.x, e.group.position.y + 3, e.group.position.z, 3.0, true);
+            // Boss entrance sound
+            playSound('sfx_boss_entrance');
+          }
+          continue; // Skip all attack/movement logic during entrance
+        }
         // Mud slow timer decrement — restore speed when expired
         if (e._mudSlowed) {
           e._mudSlowTimer -= dt;
@@ -5422,7 +5473,20 @@ export function launch3DGame(options) {
           e._shadowEnabled = wantShadow;
           e.group.traverse(c => { if (c.isMesh) c.castShadow = wantShadow; });
         }
-        if (dist > 0.01) {
+        // BD-224: Flee from boss spawn — move away from flee source instead of chasing player
+        if (e.fleeTimer > 0) {
+          e.fleeTimer -= dt;
+          const fdx = e.group.position.x - e.fleeFromX;
+          const fdz = e.group.position.z - e.fleeFromZ;
+          const fdist = Math.sqrt(fdx * fdx + fdz * fdz) || 1;
+          const eSpd = e.speed * st.totemSpeedMult * st.enemySpeedMult;
+          e.group.position.x += (fdx / fdist) * eSpd * dt;
+          e.group.position.z += (fdz / fdist) * eSpd * dt;
+          // Clamp to map boundaries
+          e.group.position.x = Math.max(-MAP_HALF + 0.5, Math.min(MAP_HALF - 0.5, e.group.position.x));
+          e.group.position.z = Math.max(-MAP_HALF + 0.5, Math.min(MAP_HALF - 0.5, e.group.position.z));
+          e.group.rotation.y = Math.atan2(fdx / fdist, fdz / fdist);
+        } else if (dist > 0.01) {
           const nx = dx / dist;
           const nz = dz / dist;
           const eSpd = e.speed * st.totemSpeedMult * st.enemySpeedMult;
@@ -6295,11 +6359,26 @@ export function launch3DGame(options) {
           boss.bossShrine = cs;
           boss.speed = (boss.speed || 2) * BOSS_SPEED_MULT;
           boss.bossDmgMult = BOSS_DMG_MULT;
-          // Scale up the boss model
-          if (boss.group) boss.group.scale.setScalar(BOSS_SCALE);
+          // BD-224: Boss entrance animation — start near-zero scale and grow in
+          boss.entranceTimer = 1.5;
+          boss.entranceActive = true;
+          boss.entranceTargetScale = BOSS_SCALE; // remember intended final scale
+          if (boss.group) boss.group.scale.setScalar(0.01); // start near-zero
           st.enemies.push(boss);
           st.activeBosses.push(boss);
           playSound('sfx_player_growl');
+          // BD-224: Zombie scatter — nearby low-tier enemies flee from boss spawn
+          for (const other of st.enemies) {
+            if (other === boss || (other.tier || 1) > 3) continue;
+            const sdx = other.group.position.x - boss.group.position.x;
+            const sdz = other.group.position.z - boss.group.position.z;
+            const sdist = Math.sqrt(sdx * sdx + sdz * sdz);
+            if (sdist < 15) {
+              other.fleeTimer = 2;
+              other.fleeFromX = boss.group.position.x;
+              other.fleeFromZ = boss.group.position.z;
+            }
+          }
           // Flash shrine
           cs.group.children.forEach(c => {
             if (c.material && c.material.emissive !== undefined) c.material.emissive = new THREE.Color(0xff0000);
@@ -6416,6 +6495,21 @@ export function launch3DGame(options) {
     camera.position.x += (camTargetX - camera.position.x) * 0.05;
     camera.position.z += (camTargetZ - camera.position.z) * 0.05;
     camera.position.y += (camTargetY - camera.position.y) * 0.05;
+
+    // BD-224: Screen shake offset
+    if (st.screenShakeTimer > 0) {
+      st.screenShakeTimer -= dt;
+      const shakeFade = Math.min(1, st.screenShakeTimer / 0.15); // fade out in last 0.15s
+      const shakeAmt = st.screenShakeIntensity * shakeFade;
+      camera.position.x += (Math.random() - 0.5) * 2 * shakeAmt;
+      camera.position.y += (Math.random() - 0.5) * 2 * shakeAmt;
+      camera.position.z += (Math.random() - 0.5) * 2 * shakeAmt;
+      if (st.screenShakeTimer <= 0) {
+        st.screenShakeTimer = 0;
+        st.screenShakeIntensity = 0;
+      }
+    }
+
     camera.lookAt(st.playerX, st.playerY, st.playerZ);
 
     // Update directional light to follow player
