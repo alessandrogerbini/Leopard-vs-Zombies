@@ -22,6 +22,12 @@ export const GRAVITY_3D = 22;
 export const JUMP_FORCE = 10;
 /** @constant {number} GROUND_Y - Baseline Y coordinate for flat ground (before terrain noise). */
 export const GROUND_Y = 0;
+/** @constant {number} CAMERA_Y_OFFSET - Vertical offset from player to camera (default follow height). */
+export const CAMERA_Y_OFFSET = 18;
+/** @constant {number} CAMERA_Z_OFFSET - Depth offset from player to camera (default follow distance). */
+export const CAMERA_Z_OFFSET = 14;
+/** @constant {number} CAMERA_SMOOTH_FACTOR - Lerp factor for camera position smoothing (0-1). */
+export const CAMERA_SMOOTH_FACTOR = 0.05;
 /** @constant {number} MAP_HALF - Half the map dimension; world extends from -MAP_HALF to +MAP_HALF on X and Z. */
 export const MAP_HALF = 128; // 256x256 total map (extends -128 to +128 on both axes)
 
