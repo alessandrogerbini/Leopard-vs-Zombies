@@ -962,6 +962,7 @@ export function launch3DGame(options) {
    */
   function buildPlateauMeshes(px, pz, baseH, plateauHeight, pw, pd) {
     const meshes = [];
+    const stepPlatforms = []; // BD-133: step data for walkable ramp platforms
     const topY = baseH + plateauHeight;
 
     // Top surface (flat walkable area)
@@ -1062,16 +1063,13 @@ export function launch3DGame(options) {
         scene.add(stepMesh);
         meshes.push(stepMesh);
 
-        // Add collider so player can walk on steps
-        if (terrainState) {
-          const stepChunkKey = getChunkKey(Math.floor(sx / CHUNK_SIZE), Math.floor(sz / CHUNK_SIZE));
-          if (!terrainState.collidersByChunk[stepChunkKey]) terrainState.collidersByChunk[stepChunkKey] = [];
-          terrainState.collidersByChunk[stepChunkKey].push({ x: sx, z: sz, radius: Math.max(sw, sd) / 2 + 0.3 });
-        }
+        // BD-133: Register step as a walkable platform so the player can walk up
+        const stepTopY = baseH + stepH * (si + 1);
+        stepPlatforms.push({ x: sx, y: stepTopY, z: sz, w: sw, d: sd });
       }
     }
 
-    return meshes;
+    return { meshes, stepPlatforms };
   }
 
   /**
@@ -1124,12 +1122,20 @@ export function launch3DGame(options) {
       }
 
       const topY = baseH + plateauHeight;
-      const allMeshes = buildPlateauMeshes(px, pz, baseH, plateauHeight, pw, pd);
+      const result = buildPlateauMeshes(px, pz, baseH, plateauHeight, pw, pd);
+      const allMeshes = result.meshes;
 
       // Store as platform for collision (topMesh is allMeshes[0])
       const plat = { mesh: allMeshes[0], meshes: allMeshes, x: px, y: topY, z: pz, w: pw, d: pd };
       platforms.push(plat);
       platformsByChunk[key].push(plat);
+
+      // BD-133: Register ramp steps as walkable platforms
+      for (const sp of result.stepPlatforms) {
+        const stepPlat = { mesh: null, meshes: [], x: sp.x, y: sp.y, z: sp.z, w: sp.w, d: sp.d };
+        platforms.push(stepPlat);
+        platformsByChunk[key].push(stepPlat);
+      }
 
       // Occasional stacking: a smaller plateau on top of this one (10% chance)
       if (noise2D(px * 4.3, pz * 5.7) > 0.9 && plateauHeight <= 3) {
@@ -1138,11 +1144,19 @@ export function launch3DGame(options) {
         const stackD = pd * (0.5 + noise2D(px * 7, pz * 7) * 0.2);
         const stackBaseH = topY + 0.15; // slight gap above parent top
         const stackTopY = stackBaseH + stackHeight;
-        const stackMeshes = buildPlateauMeshes(px, pz, stackBaseH, stackHeight, stackW, stackD);
+        const stackResult = buildPlateauMeshes(px, pz, stackBaseH, stackHeight, stackW, stackD);
+        const stackMeshes = stackResult.meshes;
 
         const stackPlat = { mesh: stackMeshes[0], meshes: stackMeshes, x: px, y: stackTopY, z: pz, w: stackW, d: stackD };
         platforms.push(stackPlat);
         platformsByChunk[key].push(stackPlat);
+
+        // BD-133: Register stacked plateau ramp steps as walkable platforms
+        for (const sp of stackResult.stepPlatforms) {
+          const stepPlat = { mesh: null, meshes: [], x: sp.x, y: sp.y, z: sp.z, w: sp.w, d: sp.d };
+          platforms.push(stepPlat);
+          platformsByChunk[key].push(stepPlat);
+        }
       }
     }
   }
@@ -6211,17 +6225,13 @@ export function launch3DGame(options) {
     dirLight.position.set(st.playerX + 10, 20, st.playerZ + 10);
     dirLight.target.position.set(st.playerX, 0, st.playerZ);
 
-    // Tree canopy sway (BD-125)
-    if (terrainState && terrainState.decorations) {
+    // Tree canopy sway (BD-125) — uses flat canopyMeshes array (BD-173) for O(1) iteration
+    if (terrainState && terrainState.canopyMeshes) {
       const windTime = clock.elapsedTime;
-      for (const deco of terrainState.decorations) {
-        if (!deco.meshes) continue;
-        for (const m of deco.meshes) {
-          if (m.userData && m.userData.isCanopy) {
-            m.rotation.z = Math.sin(windTime * 0.5 + m.userData.windSeed) * 0.02;
-            m.rotation.x = Math.sin(windTime * 0.4 + m.userData.windSeed + 1.5) * 0.015;
-          }
-        }
+      for (let ci = 0; ci < terrainState.canopyMeshes.length; ci++) {
+        const m = terrainState.canopyMeshes[ci];
+        m.rotation.z = Math.sin(windTime * 0.5 + m.userData.windSeed) * 0.02;
+        m.rotation.x = Math.sin(windTime * 0.4 + m.userData.windSeed + 1.5) * 0.015;
       }
     }
 
