@@ -1253,6 +1253,13 @@ export function drawHUD(ctx, s, deps) {
     ctx.fillStyle = '#88ccff'; ctx.font = 'bold 14px ' + GAME_FONT;
     ctx.fillText(`Time: ${String(goMins).padStart(2, '0')}:${String(goSecs).padStart(2, '0')}`, W / 2, 138);
 
+    // BD-216: "DEFEATED BY" line showing what killed the player
+    if (s.lastDamageSource && s.lastDamageSource.tierName) {
+      const srcColor = '#' + (s.lastDamageSource.color || 0xff4444).toString(16).padStart(6, '0');
+      ctx.fillStyle = srcColor;
+      ctx.font = 'bold 18px ' + GAME_FONT;
+      ctx.fillText('DEFEATED BY: ' + s.lastDamageSource.tierName.toUpperCase(), W / 2, 158);
+    }
     // --- Big total kills line ---
     ctx.fillStyle = '#ffcc44'; ctx.font = 'bold 28px ' + GAME_FONT;
     ctx.fillText(`YOU DEFEATED ${s.totalKills} ZOMBIES!`, W / 2, 175);
