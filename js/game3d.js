@@ -2627,7 +2627,7 @@ export function launch3DGame(options) {
       st.sillyStrawKills++;
       if (st.sillyStrawKills >= 10) {
         st.sillyStrawKills = 0;
-        st.hp = Math.min(st.hp + st.items.sillyStraw, st.maxHp); // heals 1 HP per stack
+        if (st.hp > 0) st.hp = Math.min(st.hp + st.items.sillyStraw, st.maxHp); // heals 1 HP per stack (BD-239: hp>0 guard)
       }
     }
     // Whoopee Cushion: 20% chance enemies explode on death (AoE)
@@ -2665,7 +2665,7 @@ export function launch3DGame(options) {
         st.powerupCrates.push(createPowerupCrate(dropX, dropZ));
       } else if (roll < 0.80) {
         // Health orb — heal 15% max HP
-        st.hp = Math.min(st.hp + st.maxHp * 0.10, st.maxHp);
+        if (st.hp > 0) st.hp = Math.min(st.hp + st.maxHp * 0.10, st.maxHp); // BD-239: hp>0 guard
         addFloatingText('+HEALTH', '#44ff44', dropX, terrainHeight(dropX, dropZ) + 2, dropZ, 1.5);
       } else {
         // XP burst — bonus XP gems (BD-144: respect 80-gem cap)
@@ -4812,7 +4812,7 @@ export function launch3DGame(options) {
       }
 
       // === VAMPIRE FANGS (passive regen 3 HP/s) ===
-      if (st.vampireHeal) {
+      if (st.vampireHeal && st.hp > 0) { // BD-239: hp>0 guard
         st.hp = Math.min(st.hp + 3 * dt, st.maxHp);
         if (Math.random() < 0.15) {
           spawnFireParticle(
@@ -5004,7 +5004,7 @@ export function launch3DGame(options) {
       }
 
       // === REGEN BURST (rapid healing) ===
-      if (st.regenBurst) {
+      if (st.regenBurst && st.hp > 0) { // BD-239: hp>0 guard
         st.hp = Math.min(st.hp + (st.maxHp / 5) * dt, st.maxHp);
         if (Math.random() < 0.25) {
           spawnFireParticle(
@@ -6006,7 +6006,7 @@ export function launch3DGame(options) {
               // Stackable items: increment count and apply per-stack effects
               st.items[it.id]++;
               // Thick Fur: +15 max HP per stack (immediate)
-              if (it.id === 'thickFur') { st.maxHp += 15; st.hp = Math.min(st.hp + 15, st.maxHp); }
+              if (it.id === 'thickFur') { st.maxHp += 15; if (st.hp > 0) st.hp = Math.min(st.hp + 15, st.maxHp); } // BD-239: hp>0 guard
             } else if (it.slot === 'armor') { st.items.armor = it.id; }
             else if (it.slot === 'glasses') { st.items.glasses = true; }
             else if (it.slot === 'boots') { st.items.boots = it.id; }
@@ -6112,7 +6112,7 @@ export function launch3DGame(options) {
             }
             // Apply new wearable effects
             const eff = wd.effect;
-            if (eff.maxHpBonus) { st.maxHp += eff.maxHpBonus; st.hp = Math.min(st.hp + eff.maxHpBonus, st.maxHp); }
+            if (eff.maxHpBonus) { st.maxHp += eff.maxHpBonus; if (st.hp > 0) st.hp = Math.min(st.hp + eff.maxHpBonus, st.maxHp); } // BD-239: hp>0 guard
             // Set the slot
             st.wearables[slot] = wp.wearableId;
             st.wearableFlash[slot] = 1.5;
@@ -6349,8 +6349,8 @@ export function launch3DGame(options) {
         }
       }
 
-      // === AUGMENT REGEN (BD-187: capped at 4 HP/s) ===
-      if (st.augmentRegen > 0) {
+      // === AUGMENT REGEN (BD-187: capped at 4 HP/s, BD-239: hp>0 guard) ===
+      if (st.augmentRegen > 0 && st.hp > 0) {
         const effectiveRegen = Math.min(st.augmentRegen, 4.0);
         st.hp = Math.min(st.hp + effectiveRegen * dt, st.maxHp);
       }
