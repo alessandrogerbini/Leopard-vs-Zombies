@@ -501,6 +501,69 @@ export function launch3DGame(options) {
   initAudio('sound-pack-alpha/');
   playSound('sfx_player_growl');
 
+  // === AUGMENT STATE: SINGLE SOURCE OF TRUTH ===
+  // Mapping from augment ID -> effect on the four computed properties.
+  // dmgMult/xpMult are multiplicative per stack; armor/regen are additive per stack.
+  const AUGMENT_EFFECTS = {
+    // Regular shrine augments (SHRINE_AUGMENTS)
+    damage:   { dmgMult: 1.05 },
+    xpGain:   { xpMult: 1.05 },
+    armor:    { armor: 0.03 },
+    regen:    { regen: 0.25 },
+    // Charge shrine upgrades (common)
+    dmg3:     { dmgMult: 1.03 },
+    regen03:  { regen: 0.15 },
+    // Charge shrine upgrades (uncommon)
+    dmg6:     { dmgMult: 1.06 },
+    regen07:  { regen: 0.35 },
+    armor3:   { armor: 0.03 },
+    // Charge shrine upgrades (rare)
+    dmg10:    { dmgMult: 1.10 },
+    regen12:  { regen: 0.6 },
+    xp10:     { xpMult: 1.10 },
+    // Charge shrine upgrades (legendary)
+    dmg15:    { dmgMult: 1.15 },
+    regen2:   { regen: 1.0 },
+    allstats5:{ dmgMult: 1.05 },
+    // Item / howl sources
+    pendant:  { regen: 1 },
+    guardian_regen: { regen: 1 },
+  };
+
+  /**
+   * Recompute all derived augment properties from st.augments counts.
+   * This is the single source of truth — call after any augment mutation.
+   *   st.augmentDmgMult  (multiplicative, base 1)
+   *   st.augmentXpMult   (multiplicative, base 1)
+   *   st.augmentArmor    (additive, base 0)
+   *   st.augmentRegen    (additive, base 0)
+   */
+  function recomputeAugments() {
+    let dmgMult = 1;
+    let xpMult = 1;
+    let armorSum = 0;
+    let regenSum = 0;
+
+    for (const id in st.augments) {
+      const count = st.augments[id];
+      if (count <= 0) continue;
+      const fx = AUGMENT_EFFECTS[id];
+      if (!fx) continue; // augment IDs with no computed-property effect (e.g. maxHp, moveSpeed)
+      if (fx.dmgMult)  dmgMult *= Math.pow(fx.dmgMult, count);
+      if (fx.xpMult)   xpMult  *= Math.pow(fx.xpMult, count);
+      if (fx.armor)    armorSum += fx.armor * count;
+      if (fx.regen)    regenSum += fx.regen * count;
+    }
+
+    st.augmentDmgMult = dmgMult;
+    st.augmentXpMult  = xpMult;
+    st.augmentArmor   = armorSum;
+    st.augmentRegen   = regenSum;
+  }
+
+  // Ensure derived properties are consistent with st.augments at game init.
+  recomputeAugments();
+
   /**
    * Save the current game score to the localStorage leaderboard.
    * Inserts the new entry, sorts by score descending, and keeps only the top 10.
@@ -729,6 +792,8 @@ export function launch3DGame(options) {
         const chosen = st.chargeShrineChoices[st.selectedChargeShrineUpgrade];
         if (chosen) {
           chosen.apply(st);
+          st.augments[chosen.id] = (st.augments[chosen.id] || 0) + 1;
+          recomputeAugments();
           // Mark shrine as used
           if (st.chargeShrineCurrent) {
             st.chargeShrineCurrent.charged = true;
@@ -815,7 +880,7 @@ export function launch3DGame(options) {
           else if (it.slot === 'ring') { st.items.ring = true; st.collectRadius *= 1.5; }
           else if (it.slot === 'charm') st.items.charm = true;
           else if (it.slot === 'vest') st.items.vest = true;
-          else if (it.slot === 'pendant') { st.items.pendant = true; st.augmentRegen += 1; }
+          else if (it.slot === 'pendant') { st.items.pendant = true; st.augments.pendant = (st.augments.pendant || 0) + 1; recomputeAugments(); }
           else if (it.slot === 'bracelet') st.items.bracelet = true;
           else if (it.slot === 'gloves') st.items.gloves = true;
           else if (it.slot === 'cushion') st.items.cushion = true;
@@ -4520,7 +4585,8 @@ export function launch3DGame(options) {
             if (id === 'guardian') {
               s.maxHp = Math.floor(s.maxHp * 1.08);
               s.hp = Math.min(s.hp + 10, s.maxHp);
-              s.augmentRegen += 1;
+              s.augments.guardian_regen = (s.augments.guardian_regen || 0) + 1;
+              recomputeAugments();
             }
           }
         });
@@ -7350,7 +7416,7 @@ export function launch3DGame(options) {
             else if (it.slot === 'ring') { st.items.ring = true; st.collectRadius *= 1.5; }
             else if (it.slot === 'charm') st.items.charm = true;
             else if (it.slot === 'vest') st.items.vest = true;
-            else if (it.slot === 'pendant') { st.items.pendant = true; st.augmentRegen += 1; }
+            else if (it.slot === 'pendant') { st.items.pendant = true; st.augments.pendant = (st.augments.pendant || 0) + 1; recomputeAugments(); }
             else if (it.slot === 'bracelet') st.items.bracelet = true;
             else if (it.slot === 'gloves') st.items.gloves = true;
             // New non-stackable slots
@@ -7498,6 +7564,7 @@ export function launch3DGame(options) {
             const aug = SHRINE_AUGMENTS[Math.floor(Math.random() * SHRINE_AUGMENTS.length)];
             aug.apply(st);
             st.augments[aug.id] = (st.augments[aug.id] || 0) + 1;
+            recomputeAugments();
             // Floating text
             addFloatingText(aug.name, aug.color, shrine.x, terrainHeight(shrine.x, shrine.z) + 2.5, shrine.z, 1.0, true);
             disposeSceneObject(shrine.group);
