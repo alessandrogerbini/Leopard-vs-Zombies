@@ -365,6 +365,7 @@ export function launch3DGame(options) {
     deathSequenceTimer: 0,
     deathTimeScale: 1.0,
     deathKillerPos: null,
+    _deathSlowmoPlayed: false, // BD-233: tracks whether slow-mo audio has played
     paused: false,
     upgradeMenu: false,
     upgradeChoices: [],
@@ -7163,20 +7164,25 @@ export function launch3DGame(options) {
         st.deathSequence = true;
         st.deathSequenceTimer = 1.5;
         st.deathTimeScale = 1.0;
-        // Capture killer position for camera zoom (future BD-229)
+        // Capture killer position for camera zoom (BD-229)
         if (st.lastDamageSource && st.lastDamageSource.killerX !== undefined) {
           st.deathKillerPos = { x: st.lastDamageSource.killerX, z: st.lastDamageSource.killerZ };
         } else {
           st.deathKillerPos = null;
         }
-        // Disable player input (BD-86 carry-over)
+        // BD-231: Force hurt flash for entire death sequence duration
+        st.playerHurtFlash = 1.5;
+        st.playerHurtFlashCooldown = 0;
+        // BD-233: Death audio layering — immediate impact thud
+        playSound('sfx_death_impact');
+        st._deathSlowmoPlayed = false;
+        // Disable player input
         keys3d['Enter'] = false;
         keys3d['NumpadEnter'] = false;
         keys3d['Space'] = false;
         st.charging = false;
         st.chargeTime = 0;
         st.powerAttackReady = false;
-        playSound('sfx_player_death');
       }
 
       // BD-228: Death sequence tick — slow-motion ramp then transition to game-over
@@ -7187,6 +7193,11 @@ export function launch3DGame(options) {
         st.deathTimeScale = progress < 0.33
           ? 1.0 - (progress / 0.33) * 0.85
           : 0.15;
+        // BD-233: Slow-mo audio at 1.3s remaining
+        if (st.deathSequenceTimer <= 1.3 && !st._deathSlowmoPlayed) {
+          st._deathSlowmoPlayed = true;
+          playSound('sfx_death_slowmo');
+        }
 
         if (st.deathSequenceTimer <= 0) {
           st.gameOver = true;
@@ -7196,6 +7207,7 @@ export function launch3DGame(options) {
           st.nameEntryActive = true;
           st.nameEntry = '';
           st.nameEntryInputCooldown = 0.3;
+          // playSound('sfx_death_sting'); // TODO: Sound Pack Beta
         }
       }
     }
