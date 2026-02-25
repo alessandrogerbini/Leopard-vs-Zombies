@@ -762,3 +762,89 @@ export const ANIMAL_WEAPONS = {
   lion: 'lightningBolt',
   gator: 'poisonCloud',
 };
+
+// ============================================================================
+// BD-26: Extracted gameplay constants (previously magic numbers in game3d.js)
+// ============================================================================
+
+// --- Player Base Stats ---
+/** @constant {number} PLAYER_SPEED_BASE - Movement speed multiplier applied to animal speed. */
+export const PLAYER_SPEED_BASE = 5;
+/** @constant {number} PLAYER_ATTACK_SPEED_BASE - Auto-attacks per second at level 1. */
+export const PLAYER_ATTACK_SPEED_BASE = 1.2;
+/** @constant {number} PLAYER_ATTACK_DAMAGE_BASE - Base attack damage multiplied by animal damage stat. */
+export const PLAYER_ATTACK_DAMAGE_BASE = 15;
+/** @constant {number} PLAYER_ATTACK_RANGE_BASE - Base auto-attack reach in world units. */
+export const PLAYER_ATTACK_RANGE_BASE = 3;
+/** @constant {number} PLAYER_COLLECT_RADIUS_BASE - Base XP gem / item pickup radius in world units. */
+export const PLAYER_COLLECT_RADIUS_BASE = 2;
+/** @constant {number} PLAYER_HP_START_MULT - Starting HP bonus multiplier for kid-friendly early game (BD-194). */
+export const PLAYER_HP_START_MULT = 1.25;
+/** @constant {number} PLAYER_DMG_SCALE_PER_LEVEL - Damage increase per player level (+12%). */
+export const PLAYER_DMG_SCALE_PER_LEVEL = 0.12;
+/** @constant {number} PLAYER_CONTACT_DAMAGE_BASE - Base zombie contact damage before tier/difficulty scaling. */
+export const PLAYER_CONTACT_DAMAGE_BASE = 15;
+
+// --- Combat ---
+/** @constant {number} POWER_ATTACK_MAX_CHARGE - Maximum power attack charge time in seconds. */
+export const POWER_ATTACK_MAX_CHARGE = 2;
+/** @constant {number} INVINCIBILITY_DURATION - Duration of damage invincibility frames in seconds (BD-192). */
+export const INVINCIBILITY_DURATION = 0.5;
+/** @constant {number} SHIELD_BRACELET_COOLDOWN - Seconds between Shield Bracelet absorb charges. */
+export const SHIELD_BRACELET_COOLDOWN = 30;
+/** @constant {number} INTERACTION_HIT_COOLDOWN - Cooldown between shrine/totem proximity hits in seconds. */
+export const INTERACTION_HIT_COOLDOWN = 0.5;
+/** @constant {number} POST_UPGRADE_INVINCIBILITY - Invincibility granted after menu dismissal in seconds (BD-112). */
+export const POST_UPGRADE_INVINCIBILITY = 1.0;
+
+// --- Spawning ---
+/** @constant {number} AMBIENT_SPAWN_INTERVAL - Seconds between ambient zombie spawn waves. */
+export const AMBIENT_SPAWN_INTERVAL = 1.36;
+/** @constant {number} FIRST_WAVE_EVENT_TIMER - Seconds until the first wave event (~1.25 minutes). */
+export const FIRST_WAVE_EVENT_TIMER = 75;
+/** @constant {number} WAVE_EVENT_INTERVAL - Seconds between subsequent wave events (1.5 minutes). */
+export const WAVE_EVENT_INTERVAL = 90;
+/** @constant {number} WAVE_WARNING_DURATION - Countdown warning duration before a wave event in seconds. */
+export const WAVE_WARNING_DURATION = 10;
+/** @constant {number} AMBIENT_CRATE_INTERVAL - Seconds between ambient powerup crate spawns. */
+export const AMBIENT_CRATE_INTERVAL = 30;
+/** @constant {number} MIN_SPAWN_DISTANCE - Minimum distance from player for enemy spawns (BD-217). */
+export const MIN_SPAWN_DISTANCE = 12;
+/** @constant {number} INITIAL_BURST_COUNT - Number of zombies in the initial spawn ring. */
+export const INITIAL_BURST_COUNT = 10;
+/** @constant {number} INITIAL_BURST_HP - Base HP of initial burst zombies. */
+export const INITIAL_BURST_HP = 8;
+
+// --- Entity Limits & Distances ---
+/** @constant {number} ENTITY_DESPAWN_DISTANCE - Distance in world units beyond which entities are cleaned up. */
+export const ENTITY_DESPAWN_DISTANCE = 60;
+/** @constant {number} XP_GEM_HARD_CAP - Maximum number of simultaneous XP gems before overflow merging (BD-144). */
+export const XP_GEM_HARD_CAP = 80;
+/** @constant {number} XP_SCALE_PER_LEVEL - XP requirement multiplier per level-up. */
+export const XP_SCALE_PER_LEVEL = 1.5;
+
+// --- World Generation ---
+/** @constant {number} TOTEM_COUNT - Number of difficulty totems pre-placed in the world (BD-100). */
+export const TOTEM_COUNT = 24;
+/** @constant {number} LOOT_CRATE_COUNT - Number of item pickups pre-placed at game start. */
+export const LOOT_CRATE_COUNT = 30;
+/** @constant {number} MIN_SHRINE_SPACING - Minimum distance between any two shrines/totems. */
+export const MIN_SHRINE_SPACING = 20;
+/** @constant {number} MAX_PLACEMENT_ATTEMPTS - Rejection sampling attempts for shrine/totem placement. */
+export const MAX_PLACEMENT_ATTEMPTS = 100;
+/** @constant {number} AUGMENT_REGEN_CAP - Maximum HP/s from augment regen stacking (BD-187). */
+export const AUGMENT_REGEN_CAP = 4.0;
+
+// --- Camera ---
+/** @constant {number} CAMERA_Y_OFFSET - Camera height above the player in world units. */
+export const CAMERA_Y_OFFSET = 18;
+/** @constant {number} CAMERA_Z_OFFSET - Camera distance behind the player in world units. */
+export const CAMERA_Z_OFFSET = 14;
+/** @constant {number} CAMERA_SMOOTH_FACTOR - Lerp factor for camera smooth-follow (0-1, lower = smoother). */
+export const CAMERA_SMOOTH_FACTOR = 0.05;
+
+// --- Weapon Level Scaling ---
+/** @constant {number} WEAPON_COOLDOWN_REDUCTION_L4 - Cooldown multiplier at weapon level 4 (-18%). */
+export const WEAPON_COOLDOWN_REDUCTION_L4 = 0.82;
+/** @constant {number} LIGHTNING_CHAIN_RANGE_SQ - Squared range for lightning bolt chain jumps (5 units). */
+export const LIGHTNING_CHAIN_RANGE_SQ = 25;

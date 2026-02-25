@@ -37,6 +37,20 @@ import {
   CHARGE_SHRINE_UPGRADES, CHARGE_SHRINE_WEIGHTS, CHARGE_SHRINE_COUNT,
   CHARGE_SHRINE_TIME, CHARGE_SHRINE_RADIUS,
   CHALLENGE_SHRINE_COUNT, CHALLENGE_SHRINE_RADIUS, BOSS_HP_MULT, BOSS_DMG_MULT, BOSS_SPEED_MULT, BOSS_SCALE,
+  // BD-26: Extracted gameplay constants
+  PLAYER_SPEED_BASE, PLAYER_ATTACK_SPEED_BASE, PLAYER_ATTACK_DAMAGE_BASE,
+  PLAYER_ATTACK_RANGE_BASE, PLAYER_COLLECT_RADIUS_BASE, PLAYER_HP_START_MULT,
+  PLAYER_DMG_SCALE_PER_LEVEL, PLAYER_CONTACT_DAMAGE_BASE,
+  POWER_ATTACK_MAX_CHARGE, INVINCIBILITY_DURATION, SHIELD_BRACELET_COOLDOWN,
+  INTERACTION_HIT_COOLDOWN, POST_UPGRADE_INVINCIBILITY,
+  AMBIENT_SPAWN_INTERVAL, FIRST_WAVE_EVENT_TIMER, WAVE_EVENT_INTERVAL,
+  WAVE_WARNING_DURATION, AMBIENT_CRATE_INTERVAL, MIN_SPAWN_DISTANCE,
+  INITIAL_BURST_COUNT, INITIAL_BURST_HP,
+  ENTITY_DESPAWN_DISTANCE, XP_GEM_HARD_CAP, XP_SCALE_PER_LEVEL,
+  TOTEM_COUNT, LOOT_CRATE_COUNT, MIN_SHRINE_SPACING, MAX_PLACEMENT_ATTEMPTS,
+  AUGMENT_REGEN_CAP,
+  CAMERA_Y_OFFSET, CAMERA_Z_OFFSET, CAMERA_SMOOTH_FACTOR,
+  WEAPON_COOLDOWN_REDUCTION_L4, LIGHTNING_CHAIN_RANGE_SQ,
 } from './3d/constants.js';
 
 import {
@@ -258,13 +272,13 @@ export function launch3DGame(options) {
   // === STATE ===
   const st = {
     // Player stats (scaled by animal + difficulty)
-    hp: Math.floor(animalData.hp * diffData.hpMult * 1.25),   // BD-194: +25% starting HP for kid-friendly early game
-    maxHp: Math.floor(animalData.hp * diffData.hpMult * 1.25), // BD-194: +25% starting HP for kid-friendly early game
-    playerSpeed: 5 * animalData.speed,
-    attackSpeed: 1.2,
-    attackDamage: 15 * animalData.damage,
-    attackRange: 3,
-    collectRadius: 2,
+    hp: Math.floor(animalData.hp * diffData.hpMult * PLAYER_HP_START_MULT),   // BD-194: +25% starting HP for kid-friendly early game
+    maxHp: Math.floor(animalData.hp * diffData.hpMult * PLAYER_HP_START_MULT), // BD-194: +25% starting HP for kid-friendly early game
+    playerSpeed: PLAYER_SPEED_BASE * animalData.speed,
+    attackSpeed: PLAYER_ATTACK_SPEED_BASE,
+    attackDamage: PLAYER_ATTACK_DAMAGE_BASE * animalData.damage,
+    attackRange: PLAYER_ATTACK_RANGE_BASE,
+    collectRadius: PLAYER_COLLECT_RADIUS_BASE,
     jumpForce: JUMP_FORCE,
     attackTimer: 0, // legacy, kept for crate proximity check
     playerX: 0, playerY: terrainHeight(0, 0) + 0.01, playerZ: 0,
@@ -280,14 +294,14 @@ export function launch3DGame(options) {
     zombieDmgMult: 1,
     score: 0,
     wave: 1,
-    ambientSpawnTimer: 1.36,
-    waveEventTimer: 75,   // ~1.25 minutes until first wave event
-    waveTimerMax: 75,     // matches initial waveEventTimer for HUD progress bar
+    ambientSpawnTimer: AMBIENT_SPAWN_INTERVAL,
+    waveEventTimer: FIRST_WAVE_EVENT_TIMER,   // ~1.25 minutes until first wave event
+    waveTimerMax: FIRST_WAVE_EVENT_TIMER,     // matches initial waveEventTimer for HUD progress bar
     waveWarning: 0,       // countdown seconds (0 = no warning)
     initialBurstDone: false,
     _inExplosionChain: false,  // BD-134: recursion guard for Whoopee Cushion chain explosions
     waveActive: false,
-    ambientCrateTimer: 30 / (diffData.powerupFreqMult || 1.0),
+    ambientCrateTimer: AMBIENT_CRATE_INTERVAL / (diffData.powerupFreqMult || 1.0),
     ambientItemTimer: 20,   // first item at 20s, then 45-60s cycle
     gameTime: 0,          // total elapsed game time in seconds
     mergeCheckTimer: 0,   // throttle zombie merge checks (BD-175)
@@ -645,7 +659,7 @@ export function launch3DGame(options) {
         choice.apply(st);
         st.upgradeMenu = false;
         st.paused = false;
-        st.invincible = 1.0; // BD-112: Post-upgrade invulnerability
+        st.invincible = POST_UPGRADE_INVINCIBILITY; // BD-112: Post-upgrade invulnerability
         st._menuDismissedAt = performance.now();
         st.enterReleasedSinceGameOver = false; // prevent accidental restart
         keys3d['Enter'] = false; // clear held key state
@@ -695,7 +709,7 @@ export function launch3DGame(options) {
         // Close menu
         st.chargeShrineMenu = false;
         st.paused = false;
-        st.invincible = 1.0; // BD-112: Post-shrine invulnerability
+        st.invincible = POST_UPGRADE_INVINCIBILITY; // BD-112: Post-shrine invulnerability
         st.chargeShrineCurrent = null;
         st.chargeShrineProgress = 0;
         st.chargeShrineChoices = [];
@@ -781,7 +795,7 @@ export function launch3DGame(options) {
         // Both choices: close menu, grant invulnerability
         st.wearableCompare = null;
         st.paused = false;
-        st.invincible = 1.0;
+        st.invincible = POST_UPGRADE_INVINCIBILITY;
         st._menuDismissedAt = performance.now();
         keys3d['Enter'] = false;
         keys3d['NumpadEnter'] = false;
@@ -1559,8 +1573,7 @@ export function launch3DGame(options) {
 
   // BD-88+BD-100: Spread shrines/totems with spacing, INSIDE playable map (MAP_HALF=128).
   const SPAWN_HALF_RANGE = MAP_HALF - 10;  // 118 — keeps all spawns inside the playable area
-  const MIN_SHRINE_SPACING = 20; // minimum distance between any two shrines/totems
-  const MAX_PLACEMENT_ATTEMPTS = 100; // rejection sampling attempts before giving up
+  // MIN_SHRINE_SPACING and MAX_PLACEMENT_ATTEMPTS imported from constants.js
   const allPlacedPositions = []; // shared list: {x, z} of every placed shrine/totem
 
   function findSpacedPosition() {
@@ -1591,7 +1604,7 @@ export function launch3DGame(options) {
   }
 
   // Pre-generate difficulty totems (BD-100: increased from 16 to 24)
-  const TOTEM_COUNT = 24;
+  // TOTEM_COUNT imported from constants.js
   for (let ti = 0; ti < TOTEM_COUNT; ti++) {
     const pos = findSpacedPosition();
     if (!pos) continue;
@@ -2311,7 +2324,7 @@ export function launch3DGame(options) {
    * @returns {number} Combined damage multiplier.
    */
   function getPlayerDmgMult() {
-    let mult = (1 + (st.level - 1) * 0.12) * st.dmgBoost * st.augmentDmgMult;
+    let mult = (1 + (st.level - 1) * PLAYER_DMG_SCALE_PER_LEVEL) * st.dmgBoost * st.augmentDmgMult;
     if (st.items.bandana > 0) mult *= (1 + st.items.bandana * 0.05); // Bandana: +5% per stack
     if (st.items.goldenbone) mult *= 1.30; // Golden Bone: +30% all weapon damage
     // Wearable head damage bonus (e.g. Shark Fin: +10%)
@@ -2335,7 +2348,7 @@ export function launch3DGame(options) {
    * @returns {{x: number, z: number}|null} Valid position or null to skip.
    */
   function getValidSpawnPos(baseDist, playerX, playerZ) {
-    const MIN_SPAWN_DIST = 12;
+    const MIN_SPAWN_DIST = MIN_SPAWN_DISTANCE;
     for (let attempt = 0; attempt < 3; attempt++) {
       const angle = Math.random() * Math.PI * 2;
       const sx = Math.max(-MAP_HALF + 2, Math.min(MAP_HALF - 2, playerX + Math.cos(angle) * baseDist));
@@ -2481,7 +2494,7 @@ export function launch3DGame(options) {
   function getWeaponCooldown(w) {
     const def = WEAPON_TYPES[w.typeId];
     let cd = def.baseCooldown;
-    if (w.level >= 4) cd *= 0.82;
+    if (w.level >= 4) cd *= WEAPON_COOLDOWN_REDUCTION_L4;
     cd *= getHowlCdMult();
     if (st.items.alarmClock > 0) cd *= Math.pow(0.92, st.items.alarmClock); // Alarm Clock: -8% per stack
     return cd;
@@ -2598,7 +2611,7 @@ export function launch3DGame(options) {
     // Zombie Magnet: 2x XP gem drops — BD-144: hard cap at 80 gems
     const gemMult = st.items.zombiemagnet ? 2 : 1;
     const gemsToSpawn = gemMult * Math.max(1, (e.tier || 1));
-    if (st.xpGems.length > 80) {
+    if (st.xpGems.length > XP_GEM_HARD_CAP) {
       // Over cap: add value to nearest existing gem instead
       let nearest = null, nearDist = Infinity;
       for (const g of st.xpGems) {
@@ -2669,7 +2682,7 @@ export function launch3DGame(options) {
         addFloatingText('+HEALTH', '#44ff44', dropX, terrainHeight(dropX, dropZ) + 2, dropZ, 1.5);
       } else {
         // XP burst — bonus XP gems (BD-144: respect 80-gem cap)
-        if (st.xpGems.length > 80) {
+        if (st.xpGems.length > XP_GEM_HARD_CAP) {
           // Over cap: add to nearest
           let nearest = null, nearDist = Infinity;
           for (const g of st.xpGems) {
@@ -2744,7 +2757,7 @@ export function launch3DGame(options) {
     // Turbo Sneakers: dodge chance
     if (st.dodgeChance > 0 && Math.random() < st.dodgeChance) {
       addFloatingText('DODGE!', '#00ffaa', st.playerX, st.playerY + 2, st.playerZ, 0.5);
-      st.invincible = 0.5; // BD-192: match damage iframes
+      st.invincible = INVINCIBILITY_DURATION; // BD-192: match damage iframes
       return 0;
     }
     let dmg = baseDmg;
@@ -2764,7 +2777,7 @@ export function launch3DGame(options) {
     if (st.items.bracelet && st.shieldBraceletReady) {
       dmg = 0;
       st.shieldBraceletReady = false;
-      st.shieldBraceletTimer = 30;
+      st.shieldBraceletTimer = SHIELD_BRACELET_COOLDOWN;
       addFloatingText('BLOCKED!', '#4488ff', st.playerX, st.playerY + 2, st.playerZ, 0.5);
     }
     // BD-212: Allow 0 damage (Shield Bracelet block, full armor mitigation) — was Math.max(1, dmg) which made player unkillable
@@ -2774,7 +2787,7 @@ export function launch3DGame(options) {
     if (dmg > 0) {
       st.hp -= dmg;
       if (st.hp < 0) st.hp = 0;
-      st.invincible = 0.5; // BD-192: 0.5s iframes (was 0.2 — too short for swarm game)
+      st.invincible = INVINCIBILITY_DURATION; // BD-192: 0.5s iframes (was 0.2 — too short for swarm game)
       // BD-208: Only trigger flash if cooldown has expired (max once per second)
       if (st.playerHurtFlashCooldown <= 0) {
         st.playerHurtFlash = 0.5;
@@ -2942,7 +2955,7 @@ export function launch3DGame(options) {
             const dx2 = prevX - e.group.position.x;
             const dz2 = prevZ - e.group.position.z;
             const d2Sq = dx2 * dx2 + dz2 * dz2;
-            if (d2Sq < 25 && d2Sq < nextDistSq) { nextNearest = e; nextDistSq = d2Sq; }
+            if (d2Sq < LIGHTNING_CHAIN_RANGE_SQ && d2Sq < nextDistSq) { nextNearest = e; nextDistSq = d2Sq; }
           }
           current = nextNearest;
         }
@@ -4296,7 +4309,7 @@ export function launch3DGame(options) {
   }
 
   // === PRE-GENERATE LOOT CRATES ===
-  const LOOT_CRATE_COUNT = 30;
+  // LOOT_CRATE_COUNT imported from constants.js
   for (let lci = 0; lci < LOOT_CRATE_COUNT; lci++) {
     const lx = (Math.random() - 0.5) * (ARENA_SIZE * 2 - 20);
     const lz = (Math.random() - 0.5) * (ARENA_SIZE * 2 - 20);
@@ -5025,11 +5038,11 @@ export function launch3DGame(options) {
       // === INITIAL BURST (one-time, 10 enemies in a ring) ===
       if (!st.initialBurstDone) {
         st.initialBurstDone = true;
-        for (let i = 0; i < 10; i++) {
+        for (let i = 0; i < INITIAL_BURST_COUNT; i++) {
           const dist = 15 + Math.random() * 5;
           const pos = getValidSpawnPos(dist, st.playerX, st.playerZ);
           if (!pos) continue; // BD-217: skip if too close to player
-          st.enemies.push(createEnemy(pos.x, pos.z, 8, 1));
+          st.enemies.push(createEnemy(pos.x, pos.z, INITIAL_BURST_HP, 1));
         }
       }
 
@@ -5037,13 +5050,13 @@ export function launch3DGame(options) {
       st.ambientSpawnTimer -= dt;
       if (st.ambientSpawnTimer <= 0) {
         spawnAmbient();
-        st.ambientSpawnTimer = 1.36;
+        st.ambientSpawnTimer = AMBIENT_SPAWN_INTERVAL;
       }
 
       // === AMBIENT CRATE SPAWN (every 30s) ===
       st.ambientCrateTimer -= dt;
       if (st.ambientCrateTimer <= 0) {
-        st.ambientCrateTimer = 30 / st.powerupFreqMult;
+        st.ambientCrateTimer = AMBIENT_CRATE_INTERVAL / st.powerupFreqMult;
         const ca = Math.random() * Math.PI * 2;
         const cx = st.playerX + Math.cos(ca) * 15;
         const cz = st.playerZ + Math.sin(ca) * 15;
@@ -5063,16 +5076,16 @@ export function launch3DGame(options) {
 
       // === WAVE EVENTS (every 3 minutes) ===
       st.waveEventTimer -= dt;
-      if (st.waveEventTimer <= 10 && st.waveWarning === 0) {
-        st.waveWarning = 10; // Start 10-second countdown
+      if (st.waveEventTimer <= WAVE_WARNING_DURATION && st.waveWarning === 0) {
+        st.waveWarning = WAVE_WARNING_DURATION; // Start countdown
       }
       if (st.waveWarning > 0) {
         st.waveWarning -= dt;
         if (st.waveWarning <= 0) {
           st.waveWarning = 0;
           spawnWaveEvent();
-          st.waveEventTimer = 90; // Reset for next wave in 1.5 min
-          st.waveTimerMax = 90;
+          st.waveEventTimer = WAVE_EVENT_INTERVAL; // Reset for next wave
+          st.waveTimerMax = WAVE_EVENT_INTERVAL;
         }
       }
 
@@ -5526,7 +5539,7 @@ export function launch3DGame(options) {
         const dy = Math.abs(st.playerY - e.group.position.y);
         const tierData = ZOMBIE_TIERS[(e.tier || 1) - 1];
         if (dist < 1.0 * (tierData.scale || 1) && dy < 1.5) {
-          const baseDmg = 15 * tierData.dmgMult * st.zombieDmgMult * (e.bossDmgMult || 1);
+          const baseDmg = PLAYER_CONTACT_DAMAGE_BASE * tierData.dmgMult * st.zombieDmgMult * (e.bossDmgMult || 1);
           const dealt = damagePlayer(baseDmg, undefined, { type: 'contact', tierName: tierData.name, tier: e.tier || 1, color: tierData.eye });
           if (dealt > 0) {
             // Thorned Vest: reflect 20% damage back
@@ -5573,7 +5586,7 @@ export function launch3DGame(options) {
           }
         }
         // Kill enemies that fall too far behind
-        if (dist > 60 && !e.dying) { disposeEnemy(e); }
+        if (dist > ENTITY_DESPAWN_DISTANCE && !e.dying) { disposeEnemy(e); }
       }
 
       // === ZOMBIE-ZOMBIE COLLISION: TIERED MERGE SYSTEM (BD-175: throttled to 0.5s) ===
@@ -5672,7 +5685,7 @@ export function launch3DGame(options) {
           st.charging = true;
           st.chargeTime = 0;
         }
-        st.chargeTime = Math.min(st.chargeTime + dt, 2);
+        st.chargeTime = Math.min(st.chargeTime + dt, POWER_ATTACK_MAX_CHARGE);
         // Charge glow visual
         if (!st.chargeGlow) {
           const glowMat = new THREE.MeshBasicMaterial({ color: 0xffcc00, transparent: true, opacity: 0.3 });
@@ -5849,7 +5862,7 @@ export function launch3DGame(options) {
           playSound('sfx_xp_pickup');
           if (st.xp >= st.xpToNext) {
             st.xp -= st.xpToNext;
-            st.xpToNext = Math.floor(st.xpToNext * 1.5);
+            st.xpToNext = Math.floor(st.xpToNext * XP_SCALE_PER_LEVEL);
             st.level++;
             playSound('sfx_level_up');
             showUpgradeMenu();
@@ -5891,7 +5904,7 @@ export function launch3DGame(options) {
           // Level-up check
           if (st.xp >= st.xpToNext) {
             st.xp -= st.xpToNext;
-            st.xpToNext = Math.floor(st.xpToNext * 1.5);
+            st.xpToNext = Math.floor(st.xpToNext * XP_SCALE_PER_LEVEL);
             st.level++;
             playSound('sfx_level_up');
             showUpgradeMenu();
@@ -5935,7 +5948,7 @@ export function launch3DGame(options) {
           }
         }
         // Cleanup far crates
-        if (distSq > 3600) { // 60*60
+        if (distSq > ENTITY_DESPAWN_DISTANCE * ENTITY_DESPAWN_DISTANCE) {
           c.alive = false;
           scene.remove(c.group);
           c.group.traverse(ch => { if (ch.geometry) ch.geometry.dispose(); if (ch.material) ch.material.dispose(); });
@@ -6050,7 +6063,7 @@ export function launch3DGame(options) {
             st.itemPickups.splice(i, 1);
           }
         }
-        if (distSq > 3600) { // 60*60
+        if (distSq > ENTITY_DESPAWN_DISTANCE * ENTITY_DESPAWN_DISTANCE) {
           item.alive = false;
           scene.remove(item.mesh);
           item.mesh.geometry.dispose();
@@ -6126,7 +6139,7 @@ export function launch3DGame(options) {
           }
         }
         // Cleanup far pickups
-        if (wDistSq > 3600) { // 60*60
+        if (wDistSq > ENTITY_DESPAWN_DISTANCE * ENTITY_DESPAWN_DISTANCE) {
           wp.alive = false;
           scene.remove(wp.mesh);
           wp.mesh.traverse(c => { if (c.geometry) c.geometry.dispose(); if (c.material) c.material.dispose(); });
@@ -6155,7 +6168,7 @@ export function launch3DGame(options) {
         const sdy = Math.abs(st.playerY - shrine.group.position.y);
         if (distSq < shrineRng * shrineRng && sdy < 2.5 && st.interactionTimer <= 0) {
           shrine.hp--;
-          st.interactionTimer = 0.5; // cooldown between interaction hits
+          st.interactionTimer = INTERACTION_HIT_COOLDOWN; // cooldown between interaction hits
           if (shrine.hp <= 0) {
             shrine.alive = false;
             playSound('sfx_shrine_break');
@@ -6188,7 +6201,7 @@ export function launch3DGame(options) {
         const tdy = Math.abs(st.playerY - totem.y);
         if (tdistSq < totemRng * totemRng && tdy < 2.5 && st.interactionTimer <= 0) {
           totem.hp--;
-          st.interactionTimer = 0.5; // cooldown between interaction hits
+          st.interactionTimer = INTERACTION_HIT_COOLDOWN; // cooldown between interaction hits
           if (totem.hp <= 0) {
             totem.alive = false;
             st.totemCount++;
@@ -6351,7 +6364,7 @@ export function launch3DGame(options) {
 
       // === AUGMENT REGEN (BD-187: capped at 4 HP/s) ===
       if (st.augmentRegen > 0) {
-        const effectiveRegen = Math.min(st.augmentRegen, 4.0);
+        const effectiveRegen = Math.min(st.augmentRegen, AUGMENT_REGEN_CAP);
         st.hp = Math.min(st.hp + effectiveRegen * dt, st.maxHp);
       }
 
@@ -6411,11 +6424,11 @@ export function launch3DGame(options) {
 
     // === CAMERA + RENDER (runs even when paused/game over) ===
     const camTargetX = st.playerX;
-    const camTargetZ = st.playerZ + 14;
-    const camTargetY = st.playerY + 18;
-    camera.position.x += (camTargetX - camera.position.x) * 0.05;
-    camera.position.z += (camTargetZ - camera.position.z) * 0.05;
-    camera.position.y += (camTargetY - camera.position.y) * 0.05;
+    const camTargetZ = st.playerZ + CAMERA_Z_OFFSET;
+    const camTargetY = st.playerY + CAMERA_Y_OFFSET;
+    camera.position.x += (camTargetX - camera.position.x) * CAMERA_SMOOTH_FACTOR;
+    camera.position.z += (camTargetZ - camera.position.z) * CAMERA_SMOOTH_FACTOR;
+    camera.position.y += (camTargetY - camera.position.y) * CAMERA_SMOOTH_FACTOR;
     camera.lookAt(st.playerX, st.playerY, st.playerZ);
 
     // Update directional light to follow player
