@@ -360,6 +360,13 @@ export function launch3DGame(options) {
     // UI
     gameOver: false,
     lastDamageSource: null, // BD-216: tracks what killed the player for "DEFEATED BY" display
+    // BD-228: Death sequence state machine (slow-mo 1.5s countdown before game-over)
+    deathSequence: false,
+    deathSequenceTimer: 0,
+    deathTimeScale: 1.0,
+    deathKillerPos: null,
+    // BD-234: Killer highlight glow — tracks whether floating tier label was spawned
+    _killerLabelSpawned: false,
     paused: false,
     upgradeMenu: false,
     upgradeChoices: [],
@@ -5576,6 +5583,39 @@ export function launch3DGame(options) {
         if (dist > 60 && !e.dying) { disposeEnemy(e); }
       }
 
+      // === BD-234: Killer highlight glow during death sequence ===
+      // Pulse emissive glow on the killing zombie, dim all others, spawn floating tier label once.
+      if (st.deathSequence) {
+        const killerRef = st.lastDamageSource?.enemyRef;
+        for (const e of st.enemies) {
+          if (killerRef && e === killerRef && e.alive) {
+            // Pulsing glow on killer
+            const pulse = 0.5 + Math.sin(performance.now() * 0.006) * 0.3;
+            e.group.traverse(child => {
+              if (child.isMesh && child.material) {
+                if (!child.material.emissive) child.material.emissive = new THREE.Color();
+                child.material.emissive.setHex(st.lastDamageSource.color || 0xff4444);
+                child.material.emissiveIntensity = pulse;
+              }
+            });
+            // Floating tier-name label (spawned once)
+            if (!st._killerLabelSpawned) {
+              st._killerLabelSpawned = true;
+              const tierName = st.lastDamageSource.tierName || 'ZOMBIE';
+              const color = '#' + (st.lastDamageSource.color || 0xff4444).toString(16).padStart(6, '0');
+              addFloatingText(tierName.toUpperCase(), color, e.group.position.x, e.group.position.y + 3, e.group.position.z, 2.0, true);
+            }
+          } else {
+            // Dim other zombies (remove any emissive glow)
+            e.group.traverse(child => {
+              if (child.isMesh && child.material) {
+                child.material.emissiveIntensity = 0;
+              }
+            });
+          }
+        }
+      }
+
       // === ZOMBIE-ZOMBIE COLLISION: TIERED MERGE SYSTEM (BD-175: throttled to 0.5s) ===
       // Same-tier zombies collide to progress toward merging into the next tier.
       // Merge ratios: Tier 1 (Shambler) -> Tier 2 (Lurcher) = 5:1,
@@ -6387,15 +6427,20 @@ export function launch3DGame(options) {
         }
       }
 
-      // Player death
-      if (st.hp <= 0) {
+      // BD-228: Enter death sequence (first frame only)
+      if (st.hp <= 0 && !st.deathSequence && !st.gameOver) {
         st.hp = 0;
-        st.gameOver = true;
-        st.showFullMap = false;
-        st.enterReleasedSinceGameOver = false;
-        st.nameEntryActive = true;
-        st.nameEntry = '';
-        st.nameEntryInputCooldown = 0.3;
+        st.deathSequence = true;
+        st.deathSequenceTimer = 1.5;
+        st.deathTimeScale = 1.0;
+        // BD-229: Capture killer position for camera zoom-to-killer
+        if (st.lastDamageSource && st.lastDamageSource.killerX !== undefined) {
+          st.deathKillerPos = { x: st.lastDamageSource.killerX, z: st.lastDamageSource.killerZ };
+        } else {
+          st.deathKillerPos = null;
+        }
+        // BD-234: Reset killer label flag for glow highlight
+        st._killerLabelSpawned = false;
         // BD-86: Clear Enter key state and charging on death.
         // Prevents held-Enter (from power attack) from immediately interacting
         // with the game-over screen.
@@ -6407,16 +6452,72 @@ export function launch3DGame(options) {
         st.powerAttackReady = false;
         playSound('sfx_player_death');
       }
+
+      // BD-228: Tick death sequence (runs every frame during the 1.5s)
+      if (st.deathSequence && !st.gameOver) {
+        st.deathSequenceTimer -= dt; // uses real dt
+        const progress = 1 - (st.deathSequenceTimer / 1.5);
+        // Ramp time scale: 1.0 --> 0.15 over first 0.5s (progress 0-0.33), hold 0.15 for remaining 1.0s
+        st.deathTimeScale = progress < 0.33
+          ? 1.0 - (progress / 0.33) * 0.85
+          : 0.15;
+
+        if (st.deathSequenceTimer <= 0) {
+          st.gameOver = true;
+          st.deathSequence = false;
+          st.showFullMap = false;
+          st.enterReleasedSinceGameOver = false;
+          st.nameEntryActive = true;
+          st.nameEntry = '';
+          st.nameEntryInputCooldown = 0.3;
+        }
+      }
     }
 
     // === CAMERA + RENDER (runs even when paused/game over) ===
-    const camTargetX = st.playerX;
-    const camTargetZ = st.playerZ + 14;
-    const camTargetY = st.playerY + 18;
-    camera.position.x += (camTargetX - camera.position.x) * 0.05;
-    camera.position.z += (camTargetZ - camera.position.z) * 0.05;
-    camera.position.y += (camTargetY - camera.position.y) * 0.05;
-    camera.lookAt(st.playerX, st.playerY, st.playerZ);
+    // BD-229: Camera zoom-to-killer during death sequence
+    if (st.deathSequence) {
+      const progress = 1 - (st.deathSequenceTimer / 1.5);
+      const zoomFactor = 1 - progress * 0.35; // 1.0 --> 0.65
+
+      // Zoom: reduce offset distances
+      const zoomOffsetZ = 14 * zoomFactor;
+      const zoomOffsetY = 18 * zoomFactor;
+
+      // LookAt target: blend toward midpoint between player and killer
+      let lookX = st.playerX, lookZ = st.playerZ;
+      if (st.deathKillerPos) {
+        const dx = st.deathKillerPos.x - st.playerX;
+        const dz = st.deathKillerPos.z - st.playerZ;
+        const dist = Math.sqrt(dx * dx + dz * dz);
+        // Clamp blend distance so camera doesn't pan wildly for long-range attacks
+        const maxBlendDist = 8;
+        const clampedDist = Math.min(dist, maxBlendDist);
+        const ratio = dist > 0 ? clampedDist / dist : 0;
+        const midX = st.playerX + dx * ratio * 0.5;
+        const midZ = st.playerZ + dz * ratio * 0.5;
+        const blendT = Math.min(progress * 1.5, 1); // reach full blend at ~67% progress
+        lookX = st.playerX + (midX - st.playerX) * blendT;
+        lookZ = st.playerZ + (midZ - st.playerZ) * blendT;
+      }
+
+      const camTargetX = lookX;
+      const camTargetZ = lookZ + zoomOffsetZ;
+      const camTargetY = st.playerY + zoomOffsetY;
+      camera.position.x += (camTargetX - camera.position.x) * 0.08; // faster lerp during death
+      camera.position.z += (camTargetZ - camera.position.z) * 0.08;
+      camera.position.y += (camTargetY - camera.position.y) * 0.08;
+      camera.lookAt(lookX, st.playerY, lookZ);
+    } else {
+      // Normal camera (non-death-sequence)
+      const camTargetX = st.playerX;
+      const camTargetZ = st.playerZ + 14;
+      const camTargetY = st.playerY + 18;
+      camera.position.x += (camTargetX - camera.position.x) * 0.05;
+      camera.position.z += (camTargetZ - camera.position.z) * 0.05;
+      camera.position.y += (camTargetY - camera.position.y) * 0.05;
+      camera.lookAt(st.playerX, st.playerY, st.playerZ);
+    }
 
     // Update directional light to follow player
     dirLight.position.set(st.playerX + 10, 20, st.playerZ + 10);
