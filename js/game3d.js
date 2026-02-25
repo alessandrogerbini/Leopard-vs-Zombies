@@ -31,6 +31,7 @@
 
 import {
   ARENA_SIZE, SHRINE_COUNT, CHUNK_SIZE, GRAVITY_3D, JUMP_FORCE, GROUND_Y, MAP_HALF,
+  CAMERA_Y_OFFSET, CAMERA_Z_OFFSET, CAMERA_SMOOTH_FACTOR,
   ANIMAL_PALETTES, WEAPON_TYPES, HOWL_TYPES, POWERUPS_3D, ITEMS_3D, ITEM_RARITIES,
   SHRINE_AUGMENTS, TOTEM_EFFECT, ZOMBIE_TIERS, ANIMAL_WEAPONS, WEARABLES_3D,
   MAP_GEMS_PER_CHUNK, GEM_XP_MIN, GEM_XP_MAX, GEM_COLLECT_RADIUS,
@@ -6410,12 +6411,15 @@ export function launch3DGame(options) {
     }
 
     // === CAMERA + RENDER (runs even when paused/game over) ===
+    // Height-adaptive zoom (BD-244): pull camera back as player gets higher
+    const height = Math.max(0, st.playerY - GROUND_Y);
+    const zoomFactor = 1 + Math.min(height / 25, 1) * 1.5;
     const camTargetX = st.playerX;
-    const camTargetZ = st.playerZ + 14;
-    const camTargetY = st.playerY + 18;
-    camera.position.x += (camTargetX - camera.position.x) * 0.05;
-    camera.position.z += (camTargetZ - camera.position.z) * 0.05;
-    camera.position.y += (camTargetY - camera.position.y) * 0.05;
+    const camTargetZ = st.playerZ + CAMERA_Z_OFFSET * zoomFactor;
+    const camTargetY = st.playerY + CAMERA_Y_OFFSET * zoomFactor;
+    camera.position.x += (camTargetX - camera.position.x) * CAMERA_SMOOTH_FACTOR;
+    camera.position.z += (camTargetZ - camera.position.z) * CAMERA_SMOOTH_FACTOR;
+    camera.position.y += (camTargetY - camera.position.y) * CAMERA_SMOOTH_FACTOR;
     camera.lookAt(st.playerX, st.playerY, st.playerZ);
 
     // Update directional light to follow player
