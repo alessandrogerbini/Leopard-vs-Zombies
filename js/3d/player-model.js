@@ -371,6 +371,40 @@ export function buildPlayerModel(animalId, scene) {
 export function animatePlayer(model, st, clock, len, mx, mz) {
   const { group, legs, arms, tail, wingGroup, wingMeshes } = model;
 
+  // === BD-230: DEATH STUMBLE ANIMATION ===
+  // During death sequence, play a stumble-forward-and-collapse animation
+  // and skip all normal animation (walk, idle, flight, attack lunge, tail wag).
+  if (st.deathSequence) {
+    const deathProgress = 1 - (st.deathSequenceTimer / 1.5);
+    const tiltProgress = Math.min(deathProgress / 0.6, 1); // reaches max at 60%
+
+    // Keep X/Z position, override Y for sinking into ground
+    group.position.set(st.playerX, st.playerY - tiltProgress * 0.4, st.playerZ);
+
+    // Forward tilt: 0 -> 45 degrees (stumble forward)
+    const tilt = tiltProgress * (Math.PI / 4);
+    group.rotation.x = -tilt;
+
+    // Arms flail outward
+    if (arms && arms[0]) arms[0].position.x = -0.6 - tiltProgress * 0.3;
+    if (arms && arms[1]) arms[1].position.x = 0.6 + tiltProgress * 0.3;
+
+    // Legs go limp (drift backward slightly)
+    if (legs && legs[0]) { legs[0].position.z = -0.1 * tiltProgress; }
+    if (legs && legs[1]) { legs[1].position.z = -0.1 * tiltProgress; }
+
+    // Tail drops (stop wagging, droop downward)
+    if (tail) {
+      tail.rotation.y = 0;
+      tail.rotation.x = tiltProgress * 0.5;
+    }
+
+    // Hide wings during death
+    wingGroup.visible = false;
+
+    return; // skip all other animation
+  }
+
   // === PLAYER POSITION ===
   group.position.set(st.playerX, st.playerY, st.playerZ);
 
