@@ -122,6 +122,11 @@ const SOUND_MAP = {
     'falling-scream-1.ogg',
   ],
 
+  // --- BD-233: Death audio layering ---
+  sfx_death_impact: ['explode-1.ogg'],
+  sfx_death_slowmo: ['falling-scream-1.ogg'],
+  // sfx_death_sting: TODO Sound Pack Beta
+
   // --- Progression ---
   sfx_level_up: [
     'rawr-2.ogg',

@@ -1237,6 +1237,18 @@ export function drawHUD(ctx, s, deps) {
     ctx.textAlign = 'left';
   }
 
+  // BD-231: Death vignette (draws on top of gameplay, under game-over overlay)
+  if (s.deathSequence) {
+    const progress = 1 - (s.deathSequenceTimer / 1.5);
+    const alpha = 0.5 * (1 - progress); // 0.5 → 0.0
+
+    const gradient = ctx.createRadialGradient(W / 2, H / 2, W * 0.2, W / 2, H / 2, W * 0.7);
+    gradient.addColorStop(0, 'rgba(180, 0, 0, 0)');
+    gradient.addColorStop(1, `rgba(180, 0, 0, ${alpha})`);
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, W, H);
+  }
+
   // --- Game Over Screen (stats + feedback + name entry + leaderboard) ---
   if (s.gameOver) {
     ctx.shadowColor = 'transparent'; ctx.shadowBlur = 0; ctx.shadowOffsetX = 0; ctx.shadowOffsetY = 0;

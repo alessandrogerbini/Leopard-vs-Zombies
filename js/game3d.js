@@ -360,6 +360,10 @@ export function launch3DGame(options) {
     // UI
     gameOver: false,
     lastDamageSource: null, // BD-216: tracks what killed the player for "DEFEATED BY" display
+    // BD-228: Death sequence (slow-mo delay before game-over screen)
+    deathSequence: false,
+    deathSequenceTimer: 0,
+    _deathSlowmoPlayed: false, // BD-233: tracks whether slow-mo audio has played
     paused: false,
     upgradeMenu: false,
     upgradeChoices: [],
@@ -6387,25 +6391,47 @@ export function launch3DGame(options) {
         }
       }
 
-      // Player death
-      if (st.hp <= 0) {
+      // Player death — BD-228: enter death sequence (slow-mo delay before game-over)
+      if (st.hp <= 0 && !st.deathSequence && !st.gameOver) {
         st.hp = 0;
-        st.gameOver = true;
-        st.showFullMap = false;
-        st.enterReleasedSinceGameOver = false;
-        st.nameEntryActive = true;
-        st.nameEntry = '';
-        st.nameEntryInputCooldown = 0.3;
+        // BD-228: Start death sequence instead of immediate game over
+        st.deathSequence = true;
+        st.deathSequenceTimer = 1.5; // 1.5 second death sequence
+        // BD-231: Force hurt flash for entire death sequence duration
+        st.playerHurtFlash = 1.5;
+        st.playerHurtFlashCooldown = 0; // bypass cooldown
+        // BD-233: Death audio layering — immediate impact thud
+        playSound('sfx_death_impact');
+        st._deathSlowmoPlayed = false;
         // BD-86: Clear Enter key state and charging on death.
-        // Prevents held-Enter (from power attack) from immediately interacting
-        // with the game-over screen.
         keys3d['Enter'] = false;
         keys3d['NumpadEnter'] = false;
         keys3d['Space'] = false;
         st.charging = false;
         st.chargeTime = 0;
         st.powerAttackReady = false;
-        playSound('sfx_player_death');
+      }
+
+      // BD-228: Death sequence tick — count down, then transition to game over
+      if (st.deathSequence && !st.gameOver) {
+        st.deathSequenceTimer -= dt;
+        // BD-233: Slow-mo audio at 1.3s remaining
+        if (st.deathSequenceTimer <= 1.3 && !st._deathSlowmoPlayed) {
+          st._deathSlowmoPlayed = true;
+          playSound('sfx_death_slowmo');
+        }
+        // Sequence complete — transition to game over
+        if (st.deathSequenceTimer <= 0) {
+          st.deathSequence = false;
+          st.deathSequenceTimer = 0;
+          st.gameOver = true;
+          st.showFullMap = false;
+          st.enterReleasedSinceGameOver = false;
+          st.nameEntryActive = true;
+          st.nameEntry = '';
+          st.nameEntryInputCooldown = 0.3;
+          // playSound('sfx_death_sting'); // TODO: Sound Pack Beta
+        }
       }
     }
 
