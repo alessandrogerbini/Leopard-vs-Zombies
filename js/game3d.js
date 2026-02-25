@@ -2702,7 +2702,7 @@ export function launch3DGame(options) {
       st.sillyStrawKills++;
       if (st.sillyStrawKills >= 10) {
         st.sillyStrawKills = 0;
-        st.hp = Math.min(st.hp + st.items.sillyStraw, st.maxHp); // heals 1 HP per stack
+        if (st.hp > 0) st.hp = Math.min(st.hp + st.items.sillyStraw, st.maxHp); // heals 1 HP per stack (BD-237: guard prevents resurrection)
       }
     }
     // Whoopee Cushion: 20% chance enemies explode on death (AoE)
@@ -2740,7 +2740,7 @@ export function launch3DGame(options) {
         st.powerupCrates.push(createPowerupCrate(dropX, dropZ));
       } else if (roll < 0.80) {
         // Health orb — heal 15% max HP
-        st.hp = Math.min(st.hp + st.maxHp * 0.10, st.maxHp);
+        if (st.hp > 0) st.hp = Math.min(st.hp + st.maxHp * 0.10, st.maxHp); // BD-237: guard prevents resurrection
         addFloatingText('+HEALTH', '#44ff44', dropX, terrainHeight(dropX, dropZ) + 2, dropZ, 1.5);
       } else {
         // XP burst — bonus XP gems (BD-144: respect 80-gem cap)
@@ -7586,7 +7586,7 @@ export function launch3DGame(options) {
           cs.activated = true;
           // Spawn boss zombie
           const bossHp = (8 + Math.floor((st.gameTime / 60) * 2.5)) * BOSS_HP_MULT;
-          const bossTier = Math.min(st.wave + 2, 8);
+          const bossTier = st.wave >= 4 ? 10 : 9; // BD-236: was capped at 8, tier 9+ needed for boss attacks
           const boss = createEnemy(cs.x + 5, cs.z + 5, bossHp, bossTier);
           boss.isBoss = true;
           boss.isTotemSpawned = true; // BD-96: flag for guaranteed loot drop
