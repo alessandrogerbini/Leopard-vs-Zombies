@@ -360,6 +360,11 @@ export function launch3DGame(options) {
     // UI
     gameOver: false,
     lastDamageSource: null, // BD-216: tracks what killed the player for "DEFEATED BY" display
+    // Death sequence (BD-228): 1.5s slow-motion death before game-over screen
+    deathSequence: false,
+    deathSequenceTimer: 0,
+    deathTimeScale: 1.0,
+    deathKillerPos: null,
     paused: false,
     upgradeMenu: false,
     upgradeChoices: [],
@@ -807,9 +812,9 @@ export function launch3DGame(options) {
         e.stopPropagation();
         return;
       }
-    } else if (!st.gameOver && !st.upgradeMenu && !st.pauseMenu && !st.chargeShrineMenu) {
+    } else if (!st.gameOver && !st.deathSequence && !st.upgradeMenu && !st.pauseMenu && !st.chargeShrineMenu) {
       // Normal gameplay — Enter/NumpadEnter/B handled by power attack in game loop via keys3d
-      // Escape opens pause menu
+      // Escape opens pause menu (BD-228: disabled during death sequence)
       if (e.code === 'Escape') {
         st.paused = true;
         st.pauseMenu = true;
@@ -824,7 +829,7 @@ export function launch3DGame(options) {
     // TAB key toggles full map (BD-76)
     if (e.code === 'Tab') {
       e.preventDefault();
-      if (!st.gameOver && !st.upgradeMenu && !st.pauseMenu && !st.chargeShrineMenu) {
+      if (!st.gameOver && !st.deathSequence && !st.upgradeMenu && !st.pauseMenu && !st.chargeShrineMenu) {
         st.showFullMap = !st.showFullMap;
       }
     }
@@ -848,7 +853,7 @@ export function launch3DGame(options) {
       st.enterReleasedSinceGameOver = true;
     }
     // Power attack release
-    if ((e.code === 'Enter' || e.code === 'NumpadEnter' || e.code === 'KeyB') && st.charging && !st.gameOver && !st.upgradeMenu && !st.pauseMenu && !st.chargeShrineMenu && !st.wearableCompare) {
+    if ((e.code === 'Enter' || e.code === 'NumpadEnter' || e.code === 'KeyB') && st.charging && !st.gameOver && !st.deathSequence && !st.upgradeMenu && !st.pauseMenu && !st.chargeShrineMenu && !st.wearableCompare) {
       st.charging = false;
       st.powerAttackReady = true;
     }
@@ -4416,6 +4421,10 @@ export function launch3DGame(options) {
       dt *= 0.5; // half speed for dramatic moment
     }
 
+    // BD-228: Death sequence time scaling — realDt for UI/timers, gameDt for world simulation
+    const realDt = dt; // always real-time (after item slow, before death scale)
+    const gameDt = dt * (st.deathSequence ? st.deathTimeScale : 1);
+
     // FPS tracking (runs regardless of pause/gameOver for accurate profiling)
     st._fpsFrames++;
     st._fpsTime += dt;
@@ -4437,14 +4446,17 @@ export function launch3DGame(options) {
     }
 
     if (!st.paused && !st.gameOver) {
-      st.gameTime += dt;
+      st.gameTime += gameDt; // BD-228: game time slows during death sequence
 
       // === PLAYER INPUT ===
       let mx = 0, mz = 0;
-      if (keys3d['KeyW'] || keys3d['ArrowUp']) mz = -1;
-      if (keys3d['KeyS'] || keys3d['ArrowDown']) mz = 1;
-      if (keys3d['KeyA'] || keys3d['ArrowLeft']) mx = -1;
-      if (keys3d['KeyD'] || keys3d['ArrowRight']) mx = 1;
+      // BD-228: Disable player movement during death sequence
+      if (!st.deathSequence) {
+        if (keys3d['KeyW'] || keys3d['ArrowUp']) mz = -1;
+        if (keys3d['KeyS'] || keys3d['ArrowDown']) mz = 1;
+        if (keys3d['KeyA'] || keys3d['ArrowLeft']) mx = -1;
+        if (keys3d['KeyD'] || keys3d['ArrowRight']) mx = 1;
+      }
       const len = Math.sqrt(mx * mx + mz * mz);
       if (len > 0) { mx /= len; mz /= len; }
       st.moveDir.x = mx; st.moveDir.z = mz;
@@ -4460,8 +4472,8 @@ export function launch3DGame(options) {
         if (feetEff.speedMult) speed *= feetEff.speedMult;
       }
 
-      st.playerX += mx * speed * dt;
-      st.playerZ += mz * speed * dt;
+      st.playerX += mx * speed * gameDt;
+      st.playerZ += mz * speed * gameDt;
       // Clamp player to map boundaries
       st.playerX = Math.max(-MAP_HALF + 1, Math.min(MAP_HALF - 1, st.playerX));
       st.playerZ = Math.max(-MAP_HALF + 1, Math.min(MAP_HALF - 1, st.playerZ));
@@ -4503,13 +4515,13 @@ export function launch3DGame(options) {
       // === JUMPING + GRAVITY + FLIGHT ===
       // Flight mode (Wings powerup): Space=ascend, Shift=descend, Alt+W/S=G-force maneuvers.
       // Normal mode: Space=jump (only when onGround), then gravity pulls down each frame.
-      const jumpKey = keys3d['Space'] || keys3d['KeyW'] && keys3d['ShiftLeft'];
-      if (st.flying) {
+      const jumpKey = !st.deathSequence && (keys3d['Space'] || keys3d['KeyW'] && keys3d['ShiftLeft']);
+      if (st.flying && !st.deathSequence) {
         // Wings flight mode
         if (keys3d['Space']) st.playerVY = 6;
         else if (keys3d['ShiftLeft']) st.playerVY = -6;
         else st.playerVY *= 0.9;
-        st.playerY += st.playerVY * dt;
+        st.playerY += st.playerVY * gameDt;
         st.onGround = false;
 
         // G-force maneuvers: Alt + forward/backward while flying
@@ -4520,11 +4532,11 @@ export function launch3DGame(options) {
           if (keys3d['KeyW'] || keys3d['ArrowUp']) {
             // Pull up — forward loop (like pulling back on stick)
             st.gManeuver = true;
-            st.gManeuverPitch += pitchRate * dt;
+            st.gManeuverPitch += pitchRate * gameDt;
           } else if (keys3d['KeyS'] || keys3d['ArrowDown']) {
             // Push over — dive loop
             st.gManeuver = true;
-            st.gManeuverPitch -= pitchRate * dt;
+            st.gManeuverPitch -= pitchRate * gameDt;
           }
 
           if (st.gManeuver) {
@@ -4536,9 +4548,9 @@ export function launch3DGame(options) {
             // Move in the direction the player is facing through the loop
             const facingAngle = playerGroup.rotation.y;
             const pitchAngle = st.gManeuverPitch;
-            st.playerX += Math.sin(facingAngle) * Math.cos(pitchAngle) * maneuverSpeed * dt;
-            st.playerZ += Math.cos(facingAngle) * Math.cos(pitchAngle) * maneuverSpeed * dt;
-            st.playerY += Math.sin(pitchAngle) * maneuverSpeed * dt;
+            st.playerX += Math.sin(facingAngle) * Math.cos(pitchAngle) * maneuverSpeed * gameDt;
+            st.playerZ += Math.cos(facingAngle) * Math.cos(pitchAngle) * maneuverSpeed * gameDt;
+            st.playerY += Math.sin(pitchAngle) * maneuverSpeed * gameDt;
 
             // Prevent going underground
             const gManeuverGroundH = getGroundAt(st.playerX, st.playerZ) + 0.01;
@@ -4554,7 +4566,7 @@ export function launch3DGame(options) {
           if (Math.abs(st.gManeuverPitch) < 0.01) st.gManeuverPitch = 0;
         }
       } else {
-        if (keys3d['Space'] && st.onGround) {
+        if (keys3d['Space'] && st.onGround && !st.deathSequence) {
           let jumpMult = st.jumpBoost;
           // Wearable feet jump bonus (e.g. Spring Boots: +30%)
           if (st.wearables.feet) {
@@ -4567,8 +4579,8 @@ export function launch3DGame(options) {
           playSound('sfx_jump');
         }
         // Gravity
-        st.playerVY -= GRAVITY_3D * dt;
-        st.playerY += st.playerVY * dt;
+        st.playerVY -= GRAVITY_3D * gameDt;
+        st.playerY += st.playerVY * gameDt;
       }
 
       // === GROUND + PLATFORM COLLISION ===
@@ -4648,16 +4660,16 @@ export function launch3DGame(options) {
       }
 
       // Invincibility timer
-      if (st.invincible > 0) st.invincible -= dt;
+      if (st.invincible > 0) st.invincible -= gameDt;
       // Wearable equip flash timers
-      if (st.wearableFlash.head > 0) st.wearableFlash.head = Math.max(0, st.wearableFlash.head - dt);
-      if (st.wearableFlash.body > 0) st.wearableFlash.body = Math.max(0, st.wearableFlash.body - dt);
-      if (st.wearableFlash.feet > 0) st.wearableFlash.feet = Math.max(0, st.wearableFlash.feet - dt);
+      if (st.wearableFlash.head > 0) st.wearableFlash.head = Math.max(0, st.wearableFlash.head - gameDt);
+      if (st.wearableFlash.body > 0) st.wearableFlash.body = Math.max(0, st.wearableFlash.body - gameDt);
+      if (st.wearableFlash.feet > 0) st.wearableFlash.feet = Math.max(0, st.wearableFlash.feet - gameDt);
 
       // BD-214: Player hurt flash — use permanent _trueColor, not ephemeral _origColor
-      if (st.playerHurtFlashCooldown > 0) st.playerHurtFlashCooldown -= dt;
+      if (st.playerHurtFlashCooldown > 0) st.playerHurtFlashCooldown -= gameDt;
       if (st.playerHurtFlash > 0) {
-        st.playerHurtFlash -= dt;
+        st.playerHurtFlash -= gameDt;
         playerGroup.traverse(child => {
           if (child.isMesh && child.material && child.userData._trueColor !== undefined) {
             const origColor = child.userData._trueColor;
@@ -4678,13 +4690,13 @@ export function launch3DGame(options) {
 
       // BD-107: Name entry input cooldown timer (moved to BD-189 — ticks outside gameOver gate)
       // BD-126: Attack lunge animation timer
-      if (st.attackAnimTimer > 0) st.attackAnimTimer -= dt;
+      if (st.attackAnimTimer > 0) st.attackAnimTimer -= gameDt;
 
 
 
       // === ACTIVE POWERUP TIMER ===
       if (st.activePowerup) {
-        st.activePowerup.timer -= dt;
+        st.activePowerup.timer -= gameDt;
         if (st.activePowerup.timer <= 0) {
           if (st.activePowerup.def.name && st.activePowerup.def.name.includes('Wings')) playSound('sfx_powerup_wings_expire');
           st.activePowerup.def.remove(st);
@@ -4710,14 +4722,14 @@ export function launch3DGame(options) {
           const dx = st.playerX - e.group.position.x;
           const dz = st.playerZ - e.group.position.z;
           if (dx * dx + dz * dz < 9) { // range 3
-            damageEnemy(e, 20 * dt, { skipProcs: true });
+            damageEnemy(e, 20 * gameDt, { skipProcs: true });
           }
         }
       }
       // Update fire particles
       for (let i = fireParticles.length - 1; i >= 0; i--) {
-        fireParticles[i].life -= dt;
-        fireParticles[i].mesh.position.y += dt * 3;
+        fireParticles[i].life -= gameDt;
+        fireParticles[i].mesh.position.y += gameDt * 3;
         if (fireParticles[i].life <= 0) {
           // Return to pool instead of disposing (BD-185)
           scene.remove(fireParticles[i].mesh);
@@ -4755,7 +4767,7 @@ export function launch3DGame(options) {
       // Update frozen enemies
       for (const e of st.enemies) {
         if (!e.alive || !e.frozen) continue;
-        e.frozenTimer -= dt;
+        e.frozenTimer -= gameDt;
         if (e.frozenTimer <= 0) {
           e.frozen = false;
           e.body.material.color.setHex(e.bodyColor);
@@ -4836,9 +4848,9 @@ export function launch3DGame(options) {
         st.wasAirborne = currentlyAirborne;
       }
 
-      // === VAMPIRE FANGS (passive regen 3 HP/s) ===
-      if (st.vampireHeal) {
-        st.hp = Math.min(st.hp + 3 * dt, st.maxHp);
+      // === VAMPIRE FANGS (passive regen 3 HP/s) — BD-228: no regen during death ===
+      if (st.vampireHeal && !st.deathSequence) {
+        st.hp = Math.min(st.hp + 3 * gameDt, st.maxHp);
         if (Math.random() < 0.15) {
           spawnFireParticle(
             0x6a0dad,
@@ -4852,7 +4864,7 @@ export function launch3DGame(options) {
 
       // === LIGHTNING SHIELD (zap nearest enemy every 0.5s) ===
       if (st.lightningShield) {
-        st.lightningShieldTimer -= dt;
+        st.lightningShieldTimer -= gameDt;
         if (st.lightningShieldTimer <= 0) {
           st.lightningShieldTimer = 0.5;
           let nearest = null, nearestDist = 25; // range 5 squared
@@ -4951,7 +4963,7 @@ export function launch3DGame(options) {
           );
           cloneData.group.rotation.y = angle + Math.PI;
           // Clone attacks nearby enemies every 0.8s
-          cloneData.attackTimer -= dt;
+          cloneData.attackTimer -= gameDt;
           if (cloneData.attackTimer <= 0) {
             cloneData.attackTimer = 0.8;
             for (const e of st.enemies) {
@@ -4981,7 +4993,7 @@ export function launch3DGame(options) {
 
       // === BOMB TRAIL (drop bombs as player moves) ===
       if (st.bombTrail) {
-        st.bombTrailTimer -= dt;
+        st.bombTrailTimer -= gameDt;
         if (st.bombTrailTimer <= 0) {
           st.bombTrailTimer = 0.5;
           // Create bomb at player position
@@ -4997,7 +5009,7 @@ export function launch3DGame(options) {
       // Update bombs (countdown + explosion)
       for (let i = st.bombTrailBombs.length - 1; i >= 0; i--) {
         const b = st.bombTrailBombs[i];
-        b.timer -= dt;
+        b.timer -= gameDt;
         // Flashing as timer runs down
         const flash = Math.sin(b.timer * 12) > 0;
         b.mesh.material.color.setHex(flash ? 0xff6622 : 0xff2200);
@@ -5028,9 +5040,9 @@ export function launch3DGame(options) {
         }
       }
 
-      // === REGEN BURST (rapid healing) ===
-      if (st.regenBurst) {
-        st.hp = Math.min(st.hp + (st.maxHp / 5) * dt, st.maxHp);
+      // === REGEN BURST (rapid healing) — BD-228: no regen during death ===
+      if (st.regenBurst && !st.deathSequence) {
+        st.hp = Math.min(st.hp + (st.maxHp / 5) * gameDt, st.maxHp);
         if (Math.random() < 0.25) {
           spawnFireParticle(
             0x33ff33,
@@ -5043,9 +5055,9 @@ export function launch3DGame(options) {
       }
 
       // === WEAPONS (auto-fire) ===
-      updateWeapons(dt);
-      updateWeaponProjectiles(dt);
-      updateWeaponEffects(dt);
+      if (!st.deathSequence) updateWeapons(gameDt); // BD-228: stop auto-fire during death
+      updateWeaponProjectiles(gameDt); // BD-228: projectiles in flight continue at gameDt
+      updateWeaponEffects(gameDt); // BD-228: effects continue at gameDt
 
       // === INITIAL BURST (one-time, 10 enemies in a ring) ===
       if (!st.initialBurstDone) {
@@ -5059,40 +5071,50 @@ export function launch3DGame(options) {
       }
 
       // === AMBIENT SPAWNS ===
-      st.ambientSpawnTimer -= dt;
-      if (st.ambientSpawnTimer <= 0) {
-        spawnAmbient();
-        st.ambientSpawnTimer = 1.36;
+      // BD-228: Stop spawning during death sequence
+      if (!st.deathSequence) {
+        st.ambientSpawnTimer -= gameDt;
+        if (st.ambientSpawnTimer <= 0) {
+          spawnAmbient();
+          st.ambientSpawnTimer = 1.36;
+        }
       }
 
       // === AMBIENT CRATE SPAWN (every 30s) ===
-      st.ambientCrateTimer -= dt;
-      if (st.ambientCrateTimer <= 0) {
-        st.ambientCrateTimer = 30 / st.powerupFreqMult;
-        const ca = Math.random() * Math.PI * 2;
-        const cx = st.playerX + Math.cos(ca) * 15;
-        const cz = st.playerZ + Math.sin(ca) * 15;
-        st.powerupCrates.push(createPowerupCrate(cx, cz));
+      if (!st.deathSequence) {
+        st.ambientCrateTimer -= gameDt;
+        if (st.ambientCrateTimer <= 0) {
+          st.ambientCrateTimer = 30 / st.powerupFreqMult;
+          const ca = Math.random() * Math.PI * 2;
+          const cx = st.playerX + Math.cos(ca) * 15;
+          const cz = st.playerZ + Math.sin(ca) * 15;
+          st.powerupCrates.push(createPowerupCrate(cx, cz));
+        }
       }
 
       // === AMBIENT ITEM SPAWN (every 45-60s) ===
-      st.ambientItemTimer -= dt;
-      if (st.ambientItemTimer <= 0) {
-        st.ambientItemTimer = 45 + Math.random() * 15;
-        const ia = Math.random() * Math.PI * 2;
-        const ix = st.playerX + Math.cos(ia) * 18;
-        const iz = st.playerZ + Math.sin(ia) * 18;
-        const pickup = createItemPickup(ix, iz);
-        if (pickup) st.itemPickups.push(pickup);
+      if (!st.deathSequence) {
+        st.ambientItemTimer -= gameDt;
+        if (st.ambientItemTimer <= 0) {
+          st.ambientItemTimer = 45 + Math.random() * 15;
+          const ia = Math.random() * Math.PI * 2;
+          const ix = st.playerX + Math.cos(ia) * 18;
+          const iz = st.playerZ + Math.sin(ia) * 18;
+          const pickup = createItemPickup(ix, iz);
+          if (pickup) st.itemPickups.push(pickup);
+        }
       }
 
       // === WAVE EVENTS (every 3 minutes) ===
-      st.waveEventTimer -= dt;
-      if (st.waveEventTimer <= 10 && st.waveWarning === 0) {
-        st.waveWarning = 10; // Start 10-second countdown
+      // BD-228: Freeze wave timer during death sequence (no new waves)
+      if (!st.deathSequence) {
+        st.waveEventTimer -= gameDt;
+        if (st.waveEventTimer <= 10 && st.waveWarning === 0) {
+          st.waveWarning = 10; // Start 10-second countdown
+        }
       }
-      if (st.waveWarning > 0) {
-        st.waveWarning -= dt;
+      if (st.waveWarning > 0 && !st.deathSequence) {
+        st.waveWarning -= gameDt;
         if (st.waveWarning <= 0) {
           st.waveWarning = 0;
           spawnWaveEvent();
@@ -5102,7 +5124,7 @@ export function launch3DGame(options) {
       }
 
       // === TERRAIN CHUNKS (throttled) ===
-      chunkUpdateTimer -= dt;
+      chunkUpdateTimer -= gameDt;
       if (chunkUpdateTimer <= 0) {
         updateChunks(st.playerX, st.playerZ);
         updatePlatformChunks(st.playerX, st.playerZ);
@@ -5110,9 +5132,9 @@ export function launch3DGame(options) {
       }
 
       // BD-211: Track player velocity for boss target-leading
-      if (dt > 0) {
-        st.playerVelX = (st.playerX - st.playerPrevX) / dt;
-        st.playerVelZ = (st.playerZ - st.playerPrevZ) / dt;
+      if (gameDt > 0) {
+        st.playerVelX = (st.playerX - st.playerPrevX) / gameDt;
+        st.playerVelZ = (st.playerZ - st.playerPrevZ) / gameDt;
       }
       st.playerPrevX = st.playerX;
       st.playerPrevZ = st.playerZ;
@@ -5124,10 +5146,10 @@ export function launch3DGame(options) {
       for (const e of st.enemies) {
         if (!e.alive) continue;
         if (e.dying) {
-          e.deathTimer -= dt;
+          e.deathTimer -= gameDt;
           const t = Math.max(0, e.deathTimer / 0.3);
           e.group.scale.setScalar(t * (e.isBoss ? 3 : (e.tier >= 9 ? 1.5 : 1))); // BD-211: account for boss scale
-          e.group.position.y -= dt * 2;
+          e.group.position.y -= gameDt * 2;
           if (e.deathTimer <= 0) {
             disposeEnemy(e);
           }
@@ -5136,7 +5158,7 @@ export function launch3DGame(options) {
         if (e.frozen) continue; // Frost Nova: frozen enemies don't move
         // Mud slow timer decrement — restore speed when expired
         if (e._mudSlowed) {
-          e._mudSlowTimer -= dt;
+          e._mudSlowTimer -= gameDt;
           if (e._mudSlowTimer <= 0) {
             e._mudSlowed = false;
             if (!e._turdSlowed && !e._snowSlowed) e.speed = e._origSpeed || e.speed;
@@ -5144,7 +5166,7 @@ export function launch3DGame(options) {
         }
         // Turd mine slow timer decrement — restore speed when expired
         if (e._turdSlowed) {
-          e._turdSlowTimer -= dt;
+          e._turdSlowTimer -= gameDt;
           if (e._turdSlowTimer <= 0) {
             e._turdSlowed = false;
             if (!e._mudSlowed && !e._snowSlowed) e.speed = e._origSpeed || e.speed;
@@ -5152,7 +5174,7 @@ export function launch3DGame(options) {
         }
         // Snowball slow timer decrement — restore speed when expired
         if (e._snowSlowed) {
-          e._snowSlowTimer -= dt;
+          e._snowSlowTimer -= gameDt;
           if (e._snowSlowTimer <= 0) {
             e._snowSlowed = false;
             if (!e._mudSlowed && !e._turdSlowed) e.speed = e._origSpeed || e.speed;
@@ -5160,7 +5182,7 @@ export function launch3DGame(options) {
         }
         // Snowball freeze timer decrement
         if (e._snowFrozen) {
-          e._snowFreezeTimer -= dt;
+          e._snowFreezeTimer -= gameDt;
           if (e._snowFreezeTimer <= 0) {
             e._snowFrozen = false;
           } else {
@@ -5169,18 +5191,18 @@ export function launch3DGame(options) {
         }
         // Stink poison DoT timer
         if (e._stinkPoisoned) {
-          e._stinkPoisonTimer -= dt;
+          e._stinkPoisonTimer -= gameDt;
           if (e._stinkPoisonTimer <= 0) {
             e._stinkPoisoned = false;
           } else {
-            damageEnemy(e, e._stinkPoisonDmg * dt, { skipProcs: true });
+            damageEnemy(e, e._stinkPoisonDmg * gameDt, { skipProcs: true });
             if (!e.alive) continue;
           }
         }
         // === ZOMBIE SPECIAL ATTACKS (BD-84 / BD-145 / BD-166+167+179) ===
         // BD-166: Update body flash timer
         if (e._attackFlashTimer > 0) {
-          e._attackFlashTimer -= dt;
+          e._attackFlashTimer -= gameDt;
           if (e._attackFlashTimer <= 0 && e.body) {
             e.body.material.color.setHex(e.bodyColor);
             if (e.body.material.emissive) e.body.material.emissive.setHex(0x000000);
@@ -5192,8 +5214,8 @@ export function launch3DGame(options) {
         // Titan (tier 9): Shockwave Slam — telegraphed AoE ground pound (BD-84)
         // Overlord (tier 10): Death Bolt — telegraphed ranged projectile (BD-84)
         if (e.tier >= 2 && e.tier <= 6 && e.specialAttackTimer !== undefined) {
-          e.specialAttackTimer -= dt;
-          if (handleLowTierSpecialAttack(e, dt)) continue; // skip movement during telegraph
+          e.specialAttackTimer -= gameDt;
+          if (handleLowTierSpecialAttack(e, gameDt)) continue; // skip movement during telegraph
         }
         // BD-211: Boss aura pulse animation for tier 9/10
         if (e.tier >= 9 && e.bossAuraMesh) {
@@ -5263,7 +5285,7 @@ export function launch3DGame(options) {
           }
         }
         if (e.tier >= 9 && e.specialAttackTimer !== undefined) {
-          e.specialAttackTimer -= dt;
+          e.specialAttackTimer -= gameDt;
 
           // BD-179: Chill mode telegraph duration multiplier
           const telegraphDurMult = st.difficulty === 'chill' ? 1.5 : 1.0;
@@ -5358,7 +5380,7 @@ export function launch3DGame(options) {
           }
 
           if (e.specialAttackState === 'telegraph') {
-            e.specialAttackTelegraphTimer -= dt;
+            e.specialAttackTelegraphTimer -= gameDt;
 
             // Animate telegraph visuals
             if (e.specialAttackMesh) {
@@ -5499,8 +5521,8 @@ export function launch3DGame(options) {
           const nx = dx / dist;
           const nz = dz / dist;
           const eSpd = e.speed * st.totemSpeedMult * st.enemySpeedMult;
-          e.group.position.x += nx * eSpd * dt;
-          e.group.position.z += nz * eSpd * dt;
+          e.group.position.x += nx * eSpd * gameDt;
+          e.group.position.z += nz * eSpd * gameDt;
           // Clamp enemies to map boundaries
           e.group.position.x = Math.max(-MAP_HALF + 0.5, Math.min(MAP_HALF - 0.5, e.group.position.x));
           e.group.position.z = Math.max(-MAP_HALF + 0.5, Math.min(MAP_HALF - 0.5, e.group.position.z));
@@ -5527,7 +5549,7 @@ export function launch3DGame(options) {
         }
 
         // Platform jumping logic
-        if (e.jumpCooldown > 0) e.jumpCooldown -= dt;
+        if (e.jumpCooldown > 0) e.jumpCooldown -= gameDt;
 
         // Check if player is on a platform and zombie is close horizontally
         if (st.onPlatformY !== null && dist < 6 && !e.onPlatform) {
@@ -5544,8 +5566,8 @@ export function launch3DGame(options) {
 
         // Apply jump physics or normal ground following
         if (e.jumpVY !== 0 || e.onPlatform) {
-          e.jumpVY -= GRAVITY_3D * dt;
-          e.group.position.y += e.jumpVY * dt;
+          e.jumpVY -= GRAVITY_3D * gameDt;
+          e.group.position.y += e.jumpVY * gameDt;
 
           for (const p of platforms) {
             const halfW = p.w / 2, halfD = p.d / 2;
@@ -5571,7 +5593,7 @@ export function launch3DGame(options) {
           e.group.position.y = eh;
         }
         // Walking animation: arm swing + leg shuffle
-        e.walkPhase += dt * e.speed * 3;
+        e.walkPhase += gameDt * e.speed * 3;
         const armSwing = Math.sin(e.walkPhase) * 0.4;
         const legSwing = Math.sin(e.walkPhase) * 0.15;
         if (e.armL) e.armL.position.z = 0.15 + armSwing * 0.3;
@@ -5580,7 +5602,7 @@ export function launch3DGame(options) {
         if (e.legR) e.legR.position.z = -legSwing;
         // Merge bounce effect: brief scale-up then back to normal on tier upgrade
         if (e.mergeBounce > 0) {
-          e.mergeBounce -= dt;
+          e.mergeBounce -= gameDt;
           const baseScale = e.isBoss ? BOSS_SCALE : (e.tier >= 9 ? 1.5 : 1); // BD-77+BD-211: preserve boss scale
           const bouncePhase = e.mergeBounce / 0.4; // 0->1 normalized (1 at start)
           const bounceScale = baseScale * (1 + Math.sin(bouncePhase * Math.PI) * 0.35);
@@ -5612,10 +5634,10 @@ export function launch3DGame(options) {
           }
         }
         // BD-203: Hurt flash cooldown decrement
-        if (e.hurtFlashCooldown > 0) e.hurtFlashCooldown -= dt;
+        if (e.hurtFlashCooldown > 0) e.hurtFlashCooldown -= gameDt;
         // Hurt flash (tinted flash, 1s cooldown — BD-203)
         if (e.hurtTimer > 0) {
-          e.hurtTimer -= dt;
+          e.hurtTimer -= gameDt;
           if (e.hurtTimer > 0) {
             // BD-203: Blend 60% white + 40% body color for tier-tinted flash
             const bc = e.bodyColor;
@@ -5637,8 +5659,8 @@ export function launch3DGame(options) {
         }
         // Hot Sauce ignite DoT: 3 damage/s per stack for 3s
         if (e.ignited) {
-          e.igniteTimer -= dt;
-          damageEnemy(e, e.igniteDps * dt, { skipProcs: true });
+          e.igniteTimer -= gameDt;
+          damageEnemy(e, e.igniteDps * gameDt, { skipProcs: true });
           // Orange tint while burning
           if (e.body) e.body.material.color.setHex(0xff6600);
           if (e.igniteTimer <= 0) {
@@ -5658,7 +5680,7 @@ export function launch3DGame(options) {
       // Merging is capped at Tier 4 (index 3) for alpha. Beyond that, just push apart.
       // When the merge counter fills, the surviving zombie is replaced by a new higher-tier one
       // with a brief scale bounce effect.
-      st.mergeCheckTimer -= dt;
+      st.mergeCheckTimer -= gameDt;
       if (st.mergeCheckTimer <= 0) {
       st.mergeCheckTimer = 0.5; // Run merge checks every 0.5s
       const ZOMBIE_RADIUS = 0.6;
@@ -5729,7 +5751,7 @@ export function launch3DGame(options) {
       // === AUTO-ATTACK REMOVED (BD-102) ===
       // Creatures now only attack via weapon slots and power attack.
       // Interaction timer for shrine/totem hits (replaces autoAttackTimer gating).
-      st.interactionTimer -= dt;
+      st.interactionTimer -= gameDt;
       if (st.interactionTimer < 0) st.interactionTimer = 0;
 
       // === POWER ATTACK (Hold Enter/B to charge, release to strike) ===
@@ -5738,15 +5760,15 @@ export function launch3DGame(options) {
       // A growing glow mesh provides visual feedback during charging.
       // BD-74: Decrement enter cooldown to prevent upgrade-menu Enter from triggering charge
       if (st._enterCooldown > 0) {
-        st._enterCooldown -= dt;
+        st._enterCooldown -= gameDt;
       }
       const chargeKey = keys3d['Enter'] || keys3d['NumpadEnter'] || keys3d['KeyB'];
-      if (chargeKey && !st.gameOver && !st.upgradeMenu && !st.pauseMenu && !st.chargeShrineMenu && !st.wearableCompare && st._enterCooldown <= 0 && (performance.now() - st._menuDismissedAt > 500)) {
+      if (chargeKey && !st.gameOver && !st.deathSequence && !st.upgradeMenu && !st.pauseMenu && !st.chargeShrineMenu && !st.wearableCompare && st._enterCooldown <= 0 && (performance.now() - st._menuDismissedAt > 500)) {
         if (!st.charging) {
           st.charging = true;
           st.chargeTime = 0;
         }
-        st.chargeTime = Math.min(st.chargeTime + dt, 2);
+        st.chargeTime = Math.min(st.chargeTime + gameDt, 2);
         // Charge glow visual
         if (!st.chargeGlow) {
           const glowMat = new THREE.MeshBasicMaterial({ color: 0xffcc00, transparent: true, opacity: 0.3 });
@@ -5794,7 +5816,7 @@ export function launch3DGame(options) {
       }
       // Charge glow flash timer countdown
       if (st.chargeGlowTimer > 0) {
-        st.chargeGlowTimer -= dt;
+        st.chargeGlowTimer -= gameDt;
         if (st.chargeGlowTimer <= 0) {
           st.chargeGlowTimer = 0;
           if (st.chargeGlow) {
@@ -5826,9 +5848,9 @@ export function launch3DGame(options) {
       // === PROJECTILES ===
       for (let i = st.projectiles.length - 1; i >= 0; i--) {
         const p = st.projectiles[i];
-        p.mesh.position.x += p.vx * dt;
-        p.mesh.position.z += p.vz * dt;
-        p.mesh.rotation.y += dt * 10;
+        p.mesh.position.x += p.vx * gameDt;
+        p.mesh.position.z += p.vz * gameDt;
+        p.mesh.rotation.y += gameDt * 10;
         p.life--;
         if (p.life <= 0) {
           scene.remove(p.mesh);
@@ -5851,7 +5873,7 @@ export function launch3DGame(options) {
 
       // === XP GEM MERGE (BD-144) ===
       // Aggressively merge nearby gems to reduce draw calls and object count.
-      st.gemMergeTimer -= dt;
+      st.gemMergeTimer -= gameDt;
       if (st.gemMergeTimer <= 0) {
         st.gemMergeTimer = 0.25;
         for (let i = st.xpGems.length - 1; i >= 0; i--) {
@@ -5883,10 +5905,10 @@ export function launch3DGame(options) {
       for (let i = st.xpGems.length - 1; i >= 0; i--) {
         const gem = st.xpGems[i];
         // Bob position + spin rotation
-        gem.bobPhase += dt * 3;
+        gem.bobPhase += gameDt * 3;
         const gh = getGroundAt(gem.mesh.position.x, gem.mesh.position.z);
         gem.mesh.position.y = gh + 0.4 + Math.sin(gem.bobPhase) * 0.15;
-        gem.mesh.rotation.y += dt * 2;
+        gem.mesh.rotation.y += gameDt * 2;
         // Breathing scale (respects baseScale so merged gems stay big)
         const breathe = gem.baseScale * (1 + Math.sin(gem.bobPhase) * 0.15);
         gem.mesh.scale.setScalar(breathe);
@@ -5895,7 +5917,7 @@ export function launch3DGame(options) {
         const dist = Math.sqrt(dx * dx + dz * dz);
         // Magnet pull with speed trail stretch
         if (dist < st.collectRadius * 2 && dist > st.collectRadius) {
-          const pull = 3 * dt;
+          const pull = 3 * gameDt;
           gem.mesh.position.x += (dx / dist) * pull;
           gem.mesh.position.z += (dz / dist) * pull;
           // Speed trail: stretch gem in pull direction (fun rubber-band feel)
@@ -5909,8 +5931,8 @@ export function launch3DGame(options) {
           gem.mesh.lookAt(st.playerX, gem.mesh.position.y, st.playerZ);
           gem.mesh.rotateX(Math.PI / 2); // align stretch along pull axis
         }
-        // Collection
-        if (dist < st.collectRadius) {
+        // Collection — BD-228: disable during death sequence
+        if (dist < st.collectRadius && !st.deathSequence) {
           st.xp += Math.max(1, Math.round((gem.xpValue || 1) * st.augmentXpMult * getHowlXpMult() * getWearableXpMult() * (st.totemXpMult || 1)));
           // Return to pool instead of just removing (BD-185)
           scene.remove(gem.mesh);
@@ -5944,13 +5966,13 @@ export function launch3DGame(options) {
         const g = st.mapGems[i];
         if (!g.alive) { st.mapGems.splice(i, 1); continue; }
         // Rotate and bob
-        g.mesh.rotation.y += dt * 2;
+        g.mesh.rotation.y += gameDt * 2;
         g.mesh.position.y = terrainHeight(g.x, g.z) + 0.6 + Math.sin(st.gameTime * 3 + g.x) * 0.15;
         // Pickup check (squared distance)
         const dx = st.playerX - g.x;
         const dz = st.playerZ - g.z;
         const distSq = dx * dx + dz * dz;
-        if (distSq < GEM_COLLECT_RADIUS * GEM_COLLECT_RADIUS) {
+        if (distSq < GEM_COLLECT_RADIUS * GEM_COLLECT_RADIUS && !st.deathSequence) {
           g.alive = false;
           scene.remove(g.mesh);
           // XP scaled by augments, Fortune Howl, and totem bonuses (same as drop gems)
@@ -5988,9 +6010,9 @@ export function launch3DGame(options) {
         // Show label if glasses equipped
         c.showLabel = st.items.glasses && distSq < 64; // 8*8
 
-        // Walk into crate to break (must be at similar height)
+        // Walk into crate to break (must be at similar height) — BD-228: disabled during death
         const cdy = Math.abs(st.playerY - c.group.position.y);
-        if (distSq < 1.44 && cdy < 2.0) { // 1.2*1.2
+        if (distSq < 1.44 && cdy < 2.0 && !st.deathSequence) { // 1.2*1.2
           c.hp--;
           if (c.hp <= 0) {
             c.alive = false;
@@ -6024,15 +6046,15 @@ export function launch3DGame(options) {
       for (let i = st.itemPickups.length - 1; i >= 0; i--) {
         const item = st.itemPickups[i];
         if (!item.alive) continue;
-        item.bobPhase += dt * 3;
+        item.bobPhase += gameDt * 3;
         const ih = getGroundAt(item.x, item.z);
         item.mesh.position.y = ih + 0.8 + Math.sin(item.bobPhase) * 0.2;
-        item.mesh.rotation.y += dt * 1.5;
+        item.mesh.rotation.y += gameDt * 1.5;
         const dx = st.playerX - item.x;
         const dz = st.playerZ - item.z;
         const distSq = dx * dx + dz * dz;
         const idy = Math.abs(st.playerY - item.mesh.position.y);
-        if (distSq < 2.25 && idy < 2.0) { // 1.5*1.5
+        if (distSq < 2.25 && idy < 2.0 && !st.deathSequence) { // 1.5*1.5 — BD-228: no pickup during death
           // Equip item
           const it = item.itype;
           // BD-199: Check if non-stackable slot is occupied — show comparison menu
@@ -6140,21 +6162,21 @@ export function launch3DGame(options) {
       for (let i = st.wearablePickups.length - 1; i >= 0; i--) {
         const wp = st.wearablePickups[i];
         if (!wp.alive) continue;
-        wp.bobPhase += dt * 3;
+        wp.bobPhase += gameDt * 3;
         const wh = getGroundAt(wp.x, wp.z);
         wp.mesh.position.y = wh + 0.8 + Math.sin(wp.bobPhase) * 0.2;
         // Rotate the cube inside the group
-        wp.mesh.children[0].rotation.y += dt * 2;
+        wp.mesh.children[0].rotation.y += gameDt * 2;
         // Rotate the ring indicator
-        if (wp.mesh.children[1]) wp.mesh.children[1].rotation.y -= dt * 1.5;
+        if (wp.mesh.children[1]) wp.mesh.children[1].rotation.y -= gameDt * 1.5;
         // Decay nearTimer
-        if (wp.nearTimer > 0) wp.nearTimer -= dt;
+        if (wp.nearTimer > 0) wp.nearTimer -= gameDt;
 
         const wdx = st.playerX - wp.x;
         const wdz = st.playerZ - wp.z;
         const wDistSq = wdx * wdx + wdz * wdz;
         const wdy = Math.abs(st.playerY - wp.mesh.position.y);
-        if (wDistSq < 2.25 && wdy < 2.0) { // 1.5*1.5
+        if (wDistSq < 2.25 && wdy < 2.0 && !st.deathSequence) { // 1.5*1.5 — BD-228: no pickup during death
           const wd = wp.wearableData;
           const slot = wd.slot;
           const currentId = st.wearables[slot];
@@ -6218,8 +6240,8 @@ export function launch3DGame(options) {
         const bobTime = clock.elapsedTime * 2 + shrine.x;
         if (shrine.orb) shrine.orb.position.y = 1.7 + Math.sin(bobTime) * 0.1;
         if (shrine.rune) {
-          shrine.rune.rotation.y += dt * 2;
-          shrine.rune.rotation.x += dt * 1.3;
+          shrine.rune.rotation.y += gameDt * 2;
+          shrine.rune.rotation.x += gameDt * 1.3;
         }
         // Check if player is near shrine (proximity-based interaction)
         const dx = st.playerX - shrine.x;
@@ -6227,7 +6249,7 @@ export function launch3DGame(options) {
         const distSq = dx * dx + dz * dz;
         const shrineRng = st.attackRange * 1.5;
         const sdy = Math.abs(st.playerY - shrine.group.position.y);
-        if (distSq < shrineRng * shrineRng && sdy < 2.5 && st.interactionTimer <= 0) {
+        if (distSq < shrineRng * shrineRng && sdy < 2.5 && st.interactionTimer <= 0 && !st.deathSequence) {
           shrine.hp--;
           st.interactionTimer = 0.5; // cooldown between interaction hits
           if (shrine.hp <= 0) {
@@ -6260,7 +6282,7 @@ export function launch3DGame(options) {
         const tdistSq = tdx * tdx + tdz * tdz;
         const totemRng = st.attackRange * 1.5;
         const tdy = Math.abs(st.playerY - totem.y);
-        if (tdistSq < totemRng * totemRng && tdy < 2.5 && st.interactionTimer <= 0) {
+        if (tdistSq < totemRng * totemRng && tdy < 2.5 && st.interactionTimer <= 0 && !st.deathSequence) {
           totem.hp--;
           st.interactionTimer = 0.5; // cooldown between interaction hits
           if (totem.hp <= 0) {
@@ -6283,7 +6305,7 @@ export function launch3DGame(options) {
       // === CHARGE SHRINE INTERACTION ===
       // Player stands near an uncharged charge shrine to accumulate charge.
       // On charge completion, 3 random upgrades from the shrine's rarity tier are offered.
-      if (!st.chargeShrineMenu && !st.upgradeMenu && !st.pauseMenu && !st.wearableCompare && !st.gameOver) {
+      if (!st.chargeShrineMenu && !st.upgradeMenu && !st.pauseMenu && !st.wearableCompare && !st.gameOver && !st.deathSequence) {
         let nearestShrine = null;
         let nearestDist = Infinity;
         for (const cs of st.chargeShrines) {
@@ -6304,7 +6326,7 @@ export function launch3DGame(options) {
             st.chargeShrineProgress = 0;
           }
           // Accumulate charge
-          st.chargeShrineProgress += dt;
+          st.chargeShrineProgress += gameDt;
           if (st.chargeShrineProgress >= CHARGE_SHRINE_TIME) {
             // Charge complete! Roll 3 upgrades from this shrine's tier
             const tierUpgrades = CHARGE_SHRINE_UPGRADES[nearestShrine.rarity] || CHARGE_SHRINE_UPGRADES.common;
@@ -6338,10 +6360,10 @@ export function launch3DGame(options) {
       for (const cs of st.chargeShrines) {
         if (!cs.alive) continue;
         // Crystal rotation
-        if (cs.crystal) cs.crystal.rotation.y += dt * 1.5;
+        if (cs.crystal) cs.crystal.rotation.y += gameDt * 1.5;
         // Rune orbiting
         if (cs.rune) {
-          cs.rune.rotation.y += dt * 3;
+          cs.rune.rotation.y += gameDt * 3;
           cs.rune.position.x = Math.sin(st.gameTime * 2) * 0.4;
           cs.rune.position.z = Math.cos(st.gameTime * 2) * 0.4;
         }
@@ -6385,7 +6407,7 @@ export function launch3DGame(options) {
       // === BD-167: POISON POOL UPDATE ===
       for (let i = st.poisonPools.length - 1; i >= 0; i--) {
         const pool = st.poisonPools[i];
-        pool.life -= dt;
+        pool.life -= gameDt;
         if (pool.life <= 0) {
           disposeSceneObject(pool.mesh);
           st.poisonPools.splice(i, 1);
@@ -6405,7 +6427,7 @@ export function launch3DGame(options) {
         const pDistSq = pdx * pdx + pdz * pdz;
         const effectiveRadius = pool.radius * (pool.mesh.scale.x || 1);
         if (pDistSq < effectiveRadius * effectiveRadius && st.invincible <= 0) {
-          let pDmg = pool.dmgPerSec * dt * (1 - (st.augmentArmor || 0));
+          let pDmg = pool.dmgPerSec * gameDt * (1 - (st.augmentArmor || 0));
           if (st.items.armor === 'leather') pDmg *= 0.75;
           else if (st.items.armor === 'chainmail') pDmg *= 0.6;
           pDmg = Math.max(0.1, pDmg);
@@ -6416,22 +6438,22 @@ export function launch3DGame(options) {
 
       // === FLOATING TEXTS 3D ===
       for (let i = st.floatingTexts3d.length - 1; i >= 0; i--) {
-        st.floatingTexts3d[i].y += dt * 2.5;
-        st.floatingTexts3d[i].life -= dt;
+        st.floatingTexts3d[i].y += gameDt * 2.5;
+        st.floatingTexts3d[i].life -= gameDt;
         if (st.floatingTexts3d[i].life <= 0) {
           st.floatingTexts3d.splice(i, 1);
         }
       }
 
-      // === AUGMENT REGEN (BD-187: capped at 4 HP/s) ===
-      if (st.augmentRegen > 0) {
+      // === AUGMENT REGEN (BD-187: capped at 4 HP/s) — BD-228: no regen during death ===
+      if (st.augmentRegen > 0 && !st.deathSequence) {
         const effectiveRegen = Math.min(st.augmentRegen, 4.0);
-        st.hp = Math.min(st.hp + effectiveRegen * dt, st.maxHp);
+        st.hp = Math.min(st.hp + effectiveRegen * gameDt, st.maxHp);
       }
 
       // === SHIELD BRACELET COOLDOWN ===
       if (st.items.bracelet && !st.shieldBraceletReady) {
-        st.shieldBraceletTimer -= dt;
+        st.shieldBraceletTimer -= gameDt;
         if (st.shieldBraceletTimer <= 0) {
           st.shieldBraceletReady = true;
           addFloatingText('SHIELD READY!', '#4488ff', st.playerX, st.playerY + 2, st.playerZ, 1.5, true);
@@ -6442,10 +6464,10 @@ export function launch3DGame(options) {
 
       // === BD-147: Item pickup feedback timers ===
       if (st.itemAnnouncement) {
-        st.itemAnnouncement.timer -= dt;
+        st.itemAnnouncement.timer -= gameDt;
         if (st.itemAnnouncement.timer <= 0) st.itemAnnouncement = null;
       }
-      if (st.itemFlashTimer > 0) st.itemFlashTimer -= dt;
+      if (st.itemFlashTimer > 0) st.itemFlashTimer -= gameDt;
 
       // === CLEANUP + DEATH CHECK ===
       // Clean dead enemies using swap-and-pop (O(1) per removal, avoids splice shifting)
@@ -6461,18 +6483,19 @@ export function launch3DGame(options) {
         }
       }
 
-      // Player death
-      if (st.hp <= 0) {
+      // BD-228: Player death — enter death sequence (1.5s slow-motion) before game-over screen
+      if (st.hp <= 0 && !st.deathSequence && !st.gameOver) {
         st.hp = 0;
-        st.gameOver = true;
-        st.showFullMap = false;
-        st.enterReleasedSinceGameOver = false;
-        st.nameEntryActive = true;
-        st.nameEntry = '';
-        st.nameEntryInputCooldown = 0.3;
-        // BD-86: Clear Enter key state and charging on death.
-        // Prevents held-Enter (from power attack) from immediately interacting
-        // with the game-over screen.
+        st.deathSequence = true;
+        st.deathSequenceTimer = 1.5;
+        st.deathTimeScale = 1.0;
+        // Capture killer position for camera zoom (future BD-229)
+        if (st.lastDamageSource && st.lastDamageSource.killerX !== undefined) {
+          st.deathKillerPos = { x: st.lastDamageSource.killerX, z: st.lastDamageSource.killerZ };
+        } else {
+          st.deathKillerPos = null;
+        }
+        // Disable player input (BD-86 carry-over)
         keys3d['Enter'] = false;
         keys3d['NumpadEnter'] = false;
         keys3d['Space'] = false;
@@ -6480,6 +6503,26 @@ export function launch3DGame(options) {
         st.chargeTime = 0;
         st.powerAttackReady = false;
         playSound('sfx_player_death');
+      }
+
+      // BD-228: Death sequence tick — slow-motion ramp then transition to game-over
+      if (st.deathSequence && !st.gameOver) {
+        st.deathSequenceTimer -= realDt;
+        const progress = 1 - (st.deathSequenceTimer / 1.5);
+        // Ramp: first 33% decelerates from 1.0 to 0.15, then holds at 0.15
+        st.deathTimeScale = progress < 0.33
+          ? 1.0 - (progress / 0.33) * 0.85
+          : 0.15;
+
+        if (st.deathSequenceTimer <= 0) {
+          st.gameOver = true;
+          st.deathSequence = false;
+          st.showFullMap = false;
+          st.enterReleasedSinceGameOver = false;
+          st.nameEntryActive = true;
+          st.nameEntry = '';
+          st.nameEntryInputCooldown = 0.3;
+        }
       }
     }
 
