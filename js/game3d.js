@@ -157,16 +157,23 @@ import { initAudio, playSound, toggleMute, isMuted, getVolume, disposeAudio } fr
  * @property {number} selectedUpgrade       - Index of highlighted upgrade option.
  * @property {boolean} running              - False after cleanup; stops game loop.
  * @property {number} invincible            - Invincibility frames timer (seconds).
- * @property {boolean} enterReleasedSinceGameOver - Prevents instant game-over skip.
  * @property {boolean} pauseMenu            - True when ESC pause menu is shown.
  * @property {number} selectedPauseOption   - Index of highlighted pause menu option.
  *
  * --- Power Attack + Interaction ---
  * @property {number} autoAttackTimer       - Deprecated (BD-102), kept for compatibility.
  * @property {number} interactionTimer      - Cooldown for shrine/totem proximity hits.
- * @property {boolean} charging             - True while Enter/B is held for power attack.
- * @property {number} chargeTime            - Seconds charged (0-2 range).
  * @property {THREE.Mesh|null} chargeGlow   - Visual glow mesh during charging.
+ *
+ * --- Input State (BD-25: isolated into separate `inputState` object) ---
+ * The following properties live on the local `inputState` object, NOT on `st`:
+ * - enterReleasedSinceGameOver {boolean} - Prevents instant game-over skip.
+ * - enterCooldown {number}               - Cooldown after menu confirm to prevent charge trigger.
+ * - menuDismissedAt {number}             - performance.now() timestamp of last menu dismiss.
+ * - charging {boolean}                   - True while Enter/B is held for power attack.
+ * - chargeTime {number}                  - Seconds charged (0-2 range).
+ * - chargeGlowTimer {number}             - Flash countdown after power attack release.
+ * - powerAttackReady {boolean}           - True when charge released, consumed next frame.
  *
  * --- Weapon Slots + Howls ---
  * @property {Array.<{typeId: string, level: number, cooldownTimer: number}>} weapons - Active weapon instances.
@@ -368,9 +375,7 @@ export function launch3DGame(options) {
     invincible: 0,
     playerHurtFlash: 0, // BD-192: player body flash timer on damage
     playerHurtFlashCooldown: 0, // BD-208: cooldown to prevent flash spam
-    enterReleasedSinceGameOver: false,
-    _enterCooldown: 0,
-    _menuDismissedAt: 0,
+    // (input flags moved to inputState object — see below)
     pauseMenu: false,
     selectedPauseOption: 0,
     showFullMap: false,
@@ -382,10 +387,8 @@ export function launch3DGame(options) {
     interactionTimer: 0, // cooldown for shrine/totem hits
     attackAnimTimer: 0, // BD-126: attack lunge animation timer
     attackAnimDuration: 0.15, // BD-126: lunge duration (0.15 for weapons, 0.25 for power attack)
-    charging: false,
-    chargeTime: 0,
-    chargeGlow: null,
-    chargeGlowTimer: 0,
+    chargeGlow: null, // Three.js mesh — stays on st for cleanup
+    // (charging, chargeTime, chargeGlowTimer moved to inputState object)
     // Weapon slots
     weapons: [],
     maxWeaponSlots: 1,
@@ -447,6 +450,20 @@ export function launch3DGame(options) {
     _fpsFrames: 0,
     _fpsTime: 0,
     _fpsDisplay: 0,
+  };
+
+  // === INPUT STATE ===
+  // Transient input/UI flags isolated from persistent game state (BD-25).
+  // These track keyboard hold states, cooldown guards, and charge-attack timing.
+  const inputState = {
+    enterHeld: false,
+    enterCooldown: 0,
+    menuDismissedAt: 0,
+    charging: false,
+    chargeTime: 0,
+    chargeGlowTimer: 0,
+    enterReleasedSinceGameOver: false,
+    powerAttackReady: false,
   };
 
 
@@ -600,7 +617,7 @@ export function launch3DGame(options) {
     const isEnterOrSpace = (e.code === 'Enter' || e.code === 'NumpadEnter' || e.code === 'Space');
     const isFreshConfirm = isEnterOrSpace && !e.repeat;
 
-    if (st.gameOver && !st.upgradeMenu && st.enterReleasedSinceGameOver) {
+    if (st.gameOver && !st.upgradeMenu && inputState.enterReleasedSinceGameOver) {
       if (st.nameEntryActive) {
         // BD-213: Name entry — accept ALL printable keys, block gameplay processing
         if (st.nameEntryInputCooldown > 0) return;
@@ -646,13 +663,13 @@ export function launch3DGame(options) {
         st.upgradeMenu = false;
         st.paused = false;
         st.invincible = 1.0; // BD-112: Post-upgrade invulnerability
-        st._menuDismissedAt = performance.now();
-        st.enterReleasedSinceGameOver = false; // prevent accidental restart
+        inputState.menuDismissedAt = performance.now();
+        inputState.enterReleasedSinceGameOver = false; // prevent accidental restart
         keys3d['Enter'] = false; // clear held key state
         keys3d['NumpadEnter'] = false;
         keys3d['Space'] = false;
-        st.charging = false; // BD-86: clear stale charge state
-        st.chargeTime = 0;
+        inputState.charging = false; // BD-86: clear stale charge state
+        inputState.chargeTime = 0;
         e.preventDefault();
         e.stopPropagation();
         return;
@@ -699,12 +716,12 @@ export function launch3DGame(options) {
         st.chargeShrineCurrent = null;
         st.chargeShrineProgress = 0;
         st.chargeShrineChoices = [];
-        st._menuDismissedAt = performance.now();
+        inputState.menuDismissedAt = performance.now();
         keys3d['Enter'] = false;
         keys3d['NumpadEnter'] = false;
         keys3d['Space'] = false;
-        st.charging = false; // BD-86: clear stale charge state
-        st.chargeTime = 0;
+        inputState.charging = false; // BD-86: clear stale charge state
+        inputState.chargeTime = 0;
         e.preventDefault();
         e.stopPropagation();
         return;
@@ -715,7 +732,7 @@ export function launch3DGame(options) {
         // Unpause via Escape
         st.paused = false;
         st.pauseMenu = false;
-        st._menuDismissedAt = performance.now();
+        inputState.menuDismissedAt = performance.now();
       } else if (e.code === 'ArrowLeft' || e.code === 'KeyA') {
         st.selectedPauseOption = (st.selectedPauseOption - 1 + 3) % 3;
       } else if (e.code === 'ArrowRight' || e.code === 'KeyD') {
@@ -735,12 +752,12 @@ export function launch3DGame(options) {
           cleanup();
           onReturn();
         }
-        st._menuDismissedAt = performance.now();
+        inputState.menuDismissedAt = performance.now();
         keys3d['Enter'] = false;
         keys3d['NumpadEnter'] = false;
         keys3d['Space'] = false;
-        st.charging = false; // BD-86: clear stale charge state
-        st.chargeTime = 0;
+        inputState.charging = false; // BD-86: clear stale charge state
+        inputState.chargeTime = 0;
         e.preventDefault();
         e.stopPropagation();
         return;
@@ -782,12 +799,12 @@ export function launch3DGame(options) {
         st.wearableCompare = null;
         st.paused = false;
         st.invincible = 1.0;
-        st._menuDismissedAt = performance.now();
+        inputState.menuDismissedAt = performance.now();
         keys3d['Enter'] = false;
         keys3d['NumpadEnter'] = false;
         keys3d['Space'] = false;
-        st.charging = false;
-        st.chargeTime = 0;
+        inputState.charging = false;
+        inputState.chargeTime = 0;
         e.preventDefault();
         e.stopPropagation();
         return;
@@ -830,12 +847,12 @@ export function launch3DGame(options) {
     keys3d[e.code] = false;
     e.preventDefault();
     if (st.gameOver && (e.code === 'Enter' || e.code === 'NumpadEnter')) {
-      st.enterReleasedSinceGameOver = true;
+      inputState.enterReleasedSinceGameOver = true;
     }
     // Power attack release
-    if ((e.code === 'Enter' || e.code === 'NumpadEnter' || e.code === 'KeyB') && st.charging && !st.gameOver && !st.upgradeMenu && !st.pauseMenu && !st.chargeShrineMenu && !st.wearableCompare) {
-      st.charging = false;
-      st.powerAttackReady = true;
+    if ((e.code === 'Enter' || e.code === 'NumpadEnter' || e.code === 'KeyB') && inputState.charging && !st.gameOver && !st.upgradeMenu && !st.pauseMenu && !st.chargeShrineMenu && !st.wearableCompare) {
+      inputState.charging = false;
+      inputState.powerAttackReady = true;
     }
   }
   window.addEventListener('keydown', onKeyDown);
@@ -4190,8 +4207,8 @@ export function launch3DGame(options) {
     keys3d['Enter'] = false;
     keys3d['NumpadEnter'] = false;
     keys3d['Space'] = false;
-    st.charging = false;
-    st.chargeTime = 0;
+    inputState.charging = false;
+    inputState.chargeTime = 0;
 
     // Unlock weapon slots at levels 5, 10, 15
     if (st.level === 5 || st.level === 10 || st.level === 15) {
@@ -4407,7 +4424,7 @@ export function launch3DGame(options) {
       // BD-193: Auto-unlock game-over input when cooldown expires,
       // instead of requiring a specific Enter key release
       if (st.nameEntryInputCooldown <= 0) {
-        st.enterReleasedSinceGameOver = true;
+        inputState.enterReleasedSinceGameOver = true;
       }
     }
 
@@ -5663,36 +5680,36 @@ export function launch3DGame(options) {
       // power attack that hits all enemies in range. Charge multiplier increases damage and range.
       // A growing glow mesh provides visual feedback during charging.
       // BD-74: Decrement enter cooldown to prevent upgrade-menu Enter from triggering charge
-      if (st._enterCooldown > 0) {
-        st._enterCooldown -= dt;
+      if (inputState.enterCooldown > 0) {
+        inputState.enterCooldown -= dt;
       }
       const chargeKey = keys3d['Enter'] || keys3d['NumpadEnter'] || keys3d['KeyB'];
-      if (chargeKey && !st.gameOver && !st.upgradeMenu && !st.pauseMenu && !st.chargeShrineMenu && !st.wearableCompare && st._enterCooldown <= 0 && (performance.now() - st._menuDismissedAt > 500)) {
-        if (!st.charging) {
-          st.charging = true;
-          st.chargeTime = 0;
+      if (chargeKey && !st.gameOver && !st.upgradeMenu && !st.pauseMenu && !st.chargeShrineMenu && !st.wearableCompare && inputState.enterCooldown <= 0 && (performance.now() - inputState.menuDismissedAt > 500)) {
+        if (!inputState.charging) {
+          inputState.charging = true;
+          inputState.chargeTime = 0;
         }
-        st.chargeTime = Math.min(st.chargeTime + dt, 2);
+        inputState.chargeTime = Math.min(inputState.chargeTime + dt, 2);
         // Charge glow visual
         if (!st.chargeGlow) {
           const glowMat = new THREE.MeshBasicMaterial({ color: 0xffcc00, transparent: true, opacity: 0.3 });
           st.chargeGlow = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), glowMat);
           scene.add(st.chargeGlow);
         }
-        const glowScale = 1 + st.chargeTime * 1.5;
+        const glowScale = 1 + inputState.chargeTime * 1.5;
         st.chargeGlow.scale.set(glowScale, glowScale, glowScale);
         st.chargeGlow.position.set(st.playerX, st.playerY + 0.8, st.playerZ);
-        st.chargeGlow.material.opacity = 0.15 + st.chargeTime * 0.2;
+        st.chargeGlow.material.opacity = 0.15 + inputState.chargeTime * 0.2;
       }
-      if (!chargeKey && st.charging) {
-        st.charging = false;
-        st.powerAttackReady = true;
+      if (!chargeKey && inputState.charging) {
+        inputState.charging = false;
+        inputState.powerAttackReady = true;
       }
-      if (st.powerAttackReady) {
-        st.powerAttackReady = false;
+      if (inputState.powerAttackReady) {
+        inputState.powerAttackReady = false;
         playSound('sfx_power_attack_release');
-        const chargeMult = 1 + st.chargeTime;
-        let range = st.attackRange * (1 + st.chargeTime * 0.5);
+        const chargeMult = 1 + inputState.chargeTime;
+        let range = st.attackRange * (1 + inputState.chargeTime * 0.5);
         if (st.items.boots === 'cowboyBoots') range *= 1.2;
         const py = st.playerY + 0.8;
         const dmg = st.attackDamage * getPlayerDmgMult() * chargeMult;
@@ -5712,17 +5729,17 @@ export function launch3DGame(options) {
         if (st.chargeGlow) {
           st.chargeGlow.material.opacity = 0.8;
           st.chargeGlow.scale.set(range * 2, range * 2, range * 2);
-          st.chargeGlowTimer = 0.1;
+          inputState.chargeGlowTimer = 0.1;
         }
-        st.chargeTime = 0;
+        inputState.chargeTime = 0;
         // BD-126: Larger/longer lunge for power attack
         st.attackAnimTimer = 0.25; st.attackAnimDuration = 0.25;
       }
       // Charge glow flash timer countdown
-      if (st.chargeGlowTimer > 0) {
-        st.chargeGlowTimer -= dt;
-        if (st.chargeGlowTimer <= 0) {
-          st.chargeGlowTimer = 0;
+      if (inputState.chargeGlowTimer > 0) {
+        inputState.chargeGlowTimer -= dt;
+        if (inputState.chargeGlowTimer <= 0) {
+          inputState.chargeGlowTimer = 0;
           if (st.chargeGlow) {
             scene.remove(st.chargeGlow);
             st.chargeGlow.geometry.dispose();
@@ -5732,7 +5749,7 @@ export function launch3DGame(options) {
         }
       }
       // Remove charge glow if not charging
-      if (!st.charging && !st.powerAttackReady && st.chargeGlowTimer <= 0 && st.chargeGlow) {
+      if (!inputState.charging && !inputState.powerAttackReady && inputState.chargeGlowTimer <= 0 && st.chargeGlow) {
         scene.remove(st.chargeGlow);
         st.chargeGlow.geometry.dispose();
         st.chargeGlow.material.dispose();
@@ -6246,8 +6263,8 @@ export function launch3DGame(options) {
             keys3d['Enter'] = false;
             keys3d['NumpadEnter'] = false;
             keys3d['Space'] = false;
-            st.charging = false;
-            st.chargeTime = 0;
+            inputState.charging = false;
+            inputState.chargeTime = 0;
             playSound('sfx_shrine_break'); // Reuse shrine sound for activation
           }
         } else {
@@ -6392,7 +6409,7 @@ export function launch3DGame(options) {
         st.hp = 0;
         st.gameOver = true;
         st.showFullMap = false;
-        st.enterReleasedSinceGameOver = false;
+        inputState.enterReleasedSinceGameOver = false;
         st.nameEntryActive = true;
         st.nameEntry = '';
         st.nameEntryInputCooldown = 0.3;
@@ -6402,9 +6419,9 @@ export function launch3DGame(options) {
         keys3d['Enter'] = false;
         keys3d['NumpadEnter'] = false;
         keys3d['Space'] = false;
-        st.charging = false;
-        st.chargeTime = 0;
-        st.powerAttackReady = false;
+        inputState.charging = false;
+        inputState.chargeTime = 0;
+        inputState.powerAttackReady = false;
         playSound('sfx_player_death');
       }
     }
@@ -6464,6 +6481,7 @@ export function launch3DGame(options) {
       getGroundAt,
       audioMuted: isMuted(),
       audioVolume: getVolume(),
+      inputState,
     });
   }
 

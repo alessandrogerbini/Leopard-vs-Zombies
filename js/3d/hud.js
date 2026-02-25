@@ -61,6 +61,7 @@ const GAME_FONT = '"Fredoka One", "Comic Sans MS", "Arial Rounded MT Bold", sans
  * @param {function} deps.getGroundAt - Returns terrain height at world (x, z).
  * @param {boolean} [deps.audioMuted] - Whether audio is currently muted.
  * @param {number} [deps.audioVolume] - Current audio volume (0.0 - 1.0).
+ * @param {Object} [deps.inputState] - Isolated input flags (BD-25: charging, chargeTime, etc.).
  */
 
 // BD-165: Reuse a single Vector3 for HUD world-to-screen projections
@@ -810,8 +811,10 @@ export function drawHUD(ctx, s, deps) {
 
     // --- Power Attack Charge Bar (big, segmented, color-coded) ---
     // Visible while charging or briefly when fully charged (chargeTime >= 2)
-    if (s.charging || s.chargeTime >= 2) {
-      const ratio = Math.min(s.chargeTime / 2, 1);
+    // BD-25: charging/chargeTime moved from st to inputState
+    const _inp = deps.inputState || {};
+    if (_inp.charging || _inp.chargeTime >= 2) {
+      const ratio = Math.min(_inp.chargeTime / 2, 1);
       const barW = Math.max(200, W * 0.18);  // At least 200px, scales with resolution
       const barH = 28;
       const bx = W / 2 - barW / 2;
