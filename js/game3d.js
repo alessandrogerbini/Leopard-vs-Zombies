@@ -1903,6 +1903,8 @@ export function launch3DGame(options) {
     }
 
     // Tier 10: crown of fire (emissive blocks on head)
+    // BD-219: Store crown meshes for phase visual changes
+    let crownMeshes = [];
     if (tier >= 10) {
       const crownMat = new THREE.MeshBasicMaterial({ color: 0xff4400 });
       for (let c = 0; c < 8; c++) {
@@ -1910,6 +1912,7 @@ export function launch3DGame(options) {
         const cm = new THREE.Mesh(new THREE.BoxGeometry(0.05 * s, 0.12 * s, 0.05 * s), crownMat);
         cm.position.set(Math.cos(ca) * 0.18 * s, 1.52 * s, Math.sin(ca) * 0.18 * s);
         group.add(cm);
+        crownMeshes.push(cm);
       }
     }
 
@@ -1970,6 +1973,10 @@ export function launch3DGame(options) {
       specialAttackCount: 0, // BD-211: counts attacks for tier 9 slam/shockwave alternation
       bossAuraMesh: bossAuraMesh, // BD-211: persistent aura sphere for tier 9/10
       bossPhase: (tier >= 9) ? 1 : 0, // BD-218: boss HP phase (1=initial, 2/3/4=enraged phases)
+      // BD-219: Store references for boss phase visual changes
+      eyeGlowMat: (tier >= 9) ? eyeGlowMat : null, // eye material for Titan phase 3 white eyes
+      crownMeshes: crownMeshes, // crown fire meshes for Overlord phase 3 color change
+      _bossScale: s, // store tier scale for phase visual mesh creation
     };
   }
 
@@ -5243,7 +5250,8 @@ export function launch3DGame(options) {
           e._attackFlashTimer -= gameDt;
           if (e._attackFlashTimer <= 0 && e.body) {
             e.body.material.color.setHex(e.bodyColor);
-            if (e.body.material.emissive) e.body.material.emissive.setHex(0x000000);
+            // BD-219: Don't clear emissive if desperation pulse is active (Overlord phase 4)
+            if (e.body.material.emissive && !e._desperationPulse) e.body.material.emissive.setHex(0x000000);
           }
         }
         // BD-179: Difficulty-based damage multiplier
@@ -5301,6 +5309,133 @@ export function launch3DGame(options) {
             // Pause attack timer to prevent immediate attack during transition
             if (e.specialAttackTimer !== undefined) {
               e.specialAttackTimer += 0.5;
+            }
+          }
+        }
+        // BD-219: Persistent boss phase visuals (additive — each phase keeps previous visuals)
+        if (e.tier >= 9 && e.bossPhase > 0 && !e.dying) {
+          const bs = e._bossScale || 1;
+          if (e.tier < 10) {
+            // === TITAN (tier 9) Phase Visuals ===
+            // Phase 2: Crack lines across torso
+            if (e.bossPhase >= 2 && !e._phase2Visuals) {
+              e._phase2Visuals = true;
+              const crackMat = new THREE.MeshBasicMaterial({ color: 0x111111 });
+              for (let ci = 0; ci < 3; ci++) {
+                const crackW = (0.3 + Math.random() * 0.2) * bs;
+                const crackH = 0.02 * bs;
+                const crackD = 0.02 * bs;
+                const cx = (Math.random() - 0.5) * 0.3 * bs;
+                const cy = (0.6 + Math.random() * 0.35) * bs;
+                const cz = 0.18 * bs; // front face of torso
+                const crack = new THREE.Mesh(
+                  new THREE.BoxGeometry(crackW, crackH, crackD),
+                  crackMat
+                );
+                crack.position.set(cx, cy, cz);
+                crack.rotation.z = (Math.random() - 0.5) * 0.5; // slight angle variation
+                e.group.add(crack);
+              }
+            }
+            // Phase 3: Eyes turn white with emissive glow + steam particles flag
+            if (e.bossPhase >= 3 && !e._phase3Visuals) {
+              e._phase3Visuals = true;
+              e._steamParticles = true;
+              // Turn eyes white with emissive glow
+              if (e.eyeGlowMat) {
+                e.eyeGlowMat.color.setHex(0xffffff);
+                // Switch from MeshBasicMaterial to emissive appearance by setting color to bright white
+                // MeshBasicMaterial doesn't support emissive, but the bright white color creates the glow effect
+              }
+            }
+            // Phase 3+: Emit steam particles upward from body (~15% chance per frame)
+            if (e._steamParticles && Math.random() < 0.15) {
+              const groupScale = e.group.scale.x || 1.5; // BD-211: boss group is 1.5x scaled
+              const steamX = e.group.position.x + (Math.random() - 0.5) * 0.6 * bs * groupScale;
+              const steamY = e.group.position.y + (0.8 + Math.random() * 0.6) * bs * groupScale;
+              const steamZ = e.group.position.z + (Math.random() - 0.5) * 0.4 * bs * groupScale;
+              // Gray-white steam particle rising upward
+              const steamColor = Math.random() < 0.5 ? 0xcccccc : 0xeeeeee;
+              spawnFireParticle(
+                steamColor,
+                steamX, steamY, steamZ,
+                0.6, // slightly longer life than ground rumble
+                { transparent: true, opacity: 0.4 }
+              );
+            }
+          } else {
+            // === OVERLORD (tier 10) Phase Visuals ===
+            // Phase 2: Crown particle rate increase + body color lerp to purple tint
+            if (e.bossPhase >= 2 && !e._phase2Visuals) {
+              e._phase2Visuals = true;
+              e._crownParticleBoost = true;
+              // Lerp body color from 0xaa0000 to 0x880044 (purple tint)
+              if (e.body) {
+                e.body.material.color.setHex(0x880044);
+                e.bodyColor = 0x880044; // update stored color so flash restoration uses new color
+              }
+            }
+            // Phase 2+: Boosted crown fire particles (~20% chance per frame, up from base rumble)
+            if (e._crownParticleBoost && Math.random() < 0.20) {
+              const crownAngle = Math.random() * Math.PI * 2;
+              const groupScale = e.group.scale.x || 1.5; // BD-211: boss group is 1.5x scaled
+              const crownR = 0.18 * bs * groupScale;
+              const cpx = e.group.position.x + Math.cos(crownAngle) * crownR;
+              const cpy = e.group.position.y + 1.55 * bs * groupScale;
+              const cpz = e.group.position.z + Math.sin(crownAngle) * crownR;
+              const fireColor = e._crownFireColor || 0xff4400;
+              spawnFireParticle(
+                fireColor,
+                cpx, cpy, cpz,
+                0.35,
+                { transparent: true, opacity: 0.7 }
+              );
+            }
+            // Phase 3: Crown fire turns blue-white
+            if (e.bossPhase >= 3 && !e._phase3Visuals) {
+              e._phase3Visuals = true;
+              e._crownFireColor = 0xccccff;
+              // Update existing crown mesh colors to blue-white
+              if (e.crownMeshes && e.crownMeshes.length > 0) {
+                for (const cm of e.crownMeshes) {
+                  cm.material.color.setHex(0xccccff);
+                }
+              }
+            }
+            // Phase 4: Desperation pulse — sinusoidal emissive on all body meshes
+            if (e.bossPhase >= 4 && !e._phase4Visuals) {
+              e._phase4Visuals = true;
+              e._desperationPulse = true;
+              // Convert body material to MeshLambertMaterial for emissive support if needed
+              if (e.body && !e.body.material.emissive) {
+                const oldColor = e.body.material.color.getHex();
+                const newMat = new THREE.MeshLambertMaterial({ color: oldColor });
+                e.body.material.dispose();
+                e.body.material = newMat;
+              }
+            }
+            // Phase 4+: Sinusoidal emissive pulse every frame
+            if (e._desperationPulse) {
+              const t = performance.now();
+              const pulseIntensity = 0.3 + Math.sin(t * 0.008) * 0.2;
+              // Pulse body mesh
+              if (e.body && e.body.material.emissive) {
+                e.body.material.emissive.setHex(0xff0044);
+                e.body.material.emissiveIntensity = pulseIntensity;
+              }
+              // Pulse head mesh
+              if (e.head && e.head.material) {
+                if (!e.head.material.emissive) {
+                  const headColor = e.head.material.color.getHex();
+                  const newHeadMat = new THREE.MeshLambertMaterial({ color: headColor });
+                  e.head.material.dispose();
+                  e.head.material = newHeadMat;
+                }
+                if (e.head.material.emissive) {
+                  e.head.material.emissive.setHex(0xff0044);
+                  e.head.material.emissiveIntensity = pulseIntensity;
+                }
+              }
             }
           }
         }
