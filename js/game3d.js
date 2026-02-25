@@ -1939,13 +1939,14 @@ export function launch3DGame(options) {
 
   // === XP GEM ===
   // NOTE: Shared geometry and tiered materials for all XP gems to reduce draw calls (BD-174).
-  const gemGeo = new THREE.BoxGeometry(0.25, 0.25, 0.25);
+  const gemGeo = new THREE.BoxGeometry(0.35, 0.35, 0.35); // BD-111: larger gems for visual presence
   // 4 shared gem materials — small/medium/large/mega with increasing emissive intensity.
+  // BD-111: Boosted emissive intensities for stronger glow/visibility.
   const gemMats = {
-    small:  new THREE.MeshLambertMaterial({ color: 0x44ff44, emissive: 0x22aa22, emissiveIntensity: 0.6 }),
-    medium: new THREE.MeshLambertMaterial({ color: 0x66ff66, emissive: 0x33cc33, emissiveIntensity: 0.9 }),
-    large:  new THREE.MeshLambertMaterial({ color: 0x88ffaa, emissive: 0x44ee44, emissiveIntensity: 1.2 }),
-    mega:   new THREE.MeshLambertMaterial({ color: 0xccffee, emissive: 0x66ff66, emissiveIntensity: 1.8 }),
+    small:  new THREE.MeshLambertMaterial({ color: 0x44ff44, emissive: 0x22aa22, emissiveIntensity: 1.0 }),
+    medium: new THREE.MeshLambertMaterial({ color: 0x66ff66, emissive: 0x33cc33, emissiveIntensity: 1.3 }),
+    large:  new THREE.MeshLambertMaterial({ color: 0x88ffaa, emissive: 0x44ee44, emissiveIntensity: 1.6 }),
+    mega:   new THREE.MeshLambertMaterial({ color: 0xccffee, emissive: 0x66ff66, emissiveIntensity: 2.2 }),
   };
   // Keep backward compat alias
   const gemMat = gemMats.small;
