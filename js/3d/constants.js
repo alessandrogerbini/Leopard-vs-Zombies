@@ -841,14 +841,6 @@ export const MAX_PLACEMENT_ATTEMPTS = 100;
 /** @constant {number} AUGMENT_REGEN_CAP - Maximum HP/s from augment regen stacking (BD-187). */
 export const AUGMENT_REGEN_CAP = 4.0;
 
-// --- Camera ---
-/** @constant {number} CAMERA_Y_OFFSET - Camera height above the player in world units. */
-export const CAMERA_Y_OFFSET = 18;
-/** @constant {number} CAMERA_Z_OFFSET - Camera distance behind the player in world units. */
-export const CAMERA_Z_OFFSET = 14;
-/** @constant {number} CAMERA_SMOOTH_FACTOR - Lerp factor for camera smooth-follow (0-1, lower = smoother). */
-export const CAMERA_SMOOTH_FACTOR = 0.05;
-
 // --- Weapon Level Scaling ---
 /** @constant {number} WEAPON_COOLDOWN_REDUCTION_L4 - Cooldown multiplier at weapon level 4 (-18%). */
 export const WEAPON_COOLDOWN_REDUCTION_L4 = 0.82;
