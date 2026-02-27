@@ -2098,6 +2098,8 @@ export function launch3DGame(options) {
       _darkNovaRingRadius: 0,
       _darkNovaHasHit: false,
       _darkNovaOriginY: 0,
+      // BD-255: Steering angle for obstacle avoidance (lazy-init'd in computeSteeringAngle)
+      steerAngle: undefined,
     };
   }
 
@@ -4708,6 +4710,14 @@ export function launch3DGame(options) {
    * 46. Three.js render
    * 47. HUD draw
    */
+  // BD-255: Zombie steering constants
+  const STEER_PROBE_DIST = 2.5;     // How far ahead to check for obstacles (world units)
+  const STEER_PROBE_RADIUS = 0.6;   // Probe thickness (zombie radius + buffer)
+  const STEER_LERP_RATE = 5.0;      // Steering speed (radians/second)
+  const STEER_MIN_DIST = 0.3;       // Ignore obstacles behind us (dot product threshold)
+  const STEER_SKIP_DIST = 30;       // Skip steering for zombies farther than this from player
+  const STEER_BOSS_PROBE_MULT = 2.0; // Boss zombies use larger probe radius
+
   // BD-254: Shared zombie terrain collision resolver.
   // Resolves circle colliders (trees, rocks, logs, stumps),
   // plateau AABB horizontal collision, and pre-placed world object collision.
@@ -4771,6 +4781,141 @@ export function launch3DGame(options) {
     }
 
     return { x: newX, z: newZ };
+  }
+
+  // BD-255: Probe ahead along a direction for the nearest blocking obstacle.
+  // Returns { blocked, obstacleX, obstacleZ, obstacleR } or { blocked: false }.
+  function probeForObstacle(posX, posZ, dirX, dirZ, zombieY, isBoss, worldObjectColliders) {
+    const probeRadius = isBoss ? STEER_PROBE_RADIUS * STEER_BOSS_PROBE_MULT : STEER_PROBE_RADIUS;
+    const probeDist = isBoss ? STEER_PROBE_DIST * 1.5 : STEER_PROBE_DIST;
+    let blocked = false;
+    let bestDist = probeDist + 10;
+    let obstacleX = 0, obstacleZ = 0, obstacleR = 0;
+
+    // Check circle colliders (trees, rocks, logs, stumps)
+    if (terrainState) {
+      const nearby = getNearbyColliders(posX, posZ, terrainState);
+      for (let ci = 0; ci < nearby.length; ci++) {
+        const c = nearby[ci];
+        const toObsX = c.x - posX;
+        const toObsZ = c.z - posZ;
+        const dot = toObsX * dirX + toObsZ * dirZ;
+        if (dot < STEER_MIN_DIST || dot > probeDist) continue;
+        const perpX = toObsX - dot * dirX;
+        const perpZ = toObsZ - dot * dirZ;
+        const perpDist = Math.sqrt(perpX * perpX + perpZ * perpZ);
+        if (perpDist < probeRadius + c.radius && dot < bestDist) {
+          blocked = true;
+          bestDist = dot;
+          obstacleX = c.x;
+          obstacleZ = c.z;
+          obstacleR = c.radius;
+        }
+      }
+    }
+
+    // Check world object colliders
+    for (let wi = 0; wi < worldObjectColliders.length; wi++) {
+      const wo = worldObjectColliders[wi];
+      const toObsX = wo.x - posX;
+      const toObsZ = wo.z - posZ;
+      const dot = toObsX * dirX + toObsZ * dirZ;
+      if (dot < STEER_MIN_DIST || dot > probeDist) continue;
+      const perpX = toObsX - dot * dirX;
+      const perpZ = toObsZ - dot * dirZ;
+      const perpDist = Math.sqrt(perpX * perpX + perpZ * perpZ);
+      if (perpDist < probeRadius + wo.radius && dot < bestDist) {
+        blocked = true;
+        bestDist = dot;
+        obstacleX = wo.x;
+        obstacleZ = wo.z;
+        obstacleR = wo.radius;
+      }
+    }
+
+    // Check platforms (approximate as circle for probe)
+    for (let pi = 0; pi < platforms.length; pi++) {
+      const p = platforms[pi];
+      if (zombieY >= p.y - 0.1) continue; // On top or above -- skip
+      const approxR = Math.max(p.w, p.d) / 2;
+      const toObsX = p.x - posX;
+      const toObsZ = p.z - posZ;
+      const dot = toObsX * dirX + toObsZ * dirZ;
+      if (dot < STEER_MIN_DIST || dot > probeDist + approxR) continue;
+      const perpX = toObsX - dot * dirX;
+      const perpZ = toObsZ - dot * dirZ;
+      const perpDist = Math.sqrt(perpX * perpX + perpZ * perpZ);
+      if (perpDist < probeRadius + approxR && dot < bestDist) {
+        blocked = true;
+        bestDist = dot;
+        obstacleX = p.x;
+        obstacleZ = p.z;
+        obstacleR = approxR;
+      }
+    }
+
+    return { blocked, obstacleX, obstacleZ, obstacleR };
+  }
+
+  // BD-255: Compute the steered movement angle for a zombie.
+  // baseNx, baseNz = normalized direction (toward player or away from boss).
+  // Returns the angle to use for movement, updating e.steerAngle via lerp.
+  function computeSteeringAngle(e, baseNx, baseNz, dt, dist, isBoss, worldObjectColliders) {
+    const targetAngle = Math.atan2(baseNx, baseNz);
+
+    // Skip steering for distant zombies (player can't see them)
+    if (dist > STEER_SKIP_DIST) {
+      e.steerAngle = targetAngle;
+      return targetAngle;
+    }
+
+    // Lazy-init steerAngle
+    if (e.steerAngle === undefined) e.steerAngle = targetAngle;
+
+    // Probe for obstacles
+    const probe = probeForObstacle(
+      e.group.position.x, e.group.position.z,
+      baseNx, baseNz, e.group.position.y, isBoss, worldObjectColliders
+    );
+
+    let steerTargetAngle = targetAngle;
+
+    if (probe.blocked) {
+      // Calculate tangent directions around the blocking obstacle
+      const toObsX = probe.obstacleX - e.group.position.x;
+      const toObsZ = probe.obstacleZ - e.group.position.z;
+      const toObsDist = Math.sqrt(toObsX * toObsX + toObsZ * toObsZ) || 1;
+      const toObsNx = toObsX / toObsDist;
+      const toObsNz = toObsZ / toObsDist;
+
+      // Two perpendicular tangent directions
+      const tangentLx = -toObsNz, tangentLz =  toObsNx; // left
+      const tangentRx =  toObsNz, tangentRz = -toObsNx; // right
+
+      // Choose tangent that aligns better with the base direction
+      const dotL = tangentLx * baseNx + tangentLz * baseNz;
+      const dotR = tangentRx * baseNx + tangentRz * baseNz;
+
+      if (dotL > dotR) {
+        steerTargetAngle = Math.atan2(tangentLx, tangentLz);
+      } else {
+        steerTargetAngle = Math.atan2(tangentRx, tangentRz);
+      }
+    }
+
+    // Smooth steering via angle lerp
+    let angleDiff = steerTargetAngle - e.steerAngle;
+    // Normalize to [-PI, PI]
+    while (angleDiff > Math.PI) angleDiff -= 2 * Math.PI;
+    while (angleDiff < -Math.PI) angleDiff += 2 * Math.PI;
+    const maxTurn = STEER_LERP_RATE * dt;
+    if (Math.abs(angleDiff) > maxTurn) {
+      e.steerAngle += (angleDiff > 0 ? maxTurn : -maxTurn);
+    } else {
+      e.steerAngle = steerTargetAngle;
+    }
+
+    return e.steerAngle;
   }
 
   function tick() {
@@ -6874,11 +7019,19 @@ export function launch3DGame(options) {
           const fdx = e.group.position.x - e.fleeFromX;
           const fdz = e.group.position.z - e.fleeFromZ;
           const fdist = Math.sqrt(fdx * fdx + fdz * fdz) || 1;
+          const fleeNx = fdx / fdist;
+          const fleeNz = fdz / fdist;
           const eSpd = e.speed * st.totemSpeedMult * st.enemySpeedMult;
 
+          // BD-255: Steer around obstacles while fleeing
+          // Pass dist=0 to avoid the distance cutoff (fleeing zombies are often far)
+          const fleeSteerAngle = computeSteeringAngle(e, fleeNx, fleeNz, dt, 0, !!e.isBoss, worldObjectColliders);
+          const fleeSteerNx = Math.sin(fleeSteerAngle);
+          const fleeSteerNz = Math.cos(fleeSteerAngle);
+
           // BD-254: Atomic move-then-resolve for flee behavior
-          let newX = e.group.position.x + (fdx / fdist) * eSpd * dt;
-          let newZ = e.group.position.z + (fdz / fdist) * eSpd * dt;
+          let newX = e.group.position.x + fleeSteerNx * eSpd * dt;
+          let newZ = e.group.position.z + fleeSteerNz * eSpd * dt;
 
           // Clamp to map boundaries
           newX = Math.max(-MAP_HALF + 0.5, Math.min(MAP_HALF - 0.5, newX));
@@ -6891,15 +7044,20 @@ export function launch3DGame(options) {
 
           e.group.position.x = newX;
           e.group.position.z = newZ;
-          e.group.rotation.y = Math.atan2(fdx / fdist, fdz / fdist);
+          e.group.rotation.y = fleeSteerAngle;
         } else if (dist > 0.01) {
           const nx = dx / dist;
           const nz = dz / dist;
           const eSpd = e.speed * st.totemSpeedMult * st.enemySpeedMult;
 
-          // BD-254: Atomic move-then-resolve
-          let newX = e.group.position.x + nx * eSpd * gameDt;
-          let newZ = e.group.position.z + nz * eSpd * gameDt;
+          // BD-255: Compute steered movement direction (look-ahead tangent steering)
+          const steerAngle = computeSteeringAngle(e, nx, nz, gameDt, dist, !!e.isBoss, worldObjectColliders);
+          const steerNx = Math.sin(steerAngle);
+          const steerNz = Math.cos(steerAngle);
+
+          // BD-254: Atomic move-then-resolve (now with steered direction)
+          let newX = e.group.position.x + steerNx * eSpd * gameDt;
+          let newZ = e.group.position.z + steerNz * eSpd * gameDt;
 
           // Clamp to map boundaries
           newX = Math.max(-MAP_HALF + 0.5, Math.min(MAP_HALF - 0.5, newX));
@@ -6913,7 +7071,8 @@ export function launch3DGame(options) {
           // Commit resolved position
           e.group.position.x = newX;
           e.group.position.z = newZ;
-          e.group.rotation.y = Math.atan2(nx, nz);
+          // BD-255: Face the steering direction (not the player direction)
+          e.group.rotation.y = steerAngle;
         }
 
         // Platform jumping logic
