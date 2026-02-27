@@ -4708,6 +4708,71 @@ export function launch3DGame(options) {
    * 46. Three.js render
    * 47. HUD draw
    */
+  // BD-254: Shared zombie terrain collision resolver.
+  // Resolves circle colliders (trees, rocks, logs, stumps),
+  // plateau AABB horizontal collision, and pre-placed world object collision.
+  // Returns resolved (newX, newZ).
+  function resolveZombieCollisions(newX, newZ, zombieY, isBoss, worldObjectColliders) {
+    const ER = isBoss ? 1.5 : 0.5; // zombie radius (enlarged for boss, BOSS_SCALE = 3)
+
+    // 1. Terrain circle colliders (trees, rocks, logs, stumps)
+    if (terrainState) {
+      const nearby = getNearbyColliders(newX, newZ, terrainState);
+      for (let ci = 0; ci < nearby.length; ci++) {
+        const c = nearby[ci];
+        const cdx = newX - c.x;
+        const cdz = newZ - c.z;
+        const cDist = Math.sqrt(cdx * cdx + cdz * cdz);
+        const minDist = ER + c.radius;
+        if (cDist < minDist && cDist > 0.001) {
+          const pushDist = minDist - cDist;
+          newX += (cdx / cDist) * pushDist;
+          newZ += (cdz / cDist) * pushDist;
+        }
+      }
+    }
+
+    // 2. Plateau AABB horizontal collision (mirrors player BD-85 logic)
+    for (let pi = 0; pi < platforms.length; pi++) {
+      const p = platforms[pi];
+      const platTop = p.y + 0.2;
+      // Only collide horizontally if zombie is below the platform surface
+      if (zombieY < platTop - 0.3) {
+        const halfW = p.w / 2 + ER;
+        const halfD = p.d / 2 + ER;
+        const pdx = newX - p.x;
+        const pdz = newZ - p.z;
+        // Quick distance reject for performance
+        if (Math.abs(pdx) > halfW + 1 || Math.abs(pdz) > halfD + 1) continue;
+        if (Math.abs(pdx) < halfW && Math.abs(pdz) < halfD) {
+          const overlapX = halfW - Math.abs(pdx);
+          const overlapZ = halfD - Math.abs(pdz);
+          if (overlapX < overlapZ) {
+            newX += (pdx > 0 ? overlapX : -overlapX);
+          } else {
+            newZ += (pdz > 0 ? overlapZ : -overlapZ);
+          }
+        }
+      }
+    }
+
+    // 3. Pre-placed world object circle collision (shrines, totems, charge/challenge shrines)
+    for (let wi = 0; wi < worldObjectColliders.length; wi++) {
+      const wo = worldObjectColliders[wi];
+      const wdx = newX - wo.x;
+      const wdz = newZ - wo.z;
+      const wDist = Math.sqrt(wdx * wdx + wdz * wdz);
+      const wMinDist = ER + wo.radius;
+      if (wDist < wMinDist && wDist > 0.001) {
+        const wPush = wMinDist - wDist;
+        newX += (wdx / wDist) * wPush;
+        newZ += (wdz / wDist) * wPush;
+      }
+    }
+
+    return { x: newX, z: newZ };
+  }
+
   function tick() {
     if (!st.running) return;
     animId = requestAnimationFrame(tick);
@@ -5456,6 +5521,30 @@ export function launch3DGame(options) {
       }
       st.playerPrevX = st.playerX;
       st.playerPrevZ = st.playerZ;
+
+      // BD-254: Build pre-placed world object collider list once per frame.
+      // All pre-placed objects with visible meshes should block zombies,
+      // regardless of activation/charge/defeat state.
+      // Only exclude objects whose mesh has been removed (alive === false for shrines/totems).
+      const worldObjectColliders = [];
+      for (let i = 0; i < st.shrines.length; i++) {
+        const s = st.shrines[i];
+        if (s.alive) worldObjectColliders.push({ x: s.x, z: s.z, radius: 0.6 });
+      }
+      for (let i = 0; i < st.totems.length; i++) {
+        const t = st.totems[i];
+        if (t.alive) worldObjectColliders.push({ x: t.x, z: t.z, radius: 0.6 });
+      }
+      for (let i = 0; i < st.chargeShrines.length; i++) {
+        const cs = st.chargeShrines[i];
+        // Charge shrines retain their mesh even when charged -- always collide
+        worldObjectColliders.push({ x: cs.x, z: cs.z, radius: 1.2 });
+      }
+      for (let i = 0; i < st.challengeShrines.length; i++) {
+        const cs = st.challengeShrines[i];
+        // Challenge shrines retain their mesh even after boss defeat -- always collide
+        worldObjectColliders.push({ x: cs.x, z: cs.z, radius: 1.5 });
+      }
 
       // === ENEMY AI ===
       // Each zombie: chases player, jumps to reach platforms, deals contact damage,
@@ -6786,41 +6875,45 @@ export function launch3DGame(options) {
           const fdz = e.group.position.z - e.fleeFromZ;
           const fdist = Math.sqrt(fdx * fdx + fdz * fdz) || 1;
           const eSpd = e.speed * st.totemSpeedMult * st.enemySpeedMult;
-          e.group.position.x += (fdx / fdist) * eSpd * dt;
-          e.group.position.z += (fdz / fdist) * eSpd * dt;
+
+          // BD-254: Atomic move-then-resolve for flee behavior
+          let newX = e.group.position.x + (fdx / fdist) * eSpd * dt;
+          let newZ = e.group.position.z + (fdz / fdist) * eSpd * dt;
+
           // Clamp to map boundaries
-          e.group.position.x = Math.max(-MAP_HALF + 0.5, Math.min(MAP_HALF - 0.5, e.group.position.x));
-          e.group.position.z = Math.max(-MAP_HALF + 0.5, Math.min(MAP_HALF - 0.5, e.group.position.z));
+          newX = Math.max(-MAP_HALF + 0.5, Math.min(MAP_HALF - 0.5, newX));
+          newZ = Math.max(-MAP_HALF + 0.5, Math.min(MAP_HALF - 0.5, newZ));
+
+          // BD-254: Full terrain + plateau + world object collision resolution
+          const resolved = resolveZombieCollisions(newX, newZ, e.group.position.y, !!e.isBoss, worldObjectColliders);
+          newX = resolved.x;
+          newZ = resolved.z;
+
+          e.group.position.x = newX;
+          e.group.position.z = newZ;
           e.group.rotation.y = Math.atan2(fdx / fdist, fdz / fdist);
         } else if (dist > 0.01) {
           const nx = dx / dist;
           const nz = dz / dist;
           const eSpd = e.speed * st.totemSpeedMult * st.enemySpeedMult;
-          e.group.position.x += nx * eSpd * gameDt;
-          e.group.position.z += nz * eSpd * gameDt;
-          // Clamp enemies to map boundaries
-          e.group.position.x = Math.max(-MAP_HALF + 0.5, Math.min(MAP_HALF - 0.5, e.group.position.x));
-          e.group.position.z = Math.max(-MAP_HALF + 0.5, Math.min(MAP_HALF - 0.5, e.group.position.z));
 
+          // BD-254: Atomic move-then-resolve
+          let newX = e.group.position.x + nx * eSpd * gameDt;
+          let newZ = e.group.position.z + nz * eSpd * gameDt;
+
+          // Clamp to map boundaries
+          newX = Math.max(-MAP_HALF + 0.5, Math.min(MAP_HALF - 0.5, newX));
+          newZ = Math.max(-MAP_HALF + 0.5, Math.min(MAP_HALF - 0.5, newZ));
+
+          // BD-254: Full terrain + plateau + world object collision resolution
+          const resolved = resolveZombieCollisions(newX, newZ, e.group.position.y, !!e.isBoss, worldObjectColliders);
+          newX = resolved.x;
+          newZ = resolved.z;
+
+          // Commit resolved position
+          e.group.position.x = newX;
+          e.group.position.z = newZ;
           e.group.rotation.y = Math.atan2(nx, nz);
-        }
-
-        // === ENEMY-TERRAIN COLLISION (BD-156: chunk-indexed via getNearbyColliders) ===
-        if (terrainState) {
-          const ER = 0.4; // enemy radius
-          const nearby = getNearbyColliders(e.group.position.x, e.group.position.z, terrainState);
-          for (let ci = 0; ci < nearby.length; ci++) {
-            const c = nearby[ci];
-            const cdx = e.group.position.x - c.x;
-            const cdz = e.group.position.z - c.z;
-            const cDist = Math.sqrt(cdx * cdx + cdz * cdz);
-            const minDist = ER + c.radius;
-            if (cDist < minDist && cDist > 0.001) {
-              const pushDist = minDist - cDist;
-              e.group.position.x += (cdx / cDist) * pushDist;
-              e.group.position.z += (cdz / cDist) * pushDist;
-            }
-          }
         }
 
         // Platform jumping logic
