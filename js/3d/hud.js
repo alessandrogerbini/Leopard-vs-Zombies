@@ -226,6 +226,11 @@ export function drawHUD(ctx, s, deps) {
       ctx.fillStyle = '#222'; ctx.fillRect(W / 2 - barW / 2, 46, barW, barH);
       ctx.fillStyle = pw.def.color;
       ctx.fillRect(W / 2 - barW / 2, 46, barW * (pw.timer / pw.def.duration), barH);
+      // BD-253: Show powerup effect subtitle for clarity
+      if (pw.def.id === 'giantGrowth') {
+        ctx.fillStyle = '#ffcc00'; ctx.font = 'bold 14px ' + GAME_FONT;
+        ctx.fillText('DMG x2', W / 2, 72);
+      }
     }
 
     // --- Equipped Items (bottom-left) ---
