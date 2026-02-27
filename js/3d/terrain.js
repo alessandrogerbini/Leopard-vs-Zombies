@@ -692,6 +692,9 @@ export function generateChunk(cx, cz, scene, ts) {
     const logDec = { meshes, x: dx, z: dz };
     ts.decorations.push(logDec);
     ts.decorationsByChunk.get(key).push(logDec);
+    // BD-254: Add collision for fallen logs (r=0.8 approximates center bulk of elongated shape)
+    if (!ts.collidersByChunk.has(key)) ts.collidersByChunk.set(key, []);
+    ts.collidersByChunk.get(key).push({ x: dx, z: dz, radius: 0.8 });
   }
 
   // Mushroom clusters: 0-2 per chunk
@@ -720,6 +723,9 @@ export function generateChunk(cx, cz, scene, ts) {
     const stumpDec = { meshes, x: dx, z: dz };
     ts.decorations.push(stumpDec);
     ts.decorationsByChunk.get(key).push(stumpDec);
+    // BD-254: Add collision for stumps (r=0.5 covers 0.35-0.6 width + root bulge)
+    if (!ts.collidersByChunk.has(key)) ts.collidersByChunk.set(key, []);
+    ts.collidersByChunk.get(key).push({ x: dx, z: dz, radius: 0.5 });
   }
 
   // Grass patches: 3-6 per chunk (walk-through, no collision)
