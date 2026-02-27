@@ -1356,7 +1356,7 @@ export function drawHUD(ctx, s, deps) {
       const pillW = textW + pillPad * 2;
       ctx.fillStyle = 'rgba(0,0,0,0.5)';
       ctx.beginPath();
-      // BD-249: roundRect fallback for older browsers
+      // BD-249/251: roundRect fallback for older browsers
       if (ctx.roundRect) {
         ctx.roundRect(pillX, pillY, pillW, pillH, 6);
       } else {
