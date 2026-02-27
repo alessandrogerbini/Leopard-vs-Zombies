@@ -1310,20 +1310,26 @@ export function drawHUD(ctx, s, deps) {
     ctx.textAlign = 'center';
 
     // "GAME OVER" title
+    let cursorY = 55;
     ctx.fillStyle = '#ff4444'; ctx.font = 'bold 48px ' + GAME_FONT;
-    ctx.fillText('GAME OVER', W / 2, 55);
+    ctx.fillText('GAME OVER', W / 2, cursorY);
+    cursorY += 40; // 40px after 48px title
 
     // --- Stats Panel ---
     ctx.fillStyle = '#ffcc00'; ctx.font = 'bold 24px ' + GAME_FONT;
-    ctx.fillText(`SCORE: ${s.score}`, W / 2, 95);
+    ctx.fillText(`SCORE: ${s.score}`, W / 2, cursorY);
+    cursorY += 23; // 23px after 24px score
+
     ctx.fillStyle = '#ffffff'; ctx.font = 'bold 14px ' + GAME_FONT;
-    ctx.fillText(`${animalData.name} | Level ${s.level} | Wave ${s.wave - 1}`, W / 2, 118);
+    ctx.fillText(`${animalData.name} | Level ${s.level} | Wave ${s.wave - 1}`, W / 2, cursorY);
+    cursorY += 20; // 20px after 14px info line
 
     // Time survived
     const goMins = Math.floor(s.gameTime / 60);
     const goSecs = Math.floor(s.gameTime % 60);
     ctx.fillStyle = '#88ccff'; ctx.font = 'bold 14px ' + GAME_FONT;
-    ctx.fillText(`Time: ${String(goMins).padStart(2, '0')}:${String(goSecs).padStart(2, '0')}`, W / 2, 138);
+    ctx.fillText(`Time: ${String(goMins).padStart(2, '0')}:${String(goSecs).padStart(2, '0')}`, W / 2, cursorY);
+    cursorY += 24; // 24px after time line (extra padding before defeated-by)
 
     // BD-216+232: "DEFEATED BY" line with zombie tier icon and color pill
     if (s.lastDamageSource && s.lastDamageSource.tierName) {
@@ -1339,31 +1345,38 @@ export function drawHUD(ctx, s, deps) {
       // BD-232: Zombie tier icon (left of text)
       const iconScale = 1.2 + tierIdx * 0.1;
       const iconCX = W / 2 - textW / 2 - 30 * iconScale;
-      const iconCY = 158;
+      const iconCY = cursorY;
       drawZombieTierIcon(ctx, iconCX, iconCY, iconScale, srcColor, tierIdx);
 
       // BD-232: Dark rounded pill behind tier name
       const pillPad = 10;
       const pillH = 28;
       const pillX = W / 2 - textW / 2 - pillPad;
-      const pillY = 158 - pillH / 2 - 4;
+      const pillY = cursorY - pillH / 2 - 4;
       const pillW = textW + pillPad * 2;
       ctx.fillStyle = 'rgba(0,0,0,0.5)';
       ctx.beginPath();
-      ctx.roundRect(pillX, pillY, pillW, pillH, 6);
+      // BD-249: roundRect fallback for older browsers
+      if (ctx.roundRect) {
+        ctx.roundRect(pillX, pillY, pillW, pillH, 6);
+      } else {
+        ctx.rect(pillX, pillY, pillW, pillH);
+      }
       ctx.fill();
 
       // Text on top of pill
       ctx.fillStyle = srcColor;
       ctx.font = 'bold 20px ' + GAME_FONT;
-      ctx.fillText(defText, W / 2, 158);
+      ctx.fillText(defText, W / 2, cursorY);
+      cursorY += 30; // 30px after 20px defeated-by section
     }
+
     // --- Big total kills line ---
     ctx.fillStyle = '#ffcc44'; ctx.font = 'bold 28px ' + GAME_FONT;
-    ctx.fillText(`YOU DEFEATED ${s.totalKills} ZOMBIES!`, W / 2, 175);
+    ctx.fillText(`YOU DEFEATED ${s.totalKills} ZOMBIES!`, W / 2, cursorY);
+    cursorY += 30; // 30px after 28px kills line
 
     // Kid-friendly tier breakdown (max 4 groups)
-    let tierY = 205;
     const kidGroups = [
       { label: 'Tiny', from: 0, to: 1 },
       { label: 'Big', from: 2, to: 3 },
@@ -1377,22 +1390,22 @@ export function drawHUD(ctx, s, deps) {
       }
       if (count > 0) {
         ctx.fillStyle = '#ffaa44'; ctx.font = 'bold 16px ' + GAME_FONT;
-        ctx.fillText(`${grp.label}: ${count}`, W / 2, tierY);
-        tierY += 22;
+        ctx.fillText(`${grp.label}: ${count}`, W / 2, cursorY);
+        cursorY += 22; // 22px per tier line
       }
     }
 
     // Best combo (only show if noteworthy)
     if (s.bestCombo >= 5) {
       ctx.fillStyle = '#ffaa00'; ctx.font = 'bold 13px ' + GAME_FONT;
-      ctx.fillText(`Best Combo: x${s.bestCombo}`, W / 2, tierY);
-      tierY += 18;
+      ctx.fillText(`Best Combo: x${s.bestCombo}`, W / 2, cursorY);
+      cursorY += 18; // 18px after combo
     }
 
     // --- Feedback Section ---
-    const feedbackY = tierY + 8;
+    cursorY += 8; // 8px padding before feedback
     ctx.fillStyle = '#aaaacc'; ctx.font = 'bold 20px ' + GAME_FONT;
-    ctx.fillText('Was that FUN?', W / 2, feedbackY);
+    ctx.fillText('Was that FUN?', W / 2, cursorY);
 
     const fbOptions = ['YES', 'KINDA', 'NAH'];
     const fbColors = ['#44ff44', '#ffaa44', '#ff4444'];
@@ -1403,17 +1416,17 @@ export function drawHUD(ctx, s, deps) {
       const isSelected = fi === s.feedbackSelection;
       if (isSelected) {
         ctx.fillStyle = fbColors[fi]; ctx.font = 'bold 18px ' + GAME_FONT;
-        ctx.fillText(`[${fbOptions[fi]}]`, fx, feedbackY + 26);
+        ctx.fillText(`[${fbOptions[fi]}]`, fx, cursorY + 26);
       } else {
         ctx.fillStyle = '#555'; ctx.font = 'bold 16px ' + GAME_FONT;
-        ctx.fillText(fbOptions[fi], fx, feedbackY + 26);
+        ctx.fillText(fbOptions[fi], fx, cursorY + 26);
       }
     }
     ctx.fillStyle = '#777'; ctx.font = 'bold 14px ' + GAME_FONT;
-    ctx.fillText('<  Arrow Keys to pick  >', W / 2, feedbackY + 48);
+    ctx.fillText('<  Arrow Keys to pick  >', W / 2, cursorY + 48);
 
     // --- Name Entry / Leaderboard (below feedback) ---
-    const entryY = feedbackY + 70;
+    const entryY = cursorY + 70;
 
     if (s.nameEntryActive) {
       // Name entry
