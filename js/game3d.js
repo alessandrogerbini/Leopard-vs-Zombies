@@ -6819,41 +6819,73 @@ export function launch3DGame(options) {
           const fdz = e.group.position.z - e.fleeFromZ;
           const fdist = Math.sqrt(fdx * fdx + fdz * fdz) || 1;
           const eSpd = e.speed * st.totemSpeedMult * st.enemySpeedMult;
-          e.group.position.x += (fdx / fdist) * eSpd * dt;
-          e.group.position.z += (fdz / fdist) * eSpd * dt;
+
+          // BD-252: Atomic move-then-resolve for flee behavior too
+          let newX = e.group.position.x + (fdx / fdist) * eSpd * dt;
+          let newZ = e.group.position.z + (fdz / fdist) * eSpd * dt;
+
           // Clamp to map boundaries
-          e.group.position.x = Math.max(-MAP_HALF + 0.5, Math.min(MAP_HALF - 0.5, e.group.position.x));
-          e.group.position.z = Math.max(-MAP_HALF + 0.5, Math.min(MAP_HALF - 0.5, e.group.position.z));
+          newX = Math.max(-MAP_HALF + 0.5, Math.min(MAP_HALF - 0.5, newX));
+          newZ = Math.max(-MAP_HALF + 0.5, Math.min(MAP_HALF - 0.5, newZ));
+
+          // Resolve terrain collisions
+          if (terrainState) {
+            const ER = 0.5;
+            const nearby = getNearbyColliders(newX, newZ, terrainState);
+            for (let ci = 0; ci < nearby.length; ci++) {
+              const c = nearby[ci];
+              const cdx = newX - c.x;
+              const cdz = newZ - c.z;
+              const cDist = Math.sqrt(cdx * cdx + cdz * cdz);
+              const minDist = ER + c.radius;
+              if (cDist < minDist && cDist > 0.001) {
+                const pushDist = minDist - cDist;
+                newX += (cdx / cDist) * pushDist;
+                newZ += (cdz / cDist) * pushDist;
+              }
+            }
+          }
+
+          e.group.position.x = newX;
+          e.group.position.z = newZ;
           e.group.rotation.y = Math.atan2(fdx / fdist, fdz / fdist);
         } else if (dist > 0.01) {
           const nx = dx / dist;
           const nz = dz / dist;
           const eSpd = e.speed * st.totemSpeedMult * st.enemySpeedMult;
-          e.group.position.x += nx * eSpd * gameDt;
-          e.group.position.z += nz * eSpd * gameDt;
-          // Clamp enemies to map boundaries
-          e.group.position.x = Math.max(-MAP_HALF + 0.5, Math.min(MAP_HALF - 0.5, e.group.position.x));
-          e.group.position.z = Math.max(-MAP_HALF + 0.5, Math.min(MAP_HALF - 0.5, e.group.position.z));
 
-          e.group.rotation.y = Math.atan2(nx, nz);
-        }
+          // BD-252: Atomic move-then-resolve -- calculate intended position,
+          // resolve terrain collisions, THEN commit. Prevents zombies from
+          // tunneling through obstacles across multiple frames.
+          let newX = e.group.position.x + nx * eSpd * gameDt;
+          let newZ = e.group.position.z + nz * eSpd * gameDt;
 
-        // === ENEMY-TERRAIN COLLISION (BD-156: chunk-indexed via getNearbyColliders) ===
-        if (terrainState) {
-          const ER = 0.4; // enemy radius
-          const nearby = getNearbyColliders(e.group.position.x, e.group.position.z, terrainState);
-          for (let ci = 0; ci < nearby.length; ci++) {
-            const c = nearby[ci];
-            const cdx = e.group.position.x - c.x;
-            const cdz = e.group.position.z - c.z;
-            const cDist = Math.sqrt(cdx * cdx + cdz * cdz);
-            const minDist = ER + c.radius;
-            if (cDist < minDist && cDist > 0.001) {
-              const pushDist = minDist - cDist;
-              e.group.position.x += (cdx / cDist) * pushDist;
-              e.group.position.z += (cdz / cDist) * pushDist;
+          // Clamp to map boundaries
+          newX = Math.max(-MAP_HALF + 0.5, Math.min(MAP_HALF - 0.5, newX));
+          newZ = Math.max(-MAP_HALF + 0.5, Math.min(MAP_HALF - 0.5, newZ));
+
+          // Resolve terrain collisions on the NEW position before committing
+          if (terrainState) {
+            const ER = 0.5; // BD-252: increased from 0.4 to match player feel
+            const nearby = getNearbyColliders(newX, newZ, terrainState);
+            for (let ci = 0; ci < nearby.length; ci++) {
+              const c = nearby[ci];
+              const cdx = newX - c.x;
+              const cdz = newZ - c.z;
+              const cDist = Math.sqrt(cdx * cdx + cdz * cdz);
+              const minDist = ER + c.radius;
+              if (cDist < minDist && cDist > 0.001) {
+                const pushDist = minDist - cDist;
+                newX += (cdx / cDist) * pushDist;
+                newZ += (cdz / cDist) * pushDist;
+              }
             }
           }
+
+          // Commit resolved position
+          e.group.position.x = newX;
+          e.group.position.z = newZ;
+          e.group.rotation.y = Math.atan2(nx, nz);
         }
 
         // Platform jumping logic
