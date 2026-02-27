@@ -51,19 +51,19 @@ import {
   TOTEM_COUNT, LOOT_CRATE_COUNT, MIN_SHRINE_SPACING, MAX_PLACEMENT_ATTEMPTS,
   AUGMENT_REGEN_CAP,
   WEAPON_COOLDOWN_REDUCTION_L4, LIGHTNING_CHAIN_RANGE_SQ,
-} from './3d/constants.js';
+} from './3d/constants.js?v=6';
 
 import {
   noise2D, smoothNoise, terrainHeight, getBiome, BIOME_COLORS,
   getChunkKey, createTerrainState, getNearbyColliders,
   generateChunk as terrainGenerateChunk,
   unloadChunk as terrainUnloadChunk, updateChunks as terrainUpdateChunks,
-} from './3d/terrain.js';
+} from './3d/terrain.js?v=6';
 
-import { box, clearCaches } from './3d/utils.js';
-import { buildPlayerModel, animatePlayer, updateMuscleGrowth, updateItemVisuals, buildWearableMesh, updateWearableVisuals } from './3d/player-model.js';
-import { drawHUD } from './3d/hud.js';
-import { initAudio, playSound, toggleMute, isMuted, getVolume, disposeAudio } from './3d/audio.js';
+import { box, clearCaches } from './3d/utils.js?v=6';
+import { buildPlayerModel, animatePlayer, updateMuscleGrowth, updateItemVisuals, buildWearableMesh, updateWearableVisuals } from './3d/player-model.js?v=6';
+import { drawHUD } from './3d/hud.js?v=6';
+import { initAudio, playSound, toggleMute, isMuted, getVolume, disposeAudio } from './3d/audio.js?v=6';
 
 
 /**
@@ -4768,6 +4768,7 @@ export function launch3DGame(options) {
         st.showFullMap = false;
         st.upgradeMenu = false;       // BD-251: force-clear menus
         st.paused = false;            // BD-251: unpause for game-over
+        st.pauseMenu = false;         // BD-256: clear pause menu too
         st.chargeShrineMenu = false;  // BD-251: clear shrine menu
         st.wearableCompare = false;   // BD-251: clear wearable compare
         inputState.enterReleasedSinceGameOver = false;
@@ -7875,6 +7876,7 @@ export function launch3DGame(options) {
         // the death sequence or overlaying the death animation.
         st.upgradeMenu = false;
         st.paused = false;
+        st.pauseMenu = false;
         st.chargeShrineMenu = false;
         st.wearableCompare = false;
         st.deathSequenceTimer = 1.5;
