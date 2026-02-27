@@ -1350,7 +1350,11 @@ export function drawHUD(ctx, s, deps) {
       const pillW = textW + pillPad * 2;
       ctx.fillStyle = 'rgba(0,0,0,0.5)';
       ctx.beginPath();
-      ctx.roundRect(pillX, pillY, pillW, pillH, 6);
+      if (ctx.roundRect) {
+        ctx.roundRect(pillX, pillY, pillW, pillH, 6);
+      } else {
+        ctx.rect(pillX, pillY, pillW, pillH);
+      }
       ctx.fill();
 
       // Text on top of pill

@@ -4745,6 +4745,39 @@ export function launch3DGame(options) {
       }
     }
 
+    // BD-251: Death sequence tick runs OUTSIDE the pause gate.
+    // Previously lived at lines 7834-7857 inside !st.paused, which meant any
+    // menu (upgrade, shrine, wearable) that set st.paused=true would freeze
+    // the death timer permanently, preventing the game-over screen.
+    if (st.deathSequence && !st.gameOver) {
+      st.deathSequenceTimer -= realDt;
+      const progress = 1 - (st.deathSequenceTimer / 1.5);
+      // Ramp: first 33% decelerates from 1.0 to 0.15, then holds at 0.15
+      st.deathTimeScale = progress < 0.33
+        ? 1.0 - (progress / 0.33) * 0.85
+        : 0.15;
+      // BD-233: Slow-mo audio at 1.3s remaining
+      if (st.deathSequenceTimer <= 1.3 && !st._deathSlowmoPlayed) {
+        st._deathSlowmoPlayed = true;
+        playSound('sfx_death_slowmo');
+      }
+
+      if (st.deathSequenceTimer <= 0) {
+        st.gameOver = true;
+        st.deathSequence = false;
+        st.showFullMap = false;
+        st.upgradeMenu = false;       // BD-251: force-clear menus
+        st.paused = false;            // BD-251: unpause for game-over
+        st.chargeShrineMenu = false;  // BD-251: clear shrine menu
+        st.wearableCompare = false;   // BD-251: clear wearable compare
+        inputState.enterReleasedSinceGameOver = false;
+        st.nameEntryActive = true;
+        st.nameEntry = '';
+        st.nameEntryInputCooldown = 0.3;
+        // playSound('sfx_death_sting'); // TODO: Sound Pack Beta
+      }
+    }
+
     if (!st.paused && !st.gameOver) {
       st.gameTime += gameDt; // BD-228: game time slows during death sequence
 
@@ -7805,6 +7838,13 @@ export function launch3DGame(options) {
       if (st.hp <= 0 && !st.deathSequence && !st.gameOver) {
         st.hp = 0;
         st.deathSequence = true;
+        // BD-251: Force-close all menus -- death overrides everything.
+        // Prevents upgrade menu / shrine / wearable compare from blocking
+        // the death sequence or overlaying the death animation.
+        st.upgradeMenu = false;
+        st.paused = false;
+        st.chargeShrineMenu = false;
+        st.wearableCompare = false;
         st.deathSequenceTimer = 1.5;
         st.deathTimeScale = 1.0;
         // Capture killer position for camera zoom (BD-229)
@@ -7830,31 +7870,6 @@ export function launch3DGame(options) {
         inputState.powerAttackReady = false;
       }
 
-      // BD-228: Death sequence tick — slow-motion ramp then transition to game-over
-      if (st.deathSequence && !st.gameOver) {
-        st.deathSequenceTimer -= realDt;
-        const progress = 1 - (st.deathSequenceTimer / 1.5);
-        // Ramp: first 33% decelerates from 1.0 to 0.15, then holds at 0.15
-        st.deathTimeScale = progress < 0.33
-          ? 1.0 - (progress / 0.33) * 0.85
-          : 0.15;
-        // BD-233: Slow-mo audio at 1.3s remaining
-        if (st.deathSequenceTimer <= 1.3 && !st._deathSlowmoPlayed) {
-          st._deathSlowmoPlayed = true;
-          playSound('sfx_death_slowmo');
-        }
-
-        if (st.deathSequenceTimer <= 0) {
-          st.gameOver = true;
-          st.deathSequence = false;
-          st.showFullMap = false;
-          inputState.enterReleasedSinceGameOver = false;
-          st.nameEntryActive = true;
-          st.nameEntry = '';
-          st.nameEntryInputCooldown = 0.3;
-          // playSound('sfx_death_sting'); // TODO: Sound Pack Beta
-        }
-      }
     }
 
     // === CAMERA + RENDER (runs even when paused/game over) ===
