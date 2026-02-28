@@ -20,8 +20,8 @@
  *               getChunkKey, createTerrainState, getNearbyColliders, generateChunk, unloadChunk, updateChunks
  */
 
-import { CHUNK_SIZE, MAP_HALF } from './constants.js';
-import { getCachedGeo, getCachedMat } from './utils.js';
+import { CHUNK_SIZE, MAP_HALF } from './constants.js?v=12';
+import { getCachedGeo, getCachedMat } from './utils.js?v=12';
 
 // === PURE NOISE FUNCTIONS ===
 

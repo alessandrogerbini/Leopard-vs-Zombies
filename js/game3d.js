@@ -51,19 +51,19 @@ import {
   TOTEM_COUNT, LOOT_CRATE_COUNT, MIN_SHRINE_SPACING, MAX_PLACEMENT_ATTEMPTS,
   AUGMENT_REGEN_CAP,
   WEAPON_COOLDOWN_REDUCTION_L4, LIGHTNING_CHAIN_RANGE_SQ,
-} from './3d/constants.js?v=10';
+} from './3d/constants.js?v=12';
 
 import {
   noise2D, smoothNoise, terrainHeight, getBiome, BIOME_COLORS,
   getChunkKey, createTerrainState, getNearbyColliders,
   generateChunk as terrainGenerateChunk,
   unloadChunk as terrainUnloadChunk, updateChunks as terrainUpdateChunks,
-} from './3d/terrain.js?v=10';
+} from './3d/terrain.js?v=12';
 
-import { box, clearCaches } from './3d/utils.js?v=10';
-import { buildPlayerModel, animatePlayer, updateMuscleGrowth, updateItemVisuals, buildWearableMesh, updateWearableVisuals } from './3d/player-model.js?v=10';
-import { drawHUD } from './3d/hud.js?v=10';
-import { initAudio, playSound, toggleMute, isMuted, getVolume, disposeAudio } from './3d/audio.js?v=10';
+import { box, clearCaches } from './3d/utils.js?v=12';
+import { buildPlayerModel, animatePlayer, updateMuscleGrowth, updateItemVisuals, buildWearableMesh, updateWearableVisuals } from './3d/player-model.js?v=12';
+import { drawHUD } from './3d/hud.js?v=12';
+import { initAudio, playSound, toggleMute, isMuted, getVolume, disposeAudio } from './3d/audio.js?v=12';
 
 
 /**
@@ -950,7 +950,7 @@ export function launch3DGame(options) {
         e.stopPropagation();
         return;
       }
-    } else if (!st.gameOver && !st.deathSequence && !st.upgradeMenu && !st.pauseMenu && !st.chargeShrineMenu) {
+    } else if (!st.gameOver && !st.deathSequence && !st.upgradeMenu && !st.pauseMenu && !st.chargeShrineMenu && !st.itemFanfare) {
       // Normal gameplay — Enter/NumpadEnter/B handled by power attack in game loop via keys3d
       // Escape opens pause menu (BD-228: disabled during death sequence)
       if (e.code === 'Escape') {
