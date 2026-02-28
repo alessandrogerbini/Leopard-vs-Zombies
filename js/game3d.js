@@ -2914,6 +2914,7 @@ export function launch3DGame(options) {
     if (w.level >= 1) chains++;
     if (w.level >= 3) chains++;
     if (w.level >= 5) chains += 2;
+    chains += getHowlBonusProj();
     return chains;
   }
 
@@ -3214,12 +3215,16 @@ export function launch3DGame(options) {
    * Fire a weapon, creating appropriate visuals and dealing damage.
    * Each weapon type has a unique attack pattern:
    *
-   * - **clawSwipe**: 3 arc slash lines fanning from player; hits all enemies in range (melee AoE).
-   * - **boneToss**: Spinning T-shaped bone projectiles aimed at nearest enemy; spread for multi-shot.
-   * - **poisonCloud**: Swirling green particle cloud placed at enemy position; deals DoT over duration.
-   * - **lightningBolt**: Zigzag bolt segments with glow impacts; chains to nearby unhit enemies.
-   * - **fireball**: Glowing core + outer glow with flame trail; explodes on impact or timeout.
-   * - **boomerang**: Cross-shaped disc that arcs outward along a sine path and returns; pierces enemies.
+   * - **clawSwipe**: Arc slash lines fanning from player; hits all enemies in range (melee AoE). Arcane Howl adds arcs.
+   * - **boneToss**: Spinning T-shaped bone projectiles aimed at nearest enemy; spread for multi-shot. Arcane Howl adds projectiles.
+   * - **poisonCloud**: Swirling green particle clouds placed at enemy positions; deals DoT over duration. Arcane Howl adds clouds.
+   * - **lightningBolt**: Zigzag bolt segments with glow impacts; chains to nearby unhit enemies. Arcane Howl adds chains.
+   * - **fireball**: Glowing core + outer glow with flame trail; explodes on impact or timeout. Arcane Howl adds fireballs.
+   * - **boomerang**: Cross-shaped disc that arcs outward along a sine path and returns; pierces enemies. Arcane Howl adds discs.
+   * - **mudBomb**: Arcing bomb that explodes on impact and leaves a slow zone. Arcane Howl adds bombs.
+   * - **beehiveLauncher**: Fires hive projectile that spawns chasing bees on arrival. Arcane Howl adds bees.
+   * - **snowballTurret**: Spawns orbiting turrets that fire at enemies. Arcane Howl adds max turrets.
+   * - **stinkLine**: Damaging trail segments at player's path. Arcane Howl adds parallel trails.
    * - **turdMine**: Stationary brown mine dropped at player position; detonates on proximity, AoE damage + slow.
    *
    * @param {{typeId: string, level: number, cooldownTimer: number}} w - The weapon instance to fire.
@@ -3243,12 +3248,14 @@ export function launch3DGame(options) {
     else playSound('sfx_weapon_projectile');
 
     if (w.typeId === 'clawSwipe') {
-      // CLAW SWIPE: Melee AoE — creates 3 arc slash visuals fanning from player facing direction,
+      // CLAW SWIPE: Melee AoE — creates arc slash visuals fanning from player facing direction,
       // then damages ALL enemies within range (no targeting needed).
+      // Arcane Howl adds extra slash arcs.
       const facing = playerGroup.rotation.y;
       const slashGroup = new THREE.Group();
-      for (let s = -1; s <= 1; s++) {
-        const a = facing + s * 0.4;
+      const slashCount = 3 + getHowlBonusProj();
+      for (let s = 0; s < slashCount; s++) {
+        const a = facing + (s - (slashCount - 1) / 2) * 0.4;
         const len = range;
         const slashMat = new THREE.MeshBasicMaterial({ color: 0xff8844, transparent: true, opacity: 0.7 });
         const slashMesh = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.15, len), slashMat);
@@ -3294,14 +3301,35 @@ export function launch3DGame(options) {
         st.weaponProjectiles.push({ mesh: boneGroup, vx, vz, dmg, life: 2, pierce: false, type: 'bone', ricochetsLeft: st.items.bouncyBall });
       }
     } else if (w.typeId === 'poisonCloud') {
-      // POISON CLOUD: AoE DoT — places a swirling green particle cloud at the target enemy's position.
+      // POISON CLOUD: AoE DoT — places swirling green particle clouds at enemy positions.
       // Cloud persists for its duration, dealing damage-per-second to all enemies within its radius.
-      const target = findNearestEnemy(range);
-      if (target) {
-        const cx = target.group.position.x;
-        const cz = target.group.position.z;
-        const cloudSize = 2 * (1 + (w.level >= 2 ? 0.25 : 0));
-        const cloudDuration = 3 * (1 + (w.level >= 3 ? 0.3 : 0));
+      // Arcane Howl adds extra clouds targeting nearby enemies.
+      const cloudCount = 1 + getHowlBonusProj();
+      const cloudSize = 2 * (1 + (w.level >= 2 ? 0.25 : 0));
+      const cloudDuration = 3 * (1 + (w.level >= 3 ? 0.3 : 0));
+      // Gather N nearest enemies for cloud placement
+      const rangeSqPC = range * range;
+      const candidates = [];
+      for (const e of st.enemies) {
+        if (!e.alive || e.dying) continue;
+        const dx = st.playerX - e.group.position.x;
+        const dz = st.playerZ - e.group.position.z;
+        const distSq = dx * dx + dz * dz;
+        if (distSq < rangeSqPC) candidates.push({ enemy: e, distSq });
+      }
+      candidates.sort((a, b) => a.distSq - b.distSq);
+      for (let ci = 0; ci < cloudCount; ci++) {
+        let cx, cz;
+        if (ci < candidates.length) {
+          cx = candidates[ci].enemy.group.position.x;
+          cz = candidates[ci].enemy.group.position.z;
+        } else if (candidates.length > 0) {
+          // More clouds than enemies: place extras with slight random offset from nearest
+          cx = candidates[0].enemy.group.position.x + (Math.random() - 0.5) * 2;
+          cz = candidates[0].enemy.group.position.z + (Math.random() - 0.5) * 2;
+        } else {
+          break; // No enemies at all
+        }
         const cloudGroup = new THREE.Group();
         const ch = terrainHeight(cx, cz);
         // Multiple smaller particles instead of one big box
@@ -3435,27 +3463,34 @@ export function launch3DGame(options) {
     } else if (w.typeId === 'mudBomb') {
       // MUD BOMB: Arcing projectile that explodes on impact and leaves a slow zone.
       // Similar to fireball but with Y-velocity arc and ground slow patch.
+      // Arcane Howl adds extra bombs with slight angle spread (like boneToss).
+      const count = getProjectileCount(w);
       const target = findNearestEnemy(range);
       if (target) {
         const dx = target.group.position.x - st.playerX;
         const dz = target.group.position.z - st.playerZ;
         const d = Math.sqrt(dx * dx + dz * dz) || 1;
-        const mbGroup = new THREE.Group();
-        const mudMat = new THREE.MeshLambertMaterial({ color: 0x8B6914 });
-        mbGroup.add(new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.3, 0.3), mudMat));
-        const splatMat = new THREE.MeshBasicMaterial({ color: 0x6B4914, transparent: true, opacity: 0.5 });
-        mbGroup.add(new THREE.Mesh(new THREE.BoxGeometry(0.45, 0.45, 0.45), splatMat));
-        mbGroup.position.set(st.playerX, st.playerY + 0.8, st.playerZ);
-        scene.add(mbGroup);
         const slowRadius = 2.5 * (1 + (w.level >= 2 ? 0.3 : 0)) * (w.level >= 5 ? 1.5 : 1);
         const slowDuration = 3 * (w.level >= 5 ? 1.5 : 1);
         const speed = 8;
         const arcVY = d * 0.4 + 3;
-        st.weaponProjectiles.push({
-          mesh: mbGroup, vx: (dx / d) * speed, vz: (dz / d) * speed, vy: arcVY,
-          dmg, life: 3, pierce: false, type: 'mudBomb',
-          slowRadius, slowDuration
-        });
+        for (let i = 0; i < count; i++) {
+          const spread = (i - (count - 1) / 2) * 0.3;
+          const vx = (dx / d) * speed + spread * (-dz / d);
+          const vz = (dz / d) * speed + spread * (dx / d);
+          const mbGroup = new THREE.Group();
+          const mudMat = new THREE.MeshLambertMaterial({ color: 0x8B6914 });
+          mbGroup.add(new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.3, 0.3), mudMat));
+          const splatMat = new THREE.MeshBasicMaterial({ color: 0x6B4914, transparent: true, opacity: 0.5 });
+          mbGroup.add(new THREE.Mesh(new THREE.BoxGeometry(0.45, 0.45, 0.45), splatMat));
+          mbGroup.position.set(st.playerX, st.playerY + 0.8, st.playerZ);
+          scene.add(mbGroup);
+          st.weaponProjectiles.push({
+            mesh: mbGroup, vx, vz, vy: arcVY,
+            dmg, life: 3, pierce: false, type: 'mudBomb',
+            slowRadius, slowDuration
+          });
+        }
       }
     } else if (w.typeId === 'beehiveLauncher') {
       // BEEHIVE LAUNCHER: Fires a beehive projectile toward nearest enemy.
@@ -3478,6 +3513,7 @@ export function launch3DGame(options) {
         if (w.level >= 1) beeCount += 0; // base 3
         if (w.level >= 2) beeCount += 1;
         if (w.level >= 4) beeCount += 2;
+        beeCount += getHowlBonusProj();
         const beeDuration = 4 * (1 + (w.level >= 3 ? 0.3 : 0));
         st.weaponProjectiles.push({
           mesh: hiveGroup, vx: (dx / d) * 10, vz: (dz / d) * 10,
@@ -3495,6 +3531,7 @@ export function launch3DGame(options) {
       let maxTurrets = 1;
       if (w.level >= 2) maxTurrets++;
       if (w.level >= 5) maxTurrets++;
+      maxTurrets += getHowlBonusProj();
       if (activeTurrets < maxTurrets) {
         const turretGroup = new THREE.Group();
         const bodyMat = new THREE.MeshLambertMaterial({ color: 0x88ccff });
@@ -3515,24 +3552,35 @@ export function launch3DGame(options) {
         });
       }
     } else if (w.typeId === 'stinkLine') {
-      // STINK LINE: Leaves a damaging trail segment at the player's previous position.
+      // STINK LINE: Leaves damaging trail segments at the player's previous position.
+      // Arcane Howl adds extra trails with small lateral offset perpendicular to facing.
+      const trailCount = 1 + getHowlBonusProj();
       const trailSize = 0.5 * (1 + (w.level >= 4 ? 0.5 : 0));
       const trailDuration = 3 * (1 + (w.level >= 2 ? 0.25 : 0));
       const trailX = st._prevX || st.playerX;
       const trailZ = st._prevZ || st.playerZ;
-      const gh = getGroundAt(trailX, trailZ);
-      const trailMesh = new THREE.Mesh(
-        new THREE.BoxGeometry(trailSize, 0.3, trailSize),
-        new THREE.MeshBasicMaterial({ color: 0x44cc44, transparent: true, opacity: 0.4 })
-      );
-      trailMesh.position.set(trailX, gh + 0.15, trailZ);
-      scene.add(trailMesh);
       const poisonDoT = w.level >= 5;
-      st.weaponEffects.push({
-        mesh: trailMesh, x: trailX, z: trailZ, radius: trailSize * 0.5,
-        dmgPerSec: dmg, life: trailDuration, type: 'stinkTrail',
-        dmgTickTimer: 0, poisonDoT
-      });
+      // Compute perpendicular direction for lateral offset
+      const facing = playerGroup.rotation.y;
+      const perpX = Math.cos(facing);
+      const perpZ = -Math.sin(facing);
+      for (let ti = 0; ti < trailCount; ti++) {
+        const offset = (ti - (trailCount - 1) / 2) * 0.5;
+        const tx = trailX + perpX * offset;
+        const tz = trailZ + perpZ * offset;
+        const gh = getGroundAt(tx, tz);
+        const trailMesh = new THREE.Mesh(
+          new THREE.BoxGeometry(trailSize, 0.3, trailSize),
+          new THREE.MeshBasicMaterial({ color: 0x44cc44, transparent: true, opacity: 0.4 })
+        );
+        trailMesh.position.set(tx, gh + 0.15, tz);
+        scene.add(trailMesh);
+        st.weaponEffects.push({
+          mesh: trailMesh, x: tx, z: tz, radius: trailSize * 0.5,
+          dmgPerSec: dmg, life: trailDuration, type: 'stinkTrail',
+          dmgTickTimer: 0, poisonDoT
+        });
+      }
     } else if (w.typeId === 'turdMine') {
       // TURD MINE: Drops a stationary mine at the player's current position.
       // Mine sits on the ground and detonates when an enemy walks within range,
