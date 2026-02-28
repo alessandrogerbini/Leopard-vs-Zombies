@@ -1168,14 +1168,15 @@ export function launch3DGame(options) {
         const stepY = baseH + stepH * si + stepH / 2;
         let sx, sz, sw, sd;
         const stepDepth = 1.0;
+        const reverseI = stepCount - 1 - si;
         if (rampSide === 0) { // front (+Z)
-          sx = px; sz = pz + pd / 2 + stepDepth * (si + 0.5); sw = 2; sd = stepDepth;
+          sx = px; sz = pz + pd / 2 + stepDepth * (reverseI + 0.5); sw = 2; sd = stepDepth;
         } else if (rampSide === 1) { // back (-Z)
-          sx = px; sz = pz - pd / 2 - stepDepth * (si + 0.5); sw = 2; sd = stepDepth;
+          sx = px; sz = pz - pd / 2 - stepDepth * (reverseI + 0.5); sw = 2; sd = stepDepth;
         } else if (rampSide === 2) { // left (-X)
-          sx = px - pw / 2 - stepDepth * (si + 0.5); sz = pz; sw = stepDepth; sd = 2;
+          sx = px - pw / 2 - stepDepth * (reverseI + 0.5); sz = pz; sw = stepDepth; sd = 2;
         } else { // right (+X)
-          sx = px + pw / 2 + stepDepth * (si + 0.5); sz = pz; sw = stepDepth; sd = 2;
+          sx = px + pw / 2 + stepDepth * (reverseI + 0.5); sz = pz; sw = stepDepth; sd = 2;
         }
         const stepGeo = new THREE.BoxGeometry(sw, stepH, sd);
         const stepMesh = new THREE.Mesh(stepGeo, stepMat);
