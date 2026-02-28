@@ -847,6 +847,102 @@ const WEARABLE_VISUALS = {
     { w: 0.10, h: 0.04, d: 0.10, color: 0xaaaaaa, x: -0.18, y: -0.06, z: 0.04 },
     { w: 0.10, h: 0.04, d: 0.10, color: 0xaaaaaa, x: 0.18, y: -0.06, z: 0.04 },
   ],
+  bumbleHelmet: [
+    // Yellow dome helmet on head
+    { w: 0.52, h: 0.28, d: 0.50, color: 0xffcc00, x: 0, y: 1.82, z: 0 },
+    // Black stripe across middle
+    { w: 0.53, h: 0.08, d: 0.51, color: 0x222222, x: 0, y: 1.80, z: 0 },
+    // Second black stripe near top
+    { w: 0.44, h: 0.06, d: 0.42, color: 0x222222, x: 0, y: 1.92, z: 0 },
+    // Left antenna stalk
+    { w: 0.04, h: 0.18, d: 0.04, color: 0x222222, x: -0.10, y: 2.04, z: 0 },
+    // Right antenna stalk
+    { w: 0.04, h: 0.18, d: 0.04, color: 0x222222, x: 0.10, y: 2.04, z: 0 },
+    // Left antenna tip (yellow ball)
+    { w: 0.08, h: 0.08, d: 0.08, color: 0xffdd44, x: -0.10, y: 2.16, z: 0 },
+    // Right antenna tip (yellow ball)
+    { w: 0.08, h: 0.08, d: 0.08, color: 0xffdd44, x: 0.10, y: 2.16, z: 0 },
+  ],
+  crownOfClaws: [
+    // Gold band base
+    { w: 0.50, h: 0.08, d: 0.48, color: 0xffd700, x: 0, y: 1.80, z: 0 },
+    // Front claw spike (center, tallest)
+    { w: 0.06, h: 0.22, d: 0.06, color: 0xffd700, x: 0, y: 1.96, z: 0.18 },
+    // Front-left claw spike
+    { w: 0.06, h: 0.16, d: 0.06, color: 0xffcc00, x: -0.16, y: 1.92, z: 0.12 },
+    // Front-right claw spike
+    { w: 0.06, h: 0.16, d: 0.06, color: 0xffcc00, x: 0.16, y: 1.92, z: 0.12 },
+    // Back-left claw spike
+    { w: 0.06, h: 0.14, d: 0.06, color: 0xcc9900, x: -0.14, y: 1.90, z: -0.12 },
+    // Back-right claw spike
+    { w: 0.06, h: 0.14, d: 0.06, color: 0xcc9900, x: 0.14, y: 1.90, z: -0.12 },
+    // Dark gold accent band
+    { w: 0.48, h: 0.04, d: 0.46, color: 0xcc9900, x: 0, y: 1.78, z: 0 },
+  ],
+  knightPlate: [
+    // Main chest plate (silver-gray)
+    { w: 0.82, h: 0.58, d: 0.52, color: 0xbbbbcc, x: 0, y: 0.85, z: 0.02 },
+    // Left shoulder pauldron
+    { w: 0.24, h: 0.18, d: 0.22, color: 0x8888aa, x: -0.44, y: 1.10, z: 0 },
+    // Right shoulder pauldron
+    { w: 0.24, h: 0.18, d: 0.22, color: 0x8888aa, x: 0.44, y: 1.10, z: 0 },
+    // Center cross accent (darker metal)
+    { w: 0.04, h: 0.30, d: 0.04, color: 0x666688, x: 0, y: 0.88, z: 0.26 },
+    { w: 0.18, h: 0.04, d: 0.04, color: 0x666688, x: 0, y: 0.95, z: 0.26 },
+    // Highlight edge at top
+    { w: 0.80, h: 0.04, d: 0.50, color: 0xddddee, x: 0, y: 1.14, z: 0.02 },
+  ],
+  dragonScale: [
+    // Main green scale armor
+    { w: 0.84, h: 0.60, d: 0.52, color: 0x44aa44, x: 0, y: 0.85, z: 0.02 },
+    // Overlapping scale rows (darker green, offset)
+    { w: 0.80, h: 0.08, d: 0.50, color: 0x338833, x: 0, y: 0.72, z: 0.02 },
+    { w: 0.78, h: 0.08, d: 0.48, color: 0x338833, x: 0.04, y: 0.84, z: 0.02 },
+    { w: 0.76, h: 0.08, d: 0.46, color: 0x338833, x: -0.04, y: 0.96, z: 0.02 },
+    // Yellow-green glowing trim at top
+    { w: 0.82, h: 0.04, d: 0.50, color: 0x88ff44, x: 0, y: 1.14, z: 0.02 },
+    // Yellow-green glowing trim at bottom
+    { w: 0.82, h: 0.04, d: 0.50, color: 0x88ff44, x: 0, y: 0.56, z: 0.02 },
+  ],
+  rocketBoots: [
+    // Orange boot shafts
+    { w: 0.24, h: 0.18, d: 0.28, color: 0xff6600, x: -0.18, y: 0.08, z: 0.02 },
+    { w: 0.24, h: 0.18, d: 0.28, color: 0xff6600, x: 0.18, y: 0.08, z: 0.02 },
+    // Exhaust nozzles (dark gray at back of boots)
+    { w: 0.12, h: 0.10, d: 0.06, color: 0x444444, x: -0.18, y: 0.04, z: -0.14 },
+    { w: 0.12, h: 0.10, d: 0.06, color: 0x444444, x: 0.18, y: 0.04, z: -0.14 },
+    // Flame exhaust (red)
+    { w: 0.10, h: 0.08, d: 0.08, color: 0xff2200, x: -0.18, y: -0.02, z: -0.16 },
+    { w: 0.10, h: 0.08, d: 0.08, color: 0xff2200, x: 0.18, y: -0.02, z: -0.16 },
+    // Inner flame (yellow-orange)
+    { w: 0.06, h: 0.10, d: 0.06, color: 0xffcc00, x: -0.18, y: -0.04, z: -0.16 },
+    { w: 0.06, h: 0.10, d: 0.06, color: 0xffcc00, x: 0.18, y: -0.04, z: -0.16 },
+  ],
+  shadowSteps: [
+    // Dark purple boot shafts
+    { w: 0.24, h: 0.16, d: 0.28, color: 0x332244, x: -0.18, y: 0.06, z: 0.02 },
+    { w: 0.24, h: 0.16, d: 0.28, color: 0x332244, x: 0.18, y: 0.06, z: 0.02 },
+    // Wide shadowy soles
+    { w: 0.28, h: 0.06, d: 0.34, color: 0x221133, x: -0.18, y: 0.00, z: 0.04 },
+    { w: 0.28, h: 0.06, d: 0.34, color: 0x221133, x: 0.18, y: 0.00, z: 0.04 },
+    // Purple glow accents on sides
+    { w: 0.04, h: 0.12, d: 0.04, color: 0x8844ff, x: -0.32, y: 0.08, z: 0.02 },
+    { w: 0.04, h: 0.12, d: 0.04, color: 0x8844ff, x: 0.32, y: 0.08, z: 0.02 },
+    // Purple glow accents on toes
+    { w: 0.06, h: 0.04, d: 0.04, color: 0x8844ff, x: -0.18, y: 0.04, z: 0.18 },
+    { w: 0.06, h: 0.04, d: 0.04, color: 0x8844ff, x: 0.18, y: 0.04, z: 0.18 },
+  ],
+  gravityStompers: [
+    // Chunky purple boot shafts (wider than normal)
+    { w: 0.28, h: 0.20, d: 0.30, color: 0xaa44ff, x: -0.18, y: 0.08, z: 0.02 },
+    { w: 0.28, h: 0.20, d: 0.30, color: 0xaa44ff, x: 0.18, y: 0.08, z: 0.02 },
+    // Extra-wide heavy soles
+    { w: 0.34, h: 0.08, d: 0.38, color: 0x7722cc, x: -0.18, y: -0.02, z: 0.04 },
+    { w: 0.34, h: 0.08, d: 0.38, color: 0x7722cc, x: 0.18, y: -0.02, z: 0.04 },
+    // Bright glow strip on sole bottom
+    { w: 0.30, h: 0.04, d: 0.34, color: 0xcc88ff, x: -0.18, y: -0.06, z: 0.04 },
+    { w: 0.30, h: 0.04, d: 0.34, color: 0xcc88ff, x: 0.18, y: -0.06, z: 0.04 },
+  ],
 };
 
 /**
