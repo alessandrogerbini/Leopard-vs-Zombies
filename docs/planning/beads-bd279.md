@@ -1,5 +1,7 @@
 # BD-279: Zombie colors shift during gameplay — same-tier zombies appear different shades
 
+**Status: OPEN — See also BD-281 (yellow vest artifacts from hurt flash)**
+
 **Date:** 2026-02-28
 **Source:** Manual playthrough (screenshot attached). Same-tier zombies display noticeably different colors/shading as the game progresses. Some appear pale gray/white while others are darker. Looks like an unintended lighting change. Confusing because players may assume color = tier or status, when it's actually a visual artifact.
 

@@ -158,14 +158,14 @@ export const WEAPON_TYPES = {
  */
 export const HOWL_TYPES = {
   power: { id: 'power', name: 'POWER HOWL', color: '#ff4444', desc: 'Hit harder!', maxLevel: 5 },
-  haste: { id: 'haste', name: 'HASTE HOWL', color: '#ffaa44', desc: 'Shorter cooldowns!', maxLevel: 5 },
+  haste: { id: 'haste', name: 'HASTE HOWL', color: '#ffaa44', desc: 'Attack faster!', maxLevel: 5 },
   arcane: { id: 'arcane', name: 'ARCANE HOWL', color: '#aa44ff', desc: 'Shoot more stuff!', maxLevel: 3 },
   vitality: { id: 'vitality', name: 'VITALITY HOWL', color: '#44ff44', desc: 'More hearts!', maxLevel: 5 },
   fortune: { id: 'fortune', name: 'FORTUNE HOWL', color: '#ffff44', desc: 'Level up faster!', maxLevel: 3 },
   range: { id: 'range', name: 'RANGE HOWL', color: '#44aaff', desc: 'Reach farther!', maxLevel: 5 },
   thorns: { id: 'thorns', name: 'THORNS HOWL', color: '#cc4422', desc: 'Hurt them back!', maxLevel: 3 },
   magnet: { id: 'magnet', name: 'MAGNET HOWL', color: '#cccccc', desc: 'Grab stuff easier!', maxLevel: 4 },
-  frenzy: { id: 'frenzy', name: 'FRENZY HOWL', color: '#ff44ff', desc: 'Attack speed up!', maxLevel: 4 },
+  frenzy: { id: 'frenzy', name: 'FRENZY HOWL', color: '#ff44ff', desc: 'Attack faster!', maxLevel: 4 },
   guardian: { id: 'guardian', name: 'GUARDIAN HOWL', color: '#44ff88', desc: 'Tougher and heal!', maxLevel: 3 },
 };
 
@@ -209,8 +209,8 @@ export const POWERUPS_3D = [
   { id: 'earthquakeStomp', name: 'EARTHQUAKE STOMP', color: '#8B6914', colorHex: 0x8B6914, desc: 'Landings Create Shockwaves!', duration: 15, apply: s => { s.earthquakeStomp = true; }, remove: s => { s.earthquakeStomp = false; } },
   { id: 'vampireFangs', name: 'VAMPIRE FANGS', color: '#6a0dad', colorHex: 0x6a0dad, desc: 'Passive HP Regen!', duration: 20, apply: s => { s.vampireHeal = true; }, remove: s => { s.vampireHeal = false; } },
   { id: 'lightningShield', name: 'LIGHTNING SHIELD', color: '#44aaff', colorHex: 0x44aaff, desc: 'Zap Nearby Enemies!', duration: 15, apply: s => { s.lightningShield = true; s.lightningShieldTimer = 0; }, remove: s => { s.lightningShield = false; } },
-  { id: 'giantGrowth', name: 'GIANT GROWTH', color: '#22cc44', colorHex: 0x22cc44, desc: '2x Size & Dmg, -15% Speed', duration: 15, apply: s => { s.dmgBoost = 2; s.speedBoost = 0.85; s.giantMode = true; }, remove: s => { s.dmgBoost = 1; s.speedBoost = 1; s.giantMode = false; } },
-  { id: 'timeWarp', name: 'TIME WARP', color: '#9944ff', colorHex: 0x9944ff, desc: 'Slow All Zombies!', duration: 10, apply: s => { s.timeWarp = true; for (const e of s.enemies) e.speed *= 0.25; }, remove: s => { s.timeWarp = false; for (const e of s.enemies) e.speed *= 4; } },
+  { id: 'giantGrowth', name: 'GIANT GROWTH', color: '#22cc44', colorHex: 0x22cc44, desc: '2x Size & Dmg, -30% Speed', duration: 15, apply: s => { s.dmgBoost = 2; s.speedBoost = 0.7; s.giantMode = true; }, remove: s => { s.dmgBoost = 1; s.speedBoost = 1; s.giantMode = false; } },
+  { id: 'timeWarp', name: 'TIME WARP', color: '#9944ff', colorHex: 0x9944ff, desc: 'Slow All Zombies!', duration: 10, apply: s => { s.timeWarp = true; s.timeWarpSpeedMult = 0.25; }, remove: s => { s.timeWarp = false; s.timeWarpSpeedMult = 1.0; } },
   { id: 'magnetAura', name: 'MAGNET AURA', color: '#aaaaaa', colorHex: 0xaaaaaa, desc: '5x Pickup Radius!', duration: 20, apply: s => { s.collectRadius *= 5; }, remove: s => { s.collectRadius /= 5; } },
   { id: 'mirrorImage', name: 'MIRROR IMAGE', color: '#44ffff', colorHex: 0x44ffff, desc: 'AI Clones Fight For You!', duration: 15, apply: s => { s.mirrorClones = true; }, remove: s => { s.mirrorClones = false; } },
   { id: 'bombTrail', name: 'BOMB TRAIL', color: '#ff6622', colorHex: 0xff6622, desc: 'Leave Explosive Bombs!', duration: 12, apply: s => { s.bombTrail = true; s.bombTrailTimer = 0; }, remove: s => { s.bombTrail = false; } },
@@ -650,36 +650,36 @@ export const SHRINE_AUGMENTS = [
  */
 export const CHARGE_SHRINE_UPGRADES = {
   common: [
-    { id: 'hp5',       name: 'A bit tougher!',         desc: '+5 hearts',                color: '#44ff44', apply: s => { s.maxHp += 5; s.hp = Math.min(s.hp + 5, s.maxHp); } },
-    { id: 'speed3',    name: 'A bit faster!',          desc: 'Run a tiny bit faster',    color: '#ffaa44', apply: s => { s.playerSpeed *= 1.03; } },
-    { id: 'atk3',      name: 'Quicker attacks!',       desc: 'Attack a tiny bit faster', color: '#ff44ff', apply: s => { s.attackSpeed *= 1.03; } },
-    { id: 'dmg3',      name: 'A bit stronger!',        desc: 'Hit a tiny bit harder',    color: '#ff4444', apply: s => { s.augmentDmgMult = (s.augmentDmgMult || 1) * 1.03; } },
-    { id: 'regen03',   name: 'Tiny heal!',             desc: 'Heal a little over time',  color: '#88ffaa', apply: s => { s.augmentRegen = (s.augmentRegen || 0) + 0.15; } },
-    { id: 'pickup5',   name: 'Grab a bit more!',       desc: 'Bigger pickup range',      color: '#ffff44', apply: s => { s.collectRadius *= 1.05; } },
+    { id: 'hp5',       name: 'A bit tougher!',         color: '#44ff44', apply: s => { s.maxHp += 5; s.hp = Math.min(s.hp + 5, s.maxHp); } },
+    { id: 'speed3',    name: 'A bit faster!',     color: '#ffaa44', apply: s => { s.playerSpeed *= 1.03; } },
+    { id: 'atk3',      name: 'Quicker attacks!',   color: '#ff44ff', apply: s => { s.attackSpeed *= 1.03; } },
+    { id: 'dmg3',      name: 'A bit stronger!',          color: '#ff4444', apply: s => { s.augmentDmgMult = (s.augmentDmgMult || 1) * 1.03; } },
+    { id: 'regen03',   name: 'Tiny heal!',    color: '#88ffaa', apply: s => { s.augmentRegen = (s.augmentRegen || 0) + 0.15; } },
+    { id: 'pickup5',   name: 'Grab a bit more!',  color: '#ffff44', apply: s => { s.collectRadius *= 1.05; } },
   ],
   uncommon: [
-    { id: 'hp12',      name: 'Tougher!',               desc: '+12 hearts',               color: '#44ff44', apply: s => { s.maxHp += 12; s.hp = Math.min(s.hp + 12, s.maxHp); } },
-    { id: 'speed6',    name: 'Faster!',                desc: 'Run a bit faster',         color: '#ffaa44', apply: s => { s.playerSpeed *= 1.06; } },
-    { id: 'atk6',      name: 'Quick attacks!',         desc: 'Attack a bit faster',      color: '#ff44ff', apply: s => { s.attackSpeed *= 1.06; } },
-    { id: 'dmg6',      name: 'Stronger!',              desc: 'Hit a bit harder',         color: '#ff4444', apply: s => { s.augmentDmgMult = (s.augmentDmgMult || 1) * 1.06; } },
-    { id: 'regen07',   name: 'Good healing!',          desc: 'Heal over time',           color: '#88ffaa', apply: s => { s.augmentRegen = (s.augmentRegen || 0) + 0.35; } },
-    { id: 'armor3',    name: 'Harder to hurt!',        desc: 'Take less damage',         color: '#aaaacc', apply: s => { s.augmentArmor = (s.augmentArmor || 0) + 0.03; } },
+    { id: 'hp12',      name: 'Tougher!',         color: '#44ff44', apply: s => { s.maxHp += 12; s.hp = Math.min(s.hp + 12, s.maxHp); } },
+    { id: 'speed6',    name: 'Faster!',     color: '#ffaa44', apply: s => { s.playerSpeed *= 1.06; } },
+    { id: 'atk6',      name: 'Quick attacks!',   color: '#ff44ff', apply: s => { s.attackSpeed *= 1.06; } },
+    { id: 'dmg6',      name: 'Stronger!',          color: '#ff4444', apply: s => { s.augmentDmgMult = (s.augmentDmgMult || 1) * 1.06; } },
+    { id: 'regen07',   name: 'Good healing!',    color: '#88ffaa', apply: s => { s.augmentRegen = (s.augmentRegen || 0) + 0.35; } },
+    { id: 'armor3',    name: 'Harder to hurt!',           color: '#aaaacc', apply: s => { s.augmentArmor = (s.augmentArmor || 0) + 0.03; } },
   ],
   rare: [
-    { id: 'hp25',      name: 'Way tougher!',           desc: '+25 hearts',               color: '#44ff44', apply: s => { s.maxHp += 25; s.hp = Math.min(s.hp + 25, s.maxHp); } },
-    { id: 'speed10',   name: 'Super fast!',            desc: 'Run much faster',          color: '#ffaa44', apply: s => { s.playerSpeed *= 1.10; } },
-    { id: 'atk10',     name: 'Rapid attacks!',         desc: 'Attack much faster',       color: '#ff44ff', apply: s => { s.attackSpeed *= 1.10; } },
-    { id: 'dmg10',     name: 'Way stronger!',          desc: 'Hit much harder',          color: '#ff4444', apply: s => { s.augmentDmgMult = (s.augmentDmgMult || 1) * 1.10; } },
-    { id: 'regen12',   name: 'Great healing!',         desc: 'Heal more over time',      color: '#88ffaa', apply: s => { s.augmentRegen = (s.augmentRegen || 0) + 0.6; } },
-    { id: 'xp10',      name: 'Learn way faster!',      desc: 'Get XP much faster',       color: '#44aaff', apply: s => { s.augmentXpMult = (s.augmentXpMult || 1) * 1.10; } },
+    { id: 'hp25',      name: 'Way tougher!',         color: '#44ff44', apply: s => { s.maxHp += 25; s.hp = Math.min(s.hp + 25, s.maxHp); } },
+    { id: 'speed10',   name: 'Super fast!',    color: '#ffaa44', apply: s => { s.playerSpeed *= 1.10; } },
+    { id: 'atk10',     name: 'Rapid attacks!',  color: '#ff44ff', apply: s => { s.attackSpeed *= 1.10; } },
+    { id: 'dmg10',     name: 'Way stronger!',         color: '#ff4444', apply: s => { s.augmentDmgMult = (s.augmentDmgMult || 1) * 1.10; } },
+    { id: 'regen12',   name: 'Great healing!',    color: '#88ffaa', apply: s => { s.augmentRegen = (s.augmentRegen || 0) + 0.6; } },
+    { id: 'xp10',      name: 'Learn way faster!',       color: '#44aaff', apply: s => { s.augmentXpMult = (s.augmentXpMult || 1) * 1.10; } },
   ],
   legendary: [
-    { id: 'hp50',      name: 'Super tough!',           desc: '+50 hearts',               color: '#44ff44', apply: s => { s.maxHp += 50; s.hp = Math.min(s.hp + 50, s.maxHp); } },
-    { id: 'speed15',   name: 'Lightning fast!',        desc: 'Run way faster',           color: '#ffaa44', apply: s => { s.playerSpeed *= 1.15; } },
-    { id: 'dmg15',     name: 'Super strong!',          desc: 'Hit way harder',           color: '#ff4444', apply: s => { s.augmentDmgMult = (s.augmentDmgMult || 1) * 1.15; } },
-    { id: 'regen2',    name: 'Amazing healing!',       desc: 'Heal lots over time',      color: '#88ffaa', apply: s => { s.augmentRegen = (s.augmentRegen || 0) + 1.0; } },
-    { id: 'fullheal',  name: 'Full heal!',             desc: 'HP back to full',          color: '#ffffff', apply: s => { s.hp = s.maxHp; } },
-    { id: 'allstats5', name: 'Power surge!',           desc: 'All stats go up',          color: '#ffcc00', apply: s => { s.playerSpeed *= 1.05; s.attackSpeed *= 1.05; s.augmentDmgMult = (s.augmentDmgMult || 1) * 1.05; s.maxHp = Math.floor(s.maxHp * 1.05); } },
+    { id: 'hp50',      name: 'Super tough!',         color: '#44ff44', apply: s => { s.maxHp += 50; s.hp = Math.min(s.hp + 50, s.maxHp); } },
+    { id: 'speed15',   name: 'Lightning fast!',    color: '#ffaa44', apply: s => { s.playerSpeed *= 1.15; } },
+    { id: 'dmg15',     name: 'Super strong!',         color: '#ff4444', apply: s => { s.augmentDmgMult = (s.augmentDmgMult || 1) * 1.15; } },
+    { id: 'regen2',    name: 'Amazing healing!',    color: '#88ffaa', apply: s => { s.augmentRegen = (s.augmentRegen || 0) + 1.0; } },
+    { id: 'fullheal',  name: 'All better!',           color: '#ffffff', apply: s => { s.hp = s.maxHp; } },
+    { id: 'allstats5', name: 'Everything better!',       color: '#ffcc00', apply: s => { s.playerSpeed *= 1.05; s.attackSpeed *= 1.05; s.augmentDmgMult = (s.augmentDmgMult || 1) * 1.05; s.maxHp = Math.floor(s.maxHp * 1.05); } },
   ],
 };
 
@@ -805,11 +805,11 @@ export const POST_UPGRADE_INVINCIBILITY = 1.0;
 
 // --- Spawning ---
 /** @constant {number} AMBIENT_SPAWN_INTERVAL - Seconds between ambient zombie spawn waves. */
-export const AMBIENT_SPAWN_INTERVAL = 1.89;
+export const AMBIENT_SPAWN_INTERVAL = 1.36;
 /** @constant {number} FIRST_WAVE_EVENT_TIMER - Seconds until the first wave event (~1.25 minutes). */
 export const FIRST_WAVE_EVENT_TIMER = 75;
-/** @constant {number} WAVE_EVENT_INTERVAL - Seconds between subsequent wave events (~2.25 minutes). */
-export const WAVE_EVENT_INTERVAL = 135;
+/** @constant {number} WAVE_EVENT_INTERVAL - Seconds between subsequent wave events (1.5 minutes). */
+export const WAVE_EVENT_INTERVAL = 90;
 /** @constant {number} WAVE_WARNING_DURATION - Countdown warning duration before a wave event in seconds. */
 export const WAVE_WARNING_DURATION = 10;
 /** @constant {number} AMBIENT_CRATE_INTERVAL - Seconds between ambient powerup crate spawns. */

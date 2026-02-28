@@ -137,6 +137,7 @@ import { initAudio, playSound, toggleMute, isMuted, getVolume, disposeAudio } fr
  * @property {number} lightningShieldTimer  - Countdown to next lightning zap.
  * @property {boolean} giantMode            - Giant Growth scale-up active.
  * @property {boolean} timeWarp             - Time Warp enemy slow active.
+ * @property {number} timeWarpSpeedMult    - Global enemy speed multiplier from Time Warp (0.25 when active, 1.0 otherwise).
  * @property {boolean} mirrorClones         - Mirror Image clones active.
  * @property {Array} mirrorCloneGroups      - Three.js groups for mirror clones.
  * @property {boolean} bombTrail            - Bomb Trail dropping active.
@@ -340,6 +341,7 @@ export function launch3DGame(options) {
     lightningShieldTimer: 0,
     giantMode: false,
     timeWarp: false,
+    timeWarpSpeedMult: 1.0,
     mirrorClones: false,
     mirrorCloneGroups: [],
     bombTrail: false,
@@ -928,6 +930,23 @@ export function launch3DGame(options) {
           else if (it.slot === 'crown') st.items.crown = true;
           else if (it.slot === 'zombiemagnet') st.items.zombiemagnet = true;
           else if (it.slot === 'scarf') st.items.scarf = true;
+          // Track acquisition order for display cap (BD-160)
+          const itemKey = it.stackable ? it.id : (it.slot || it.id);
+          const existIdx = st.itemAcquireOrder.indexOf(itemKey);
+          if (existIdx !== -1) st.itemAcquireOrder.splice(existIdx, 1);
+          st.itemAcquireOrder.push(itemKey);
+          // BD-284: Item pickup fanfare for compare-menu equips (same as auto-equip path)
+          const rarityColor = (ITEM_RARITIES[it.rarity] || ITEM_RARITIES.common).color;
+          st.itemFlashTimer = 0.2;
+          st.itemFlashColor = rarityColor;
+          st.itemSlowTimer = 0.3;
+          st.itemAnnouncement = {
+            name: it.name,
+            desc: it.desc,
+            color: rarityColor,
+            timer: 2.5
+          };
+          playSound('sfx_level_up');
           updateItemVisuals(playerModel, st.items, animalData.id);
           // Remove pickup from world
           wc.newPickup.alive = false;
@@ -1103,6 +1122,8 @@ export function launch3DGame(options) {
   // The platforms array and collision system remain unchanged for compatibility.
   const platforms = [];
   const platformsByChunk = new Map();
+  const stairBounds = []; // BD-284: track stair bounding regions to prevent crate overlap
+  const stairBoundsByChunk = new Map(); // keyed by chunk key for cleanup
 
   // Colors for plateau construction
   const PLATEAU_TOP_COLOR = 0x556633;    // mossy earth green (forest)
@@ -1125,6 +1146,7 @@ export function launch3DGame(options) {
   function buildPlateauMeshes(px, pz, baseH, plateauHeight, pw, pd) {
     const meshes = [];
     const stepPlatforms = []; // BD-133: step data for walkable ramp platforms
+    let stairBound = null; // BD-284: bounding region for the staircase (if any)
     const topY = baseH + plateauHeight;
 
     // Top surface (flat walkable area)
@@ -1198,11 +1220,12 @@ export function launch3DGame(options) {
       const stepCount = Math.min(5, Math.ceil(plateauHeight));
       const stepH = plateauHeight / stepCount;
       const rampSide = Math.abs(Math.floor(px * 7 + pz * 13)) % 4;
-      // Reuse the base side color for steps
+      // Solid earth/stone color for steps (BD-283: fully opaque, no transparency)
       const stepMat = new THREE.MeshLambertMaterial({
         color: getSideColor(baseH),
-        transparent: true,
-        opacity: 0.55
+        transparent: false,
+        opacity: 1.0,
+        depthWrite: true
       });
       for (let si = 0; si < stepCount; si++) {
         const stepY = baseH + stepH * si + stepH / 2;
@@ -1230,9 +1253,28 @@ export function launch3DGame(options) {
         const stepTopY = baseH + stepH * (si + 1);
         stepPlatforms.push({ x: sx, y: stepTopY, z: sz, w: sw, d: sd });
       }
+
+      // BD-284: Compute overall stair bounding region (covers all steps)
+      const stepDepth = 1.0;
+      const totalStairLen = stepDepth * stepCount;
+      let sbMinX, sbMaxX, sbMinZ, sbMaxZ;
+      if (rampSide === 0) { // front (+Z)
+        sbMinX = px - 1; sbMaxX = px + 1;
+        sbMinZ = pz + pd / 2; sbMaxZ = pz + pd / 2 + totalStairLen;
+      } else if (rampSide === 1) { // back (-Z)
+        sbMinX = px - 1; sbMaxX = px + 1;
+        sbMinZ = pz - pd / 2 - totalStairLen; sbMaxZ = pz - pd / 2;
+      } else if (rampSide === 2) { // left (-X)
+        sbMinX = px - pw / 2 - totalStairLen; sbMaxX = px - pw / 2;
+        sbMinZ = pz - 1; sbMaxZ = pz + 1;
+      } else { // right (+X)
+        sbMinX = px + pw / 2; sbMaxX = px + pw / 2 + totalStairLen;
+        sbMinZ = pz - 1; sbMaxZ = pz + 1;
+      }
+      stairBound = { minX: sbMinX, maxX: sbMaxX, minZ: sbMinZ, maxZ: sbMaxZ, topY: topY };
     }
 
-    return { meshes, stepPlatforms };
+    return { meshes, stepPlatforms, stairBound };
   }
 
   /**
@@ -1251,6 +1293,7 @@ export function launch3DGame(options) {
     const cpMinZ = cz * CHUNK_SIZE, cpMaxZ = cpMinZ + CHUNK_SIZE;
     if (cpMaxX < -MAP_HALF || cpMinX > MAP_HALF || cpMaxZ < -MAP_HALF || cpMinZ > MAP_HALF) return;
     platformsByChunk.set(key, []);
+    stairBoundsByChunk.set(key, []); // BD-284: track stair bounds per chunk for cleanup
 
     const ox = cx * CHUNK_SIZE, oz = cz * CHUNK_SIZE;
     const numPlats = Math.floor(noise2D(cx * 5 + 31, cz * 5 + 37) * 3); // 0-2
@@ -1300,6 +1343,12 @@ export function launch3DGame(options) {
         platformsByChunk.get(key).push(stepPlat);
       }
 
+      // BD-284: Store stair bounding region to prevent crate overlap
+      if (result.stairBound) {
+        stairBounds.push(result.stairBound);
+        stairBoundsByChunk.get(key).push(result.stairBound);
+      }
+
       // Occasional stacking: a smaller plateau on top of this one (10% chance)
       if (noise2D(px * 4.3, pz * 5.7) > 0.9 && plateauHeight <= 3) {
         const stackHeight = 1; // stacked plateau is always 1 unit
@@ -1319,6 +1368,12 @@ export function launch3DGame(options) {
           const stepPlat = { mesh: null, meshes: [], x: sp.x, y: sp.y, z: sp.z, w: sp.w, d: sp.d };
           platforms.push(stepPlat);
           platformsByChunk.get(key).push(stepPlat);
+        }
+
+        // BD-284: Store stacked plateau stair bounding region
+        if (stackResult.stairBound) {
+          stairBounds.push(stackResult.stairBound);
+          stairBoundsByChunk.get(key).push(stackResult.stairBound);
         }
       }
     }
@@ -1352,6 +1407,16 @@ export function launch3DGame(options) {
       if (idx >= 0) platforms.splice(idx, 1);
     });
     platformsByChunk.delete(key);
+
+    // BD-284: Clean up stair bounds for this chunk
+    const chunkStairs = stairBoundsByChunk.get(key);
+    if (chunkStairs) {
+      chunkStairs.forEach(sb => {
+        const si = stairBounds.indexOf(sb);
+        if (si >= 0) stairBounds.splice(si, 1);
+      });
+      stairBoundsByChunk.delete(key);
+    }
   }
 
   /**
@@ -2078,6 +2143,17 @@ export function launch3DGame(options) {
       group.add(bossAuraMesh);
     }
 
+    // BD-281: Clone shared materials on every mesh child and store original colors.
+    // The box() helper uses getCachedMat() which shares material instances across all
+    // models. Cloning here gives each zombie its own materials so hurt-flash color
+    // changes don't bleed into other objects. Store _origColor for reliable restoration.
+    group.traverse(child => {
+      if (child.isMesh && child.material) {
+        child.material = child.material.clone();
+        child.userData._origColor = child.material.color.getHex();
+      }
+    });
+
     const enemySpeed = td.speed + Math.random() * 0.3;
     return {
       group, body: eBody, head: eHead, armL, armR, legL, legR,
@@ -2274,6 +2350,19 @@ export function launch3DGame(options) {
   // === POWERUP CRATE ===
 
   /**
+   * BD-284: Check if a world position (x, z) falls within any stair bounding region.
+   * @param {number} x - World X position.
+   * @param {number} z - World Z position.
+   * @returns {boolean} True if the position overlaps a staircase.
+   */
+  function isInsideStairBounds(x, z) {
+    for (const sb of stairBounds) {
+      if (x >= sb.minX && x <= sb.maxX && z >= sb.minZ && z <= sb.maxZ) return true;
+    }
+    return false;
+  }
+
+  /**
    * Create a breakable powerup crate at the given position.
    * Selects a random powerup type, attempts to place on the nearest platform,
    * and builds a wooden crate mesh with a colored top indicator matching the powerup.
@@ -2287,9 +2376,23 @@ export function launch3DGame(options) {
     const ptype = POWERUPS_3D[Math.floor(Math.random() * POWERUPS_3D.length)];
     // Place on nearest platform if one exists nearby
     const plat = findNearbyPlatform(x, z, 20);
-    const px = plat ? plat.x : x;
-    const pz = plat ? plat.z : z;
-    const h = plat ? plat.y + 0.2 : terrainHeight(px, pz);
+    let px = plat ? plat.x : x;
+    let pz = plat ? plat.z : z;
+
+    // BD-284: If the chosen position is under a staircase, offset it away
+    if (isInsideStairBounds(px, pz)) {
+      // Try small offsets in 4 cardinal directions to escape the stair region
+      const offsets = [[3, 0], [-3, 0], [0, 3], [0, -3], [4, 4], [-4, -4]];
+      for (const [ox, oz] of offsets) {
+        if (!isInsideStairBounds(px + ox, pz + oz)) {
+          px += ox;
+          pz += oz;
+          break;
+        }
+      }
+    }
+
+    const h = plat && !isInsideStairBounds(px, pz) ? plat.y + 0.2 : terrainHeight(px, pz);
     const group = new THREE.Group();
     // Wooden crate
     const crateGeo = new THREE.BoxGeometry(0.8, 0.8, 0.8);
@@ -3157,12 +3260,14 @@ export function launch3DGame(options) {
         const newPhase = hpPct <= 0.33 ? 3 : hpPct <= 0.66 ? 2 : 1;
         if (newPhase > e.bossPhase) {
           e.bossPhase = newPhase;
-          // Phase transition visual: brief red flash + floating text
-          if (e.body) {
-            e.body.material.color.setHex(0xff0000);
-            if (e.body.material.emissive) e.body.material.emissive.setHex(0xff0000);
-            e._attackFlashTimer = 0.4;
-          }
+          // BD-281: Phase transition visual — flash ALL mesh children red
+          e.group.traverse(child => {
+            if (child.isMesh && child.material && child.userData._origColor !== undefined) {
+              child.material.color.setHex(0xff0000);
+            }
+          });
+          if (e.body && e.body.material.emissive) e.body.material.emissive.setHex(0xff0000);
+          e._attackFlashTimer = 0.4;
           addFloatingText('PHASE ' + newPhase + '!', '#ff4400', e.group.position.x, e.group.position.y + 4, e.group.position.z, 2.0, true);
           triggerScreenShake(0.3, 0.4); // BD-225: Phase transition screen shake (was 0.2, 0.3)
           // BD-225: Pause attack timer to prevent immediate attack during transition
@@ -3173,11 +3278,14 @@ export function launch3DGame(options) {
         const newPhase = hpPct <= 0.25 ? 4 : hpPct <= 0.50 ? 3 : hpPct <= 0.75 ? 2 : 1;
         if (newPhase > e.bossPhase) {
           e.bossPhase = newPhase;
-          if (e.body) {
-            e.body.material.color.setHex(0xff0000);
-            if (e.body.material.emissive) e.body.material.emissive.setHex(0xff0000);
-            e._attackFlashTimer = 0.4;
-          }
+          // BD-281: Phase transition visual — flash ALL mesh children red
+          e.group.traverse(child => {
+            if (child.isMesh && child.material && child.userData._origColor !== undefined) {
+              child.material.color.setHex(0xff0000);
+            }
+          });
+          if (e.body && e.body.material.emissive) e.body.material.emissive.setHex(0xff0000);
+          e._attackFlashTimer = 0.4;
           addFloatingText('PHASE ' + newPhase + '!', '#ff0044', e.group.position.x, e.group.position.y + 4, e.group.position.z, 2.0, true);
           triggerScreenShake(0.3, 0.4);
           // BD-225: Pause attack timer to prevent immediate attack during transition
@@ -4179,12 +4287,16 @@ export function launch3DGame(options) {
           st.attackFirstSeen[labelKey] = true;
           addFloatingText(tierLabels[e.tier], tierColors[e.tier], e.group.position.x, e.group.position.y + 3, e.group.position.z, 2.5, true);
         }
-        // BD-166: Universal body flash on telegraph start
-        if (e.body) {
+        // BD-166/BD-281: Universal flash on ALL mesh children at telegraph start
+        {
           const flashColors = { 2: 0xffff00, 3: 0xff2200, 4: 0xffff00, 5: 0x44ff44, 6: 0xff0000 };
           const flashCol = flashColors[e.tier] || 0xff0000;
-          e.body.material.color.setHex(flashCol);
-          if (e.body.material.emissive) e.body.material.emissive.setHex(flashCol);
+          e.group.traverse(child => {
+            if (child.isMesh && child.material && child.userData._origColor !== undefined) {
+              child.material.color.setHex(flashCol);
+            }
+          });
+          if (e.body && e.body.material.emissive) e.body.material.emissive.setHex(flashCol);
           e._attackFlashTimer = 0.2;
         }
         if (e.tier === 2) startLurcherTelegraph(e, telegraphDurMult);
@@ -5661,12 +5773,19 @@ export function launch3DGame(options) {
         e.frozenTimer -= gameDt;
         if (e.frozenTimer <= 0) {
           e.frozen = false;
-          e.body.material.color.setHex(e.bodyColor);
-          e.head.material.color.setHex(e.headColor);
+          // BD-281: Restore ALL mesh children from frozen tint
+          e.group.traverse(child => {
+            if (child.isMesh && child.material && child.userData._origColor !== undefined) {
+              child.material.color.setHex(child.userData._origColor);
+            }
+          });
         } else {
-          // Frozen tint
-          e.body.material.color.setHex(0x88ccff);
-          e.head.material.color.setHex(0xaaddff);
+          // BD-281: Frozen tint on ALL mesh children
+          e.group.traverse(child => {
+            if (child.isMesh && child.material && child.userData._origColor !== undefined) {
+              child.material.color.setHex(0x88ccff);
+            }
+          });
         }
       }
 
@@ -6170,10 +6289,15 @@ export function launch3DGame(options) {
         // BD-166: Update body flash timer
         if (e._attackFlashTimer > 0) {
           e._attackFlashTimer -= gameDt;
-          if (e._attackFlashTimer <= 0 && e.body) {
-            e.body.material.color.setHex(e.bodyColor);
+          if (e._attackFlashTimer <= 0) {
+            // BD-281: Restore ALL mesh children after attack flash
+            e.group.traverse(child => {
+              if (child.isMesh && child.material && child.userData._origColor !== undefined) {
+                child.material.color.setHex(child.userData._origColor);
+              }
+            });
             // BD-219: Don't clear emissive if desperation pulse is active (Overlord phase 4)
-            if (e.body.material.emissive && !e._desperationPulse) e.body.material.emissive.setHex(0x000000);
+            if (e.body && e.body.material.emissive && !e._desperationPulse) e.body.material.emissive.setHex(0x000000);
           }
         }
         // BD-179: Difficulty-based damage multiplier
@@ -6226,12 +6350,14 @@ export function launch3DGame(options) {
             addFloatingText(label, color, e.group.position.x, e.group.position.y + 4, e.group.position.z, 2.0, true);
             triggerScreenShake(0.3, 0.4);
             playSound('sfx_boss_phase_transition');
-            // Body flash to signal the phase change
+            // BD-281: Flash ALL mesh children to signal the phase change
             e._attackFlashTimer = 0.3;
-            if (e.body) {
-              e.body.material.color.setHex(0xffffff);
-              if (e.body.material.emissive) e.body.material.emissive.setHex(0xffffff);
-            }
+            e.group.traverse(child => {
+              if (child.isMesh && child.material && child.userData._origColor !== undefined) {
+                child.material.color.setHex(0xffffff);
+              }
+            });
+            if (e.body && e.body.material.emissive) e.body.material.emissive.setHex(0xffffff);
             // Pause attack timer to prevent immediate attack during transition
             if (e.specialAttackTimer !== undefined) {
               e.specialAttackTimer += 0.5;
@@ -6299,6 +6425,7 @@ export function launch3DGame(options) {
               if (e.body) {
                 e.body.material.color.setHex(0x880044);
                 e.bodyColor = 0x880044; // update stored color so flash restoration uses new color
+                e.body.userData._origColor = 0x880044; // BD-281: sync _origColor for traverse-based restore
               }
             }
             // Phase 2+: Boosted crown fire particles (~20% chance per frame, up from base rumble)
@@ -6338,6 +6465,8 @@ export function launch3DGame(options) {
                 const newMat = new THREE.MeshLambertMaterial({ color: oldColor });
                 e.body.material.dispose();
                 e.body.material = newMat;
+                // BD-281: Preserve _origColor on replaced material
+                e.body.userData._origColor = e.body.userData._origColor ?? oldColor;
               }
             }
             // Phase 4+: Sinusoidal emissive pulse every frame
@@ -6356,6 +6485,8 @@ export function launch3DGame(options) {
                   const newHeadMat = new THREE.MeshLambertMaterial({ color: headColor });
                   e.head.material.dispose();
                   e.head.material = newHeadMat;
+                  // BD-281: Preserve _origColor on replaced material
+                  e.head.userData._origColor = e.head.userData._origColor ?? headColor;
                 }
                 if (e.head.material.emissive) {
                   e.head.material.emissive.setHex(0xff0044);
@@ -6449,14 +6580,21 @@ export function launch3DGame(options) {
               continue; // skip normal movement during charge
             } else if (e._chargeState === 'recovery') {
               e._chargeTimer -= dt;
-              // Flash white during recovery — punishment window
-              if (e.body) {
-                const flashRate = Math.sin(performance.now() * 0.015) > 0;
-                e.body.material.color.setHex(flashRate ? 0xffffff : e.bodyColor);
-              }
+              // BD-281: Flash white on ALL mesh children during recovery — punishment window
+              const flashRate = Math.sin(performance.now() * 0.015) > 0;
+              e.group.traverse(child => {
+                if (child.isMesh && child.material && child.userData._origColor !== undefined) {
+                  child.material.color.setHex(flashRate ? 0xffffff : child.userData._origColor);
+                }
+              });
               if (e._chargeTimer <= 0) {
                 e._chargeState = null;
-                if (e.body) e.body.material.color.setHex(e.bodyColor);
+                // BD-281: Restore ALL mesh children after charge recovery
+                e.group.traverse(child => {
+                  if (child.isMesh && child.material && child.userData._origColor !== undefined) {
+                    child.material.color.setHex(child.userData._origColor);
+                  }
+                });
               }
               continue; // frozen during recovery (punishment window)
             }
@@ -6646,11 +6784,15 @@ export function launch3DGame(options) {
             e.specialAttackTargetZ = st.playerZ;
             e.specialAttackCount = (e.specialAttackCount || 0) + 1;
 
-            // BD-166: Universal body flash on telegraph start
-            if (e.body) {
+            // BD-166/BD-281: Universal flash on ALL mesh children at boss telegraph start
+            {
               const flashCol = e.tier >= 10 ? 0xff0000 : 0xff2200;
-              e.body.material.color.setHex(flashCol);
-              if (e.body.material.emissive) e.body.material.emissive.setHex(flashCol);
+              e.group.traverse(child => {
+                if (child.isMesh && child.material && child.userData._origColor !== undefined) {
+                  child.material.color.setHex(flashCol);
+                }
+              });
+              if (e.body && e.body.material.emissive) e.body.material.emissive.setHex(flashCol);
               e._attackFlashTimer = 0.2;
             }
 
@@ -7382,10 +7524,9 @@ export function launch3DGame(options) {
           const fdist = Math.sqrt(fdx * fdx + fdz * fdz) || 1;
           const fleeNx = fdx / fdist;
           const fleeNz = fdz / fdist;
-          const eSpd = e.speed * st.totemSpeedMult * st.enemySpeedMult;
+          const eSpd = e.speed * st.totemSpeedMult * st.enemySpeedMult * st.timeWarpSpeedMult;
 
           // BD-255: Steer around obstacles while fleeing
-          // Pass dist=0 to avoid the distance cutoff (fleeing zombies are often far)
           const fleeSteerAngle = computeSteeringAngle(e, fleeNx, fleeNz, dt, 0, !!e.isBoss, worldObjectColliders);
           const fleeSteerNx = Math.sin(fleeSteerAngle);
           const fleeSteerNz = Math.cos(fleeSteerAngle);
@@ -7409,7 +7550,7 @@ export function launch3DGame(options) {
         } else if (dist > 0.01) {
           const nx = dx / dist;
           const nz = dz / dist;
-          const eSpd = e.speed * st.totemSpeedMult * st.enemySpeedMult;
+          const eSpd = e.speed * st.totemSpeedMult * st.enemySpeedMult * st.timeWarpSpeedMult;
 
           // BD-255: Compute steered movement direction (look-ahead tangent steering)
           const steerAngle = computeSteeringAngle(e, nx, nz, gameDt, dist, !!e.isBoss, worldObjectColliders);
@@ -7481,7 +7622,7 @@ export function launch3DGame(options) {
           e.group.position.y = eh;
         }
         // Walking animation: arm swing + leg shuffle
-        e.walkPhase += gameDt * e.speed * 3;
+        e.walkPhase += gameDt * e.speed * st.timeWarpSpeedMult * 3;
         const armSwing = Math.sin(e.walkPhase) * 0.4;
         const legSwing = Math.sin(e.walkPhase) * 0.15;
         if (e.armL) e.armL.position.z = 0.15 + armSwing * 0.3;
@@ -7495,13 +7636,22 @@ export function launch3DGame(options) {
           const bouncePhase = e.mergeBounce / 0.4; // 0->1 normalized (1 at start)
           const bounceScale = baseScale * (1 + Math.sin(bouncePhase * Math.PI) * 0.35);
           e.group.scale.set(bounceScale, bounceScale, bounceScale);
-          // Flash bright on the body
-          if (e.body && bouncePhase > 0.5) {
-            e.body.material.color.setHex(0xffaa00);
+          // BD-281: Flash bright on ALL mesh children during merge bounce
+          if (bouncePhase > 0.5) {
+            e.group.traverse(child => {
+              if (child.isMesh && child.material && child.userData._origColor !== undefined) {
+                child.material.color.setHex(0xffaa00);
+              }
+            });
           }
           if (e.mergeBounce <= 0) {
             e.group.scale.set(baseScale, baseScale, baseScale);
-            if (e.body) e.body.material.color.setHex(e.bodyColor);
+            // BD-281: Restore ALL mesh children after merge bounce
+            e.group.traverse(child => {
+              if (child.isMesh && child.material && child.userData._origColor !== undefined) {
+                child.material.color.setHex(child.userData._origColor);
+              }
+            });
           }
         }
         // Contact damage (scaled by tier + difficulty) - check Y distance so platforms/air protect player
@@ -7523,37 +7673,47 @@ export function launch3DGame(options) {
         }
         // BD-203: Hurt flash cooldown decrement
         if (e.hurtFlashCooldown > 0) e.hurtFlashCooldown -= gameDt;
-        // Hurt flash (tinted flash, 1s cooldown — BD-203)
+        // BD-281: Hurt flash on ALL mesh children (tinted flash, 1s cooldown — BD-203)
         if (e.hurtTimer > 0) {
           e.hurtTimer -= gameDt;
           if (e.hurtTimer > 0) {
-            // BD-203: Blend 60% white + 40% body color for tier-tinted flash
-            const bc = e.bodyColor;
-            const br = ((bc >> 16) & 0xff) * 0.4 + 255 * 0.6;
-            const bg = ((bc >> 8) & 0xff) * 0.4 + 255 * 0.6;
-            const bb = (bc & 0xff) * 0.4 + 255 * 0.6;
-            const flashColor = (Math.round(br) << 16) | (Math.round(bg) << 8) | Math.round(bb);
-            const hc = e.headColor;
-            const hr = ((hc >> 16) & 0xff) * 0.4 + 255 * 0.6;
-            const hg = ((hc >> 8) & 0xff) * 0.4 + 255 * 0.6;
-            const hb = (hc & 0xff) * 0.4 + 255 * 0.6;
-            const headFlash = (Math.round(hr) << 16) | (Math.round(hg) << 8) | Math.round(hb);
-            e.body.material.color.setHex(flashColor);
-            e.head.material.color.setHex(headFlash);
+            // BD-281: Blend 60% white + 40% original color per mesh child
+            e.group.traverse(child => {
+              if (child.isMesh && child.material && child.userData._origColor !== undefined) {
+                const oc = child.userData._origColor;
+                const r = ((oc >> 16) & 0xff) * 0.4 + 255 * 0.6;
+                const g = ((oc >> 8) & 0xff) * 0.4 + 255 * 0.6;
+                const b = (oc & 0xff) * 0.4 + 255 * 0.6;
+                child.material.color.setHex((Math.round(r) << 16) | (Math.round(g) << 8) | Math.round(b));
+              }
+            });
           } else {
-            e.body.material.color.setHex(e.bodyColor);
-            e.head.material.color.setHex(e.headColor);
+            // BD-281: Restore ALL mesh children to their original colors
+            e.group.traverse(child => {
+              if (child.isMesh && child.material && child.userData._origColor !== undefined) {
+                child.material.color.setHex(child.userData._origColor);
+              }
+            });
           }
         }
         // Hot Sauce ignite DoT: 3 damage/s per stack for 3s
         if (e.ignited) {
           e.igniteTimer -= gameDt;
           damageEnemy(e, e.igniteDps * gameDt, { skipProcs: true });
-          // Orange tint while burning
-          if (e.body) e.body.material.color.setHex(0xff6600);
+          // BD-281: Orange tint on ALL mesh children while burning
+          e.group.traverse(child => {
+            if (child.isMesh && child.material && child.userData._origColor !== undefined) {
+              child.material.color.setHex(0xff6600);
+            }
+          });
           if (e.igniteTimer <= 0) {
             e.ignited = false;
-            if (e.body) e.body.material.color.setHex(e.bodyColor);
+            // BD-281: Restore ALL mesh children from ignite
+            e.group.traverse(child => {
+              if (child.isMesh && child.material && child.userData._origColor !== undefined) {
+                child.material.color.setHex(child.userData._origColor);
+              }
+            });
           }
         }
         // Kill enemies that fall too far behind

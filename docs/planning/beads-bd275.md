@@ -1,5 +1,7 @@
 # BD-275: Character face features disappear as model grows in size
 
+**Status: PARTIALLY FIXED** (2026-02-28) — Face features now reposition with head scaling, but arms and other body parts still vanish at higher growth levels. See BD-282 for the broader body-part fix.
+
 **Date:** 2026-02-28
 **Source:** Manual playthrough — as the player character levels up and the model grows (muscle growth system), facial features (eyes, nose, mouth markings) progressively disappear or clip inside the head geometry.
 

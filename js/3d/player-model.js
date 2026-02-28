@@ -35,6 +35,9 @@ import { box } from './utils.js?v=12';
  *   - BD-275: Face feature meshes with original offsets from headCenter for growth repositioning.
  * @property {{x: number, y: number, z: number}} headCenter
  *   - BD-275: Head center position used to compute face feature offsets during muscle growth.
+ * @property {Array.<{mesh: THREE.Mesh, origX: number, origZ: number, scaleAxis: string}>} bodyFeatures
+ *   - BD-282: Body parts to reposition during muscle growth. Each entry tracks the original
+ *   X/Z position offset from torso center and which axes to scale ('x', 'z', or 'xz').
  * @property {THREE.Group} wingGroup - Angel wings group (child of group, initially hidden).
  * @property {Object} wingMeshes     - Individual wing segment meshes for flap animation.
  * @property {THREE.Mesh} wingMeshes.wingL1 - Left wing inner segment.
@@ -320,6 +323,52 @@ export function buildPlayerModel(animalId, scene) {
     ff.origZ = ff.mesh.position.z - headCenter.z;
   }
 
+  // === BD-282: Track body features for repositioning during muscle growth ===
+  // Store original positions of body parts relative to the torso center (X=0, Z=0).
+  // When the torso scales up, these parts are repositioned proportionally so they
+  // don't get swallowed inside the enlarged chest mesh.
+  // Each entry: { mesh, origX, origZ, scaleAxis } where scaleAxis controls which
+  // axes are repositioned ('x' = X only, 'z' = Z only, 'xz' = both).
+  const bodyFeatures = [];
+
+  // Arms: push outward on X-axis as torso widens
+  for (const arm of arms) {
+    bodyFeatures.push({ mesh: arm, origX: arm.position.x, origZ: arm.position.z, scaleAxis: 'x' });
+  }
+  // Hands: same X-offset as arms
+  for (const hand of hands) {
+    bodyFeatures.push({ mesh: hand, origX: hand.position.x, origZ: hand.position.z, scaleAxis: 'x' });
+  }
+  // Shoulders: push outward on X-axis
+  if (muscles.shoulderL) bodyFeatures.push({ mesh: muscles.shoulderL, origX: muscles.shoulderL.position.x, origZ: muscles.shoulderL.position.z, scaleAxis: 'x' });
+  if (muscles.shoulderR) bodyFeatures.push({ mesh: muscles.shoulderR, origX: muscles.shoulderR.position.x, origZ: muscles.shoulderR.position.z, scaleAxis: 'x' });
+  // Tail: push backward on Z-axis as torso deepens
+  if (tail) bodyFeatures.push({ mesh: tail, origX: tail.position.x, origZ: tail.position.z, scaleAxis: 'z' });
+  // Legs and feet: push outward on X-axis (less critical but prevents leg overlap at high levels)
+  for (const leg of legs) {
+    bodyFeatures.push({ mesh: leg, origX: leg.position.x, origZ: leg.position.z, scaleAxis: 'x' });
+  }
+  for (const foot of feet) {
+    bodyFeatures.push({ mesh: foot, origX: foot.position.x, origZ: foot.position.z, scaleAxis: 'x' });
+  }
+  // Body surface features: only include torso-surface decorations, not head/face features.
+  // Torso-surface features (spots, ridges) need to reposition on both X and Z axes.
+  // Head-area features (faceMask, mane) should NOT be repositioned by torso scale.
+  const torsoFeatureKeys = new Set(['spots', 'ridges']);
+  if (features) {
+    for (const k of torsoFeatureKeys) {
+      const feat = features[k];
+      if (!feat) continue;
+      if (Array.isArray(feat)) {
+        for (const m of feat) {
+          if (m) bodyFeatures.push({ mesh: m, origX: m.position.x, origZ: m.position.z, scaleAxis: 'xz' });
+        }
+      } else {
+        bodyFeatures.push({ mesh: feat, origX: feat.position.x, origZ: feat.position.z, scaleAxis: 'xz' });
+      }
+    }
+  }
+
   scene.add(group);
 
   // === ANGEL WINGS VISUAL ===
@@ -368,6 +417,7 @@ export function buildPlayerModel(animalId, scene) {
     features,
     faceFeatures,   // BD-275: face meshes with original offsets for growth repositioning
     headCenter,     // BD-275: head center position for offset calculation
+    bodyFeatures, // BD-282: body parts to reposition during muscle growth
     wingGroup,
     wingMeshes: { wingL1, wingL2, wingL3, wingR1, wingR2, wingR3 },
   };
@@ -563,6 +613,11 @@ export function animatePlayer(model, st, clock, len, mx, mz) {
  * by the enlarging head mesh. Face features are sibling meshes of the head in the group,
  * so their positions are scaled outward from the head center by the head scale factor.
  *
+ * BD-282: After scaling, body features tracked in model.bodyFeatures are repositioned
+ * proportionally to the Tier 1 (torso) scale factor. This prevents arms, hands, shoulders,
+ * tail, legs, feet, and torso-surface decorations (spots, ridges) from clipping into the
+ * enlarged chest mesh at higher levels.
+ *
  * @param {PlayerModel} model - The player model object returned by buildPlayerModel.
  * @param {number} level - Current player level (1-based).
  */
@@ -635,6 +690,22 @@ export function updateMuscleGrowth(model, level) {
         for (const m of feat) { if (m) m.scale.set(fS, fS, fS); }
       } else {
         feat.scale.set(fS, fS, fS);
+      }
+    }
+  }
+
+  // === BD-282: Reposition body features to prevent clipping as torso grows ===
+  // The torso (chest) scales by mS on X and Z axes. Body parts at their original
+  // positions would be swallowed inside the enlarged torso. Reposition them
+  // proportionally so they stay on the surface.
+  if (model.bodyFeatures) {
+    for (const bf of model.bodyFeatures) {
+      if (!bf.mesh) continue;
+      if (bf.scaleAxis === 'x' || bf.scaleAxis === 'xz') {
+        bf.mesh.position.x = bf.origX * mS;
+      }
+      if (bf.scaleAxis === 'z' || bf.scaleAxis === 'xz') {
+        bf.mesh.position.z = bf.origZ * mS;
       }
     }
   }
