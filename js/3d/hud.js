@@ -1084,6 +1084,46 @@ export function drawHUD(ctx, s, deps) {
       ctx.fillStyle = '#444'; ctx.font = '14px ' + GAME_FONT;
       ctx.fillText('No new choices left', W / 2, cardY + cardH + 80);
     }
+
+    // BD-265: Show current weapons and howls during upgrade menu
+    const invY = cardY + cardH + 100;
+
+    // Left side: current weapons
+    ctx.textAlign = 'left';
+    ctx.fillStyle = '#ffcc00'; ctx.font = 'bold 14px ' + GAME_FONT;
+    ctx.fillText('YOUR WEAPONS:', 40, invY);
+    let iwY = invY + 18;
+    for (let wi = 0; wi < s.weapons.length; wi++) {
+      const w = s.weapons[wi];
+      const def = WEAPON_TYPES[w.typeId];
+      ctx.fillStyle = def.color; ctx.font = '14px ' + GAME_FONT;
+      ctx.fillText('\u25A0 ' + def.name + ' Lv' + w.level, 44, iwY);
+      iwY += 16;
+    }
+    for (let wi = s.weapons.length; wi < s.maxWeaponSlots; wi++) {
+      ctx.fillStyle = '#555'; ctx.font = '14px ' + GAME_FONT;
+      ctx.fillText('\u25A1 [empty slot]', 44, iwY);
+      iwY += 16;
+    }
+
+    // Right side: current howls
+    ctx.textAlign = 'right';
+    const upgradeHowlEntries = Object.entries(s.howls).filter(([, v]) => v > 0);
+    if (upgradeHowlEntries.length > 0) {
+      ctx.fillStyle = '#ffcc00'; ctx.font = 'bold 14px ' + GAME_FONT;
+      ctx.fillText('YOUR POWERS:', W - 40, invY);
+      let ihY = invY + 18;
+      for (const [tid, count] of upgradeHowlEntries) {
+        const def = HOWL_TYPES[tid];
+        ctx.fillStyle = def.color; ctx.font = '14px ' + GAME_FONT;
+        ctx.fillText(def.name.replace(' HOWL', '') + ' x' + count, W - 44, ihY);
+        ihY += 16;
+      }
+    } else {
+      ctx.fillStyle = '#555'; ctx.font = '14px ' + GAME_FONT;
+      ctx.fillText('No powers yet', W - 40, invY + 18);
+    }
+    ctx.textAlign = 'left'; // reset
   }
 
   // --- Charge Shrine Choice Menu ---
