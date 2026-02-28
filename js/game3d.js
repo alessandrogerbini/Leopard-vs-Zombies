@@ -51,19 +51,19 @@ import {
   TOTEM_COUNT, LOOT_CRATE_COUNT, MIN_SHRINE_SPACING, MAX_PLACEMENT_ATTEMPTS,
   AUGMENT_REGEN_CAP,
   WEAPON_COOLDOWN_REDUCTION_L4, LIGHTNING_CHAIN_RANGE_SQ,
-} from './3d/constants.js?v=7';
+} from './3d/constants.js?v=8';
 
 import {
   noise2D, smoothNoise, terrainHeight, getBiome, BIOME_COLORS,
   getChunkKey, createTerrainState, getNearbyColliders,
   generateChunk as terrainGenerateChunk,
   unloadChunk as terrainUnloadChunk, updateChunks as terrainUpdateChunks,
-} from './3d/terrain.js?v=7';
+} from './3d/terrain.js?v=8';
 
-import { box, clearCaches } from './3d/utils.js?v=7';
-import { buildPlayerModel, animatePlayer, updateMuscleGrowth, updateItemVisuals, buildWearableMesh, updateWearableVisuals } from './3d/player-model.js?v=7';
-import { drawHUD } from './3d/hud.js?v=7';
-import { initAudio, playSound, toggleMute, isMuted, getVolume, disposeAudio } from './3d/audio.js?v=7';
+import { box, clearCaches } from './3d/utils.js?v=8';
+import { buildPlayerModel, animatePlayer, updateMuscleGrowth, updateItemVisuals, buildWearableMesh, updateWearableVisuals } from './3d/player-model.js?v=8';
+import { drawHUD } from './3d/hud.js?v=8';
+import { initAudio, playSound, toggleMute, isMuted, getVolume, disposeAudio } from './3d/audio.js?v=8';
 
 
 /**
@@ -4921,18 +4921,20 @@ export function launch3DGame(options) {
   function tick() {
     if (!st.running) return;
     animId = requestAnimationFrame(tick);
+    try {
 
     // NOTE: dt is capped at 0.05s (20fps minimum) to prevent physics tunneling on lag spikes
-    let dt = Math.min(clock.getDelta(), 0.05);
+    const rawDt = Math.min(clock.getDelta(), 0.05);
+    let dt = rawDt;
 
     // Item pickup time-dilation (BD-147)
     if (st.itemSlowTimer > 0) {
-      st.itemSlowTimer -= dt;
+      st.itemSlowTimer -= rawDt;
       dt *= 0.5; // half speed for dramatic moment
     }
 
     // BD-228: Death sequence time scaling — realDt for UI/timers, gameDt for world simulation
-    const realDt = dt; // always real-time (after item slow, before death scale)
+    const realDt = rawDt; // always true wall-clock time (before any dilation)
     const gameDt = dt * (st.deathSequence ? st.deathTimeScale : 1);
 
     // FPS tracking (runs regardless of pause/gameOver for accurate profiling)
@@ -8237,6 +8239,10 @@ export function launch3DGame(options) {
       audioVolume: getVolume(),
       inputState,
     });
+
+    } catch (err) {
+      console.error('[tick] Uncaught exception in game loop:', err);
+    }
   }
 
   clock.start();
