@@ -7803,9 +7803,11 @@ export function launch3DGame(options) {
 
       // BD-228: Player death — enter death sequence (1.5s slow-motion) before game-over screen
       if (st.hp <= 0 && !st.deathSequence && !st.gameOver) {
+        console.log('[BD-267] Death triggered: hp=' + st.hp);
         st.hp = 0;
         st.deathSequence = true;
         st.deathSequenceTimer = 1.5;
+        st._deathStartGameTime = st.gameTime; // BD-267: record for emergency timeout
         st.deathTimeScale = 1.0;
         // Capture killer position for camera zoom (BD-229)
         if (st.lastDamageSource && st.lastDamageSource.killerX !== undefined) {
@@ -7845,15 +7847,43 @@ export function launch3DGame(options) {
         }
 
         if (st.deathSequenceTimer <= 0) {
+          console.log('[BD-267] Game-over transition: timer=' + st.deathSequenceTimer.toFixed(3));
           st.gameOver = true;
           st.deathSequence = false;
           st.showFullMap = false;
+          st.upgradeMenu = false;
+          st.paused = false;
+          st.pauseMenu = false;
+          st.chargeShrineMenu = false;
+          st.wearableCompare = null;
           inputState.enterReleasedSinceGameOver = false;
           st.nameEntryActive = true;
           st.nameEntry = '';
           st.nameEntryInputCooldown = 0.3;
           // playSound('sfx_death_sting'); // TODO: Sound Pack Beta
         }
+      }
+    }
+
+    // BD-267: Emergency timeout — if death sequence runs >5s, force game-over
+    // This runs OUTSIDE the pause gate so it fires even if the game is paused
+    if (st.deathSequence && !st.gameOver && st._deathStartGameTime !== undefined) {
+      const deathElapsed = st.gameTime - st._deathStartGameTime;
+      // Use wall clock as backup since gameTime might not advance when paused
+      if (st.deathSequenceTimer < -3 || deathElapsed > 10) {
+        console.error('[BD-267] EMERGENCY: Death sequence stuck for ' + (-st.deathSequenceTimer).toFixed(1) + 's, forcing game-over');
+        st.gameOver = true;
+        st.deathSequence = false;
+        st.showFullMap = false;
+        st.upgradeMenu = false;
+        st.paused = false;
+        st.pauseMenu = false;
+        st.chargeShrineMenu = false;
+        st.wearableCompare = null;
+        inputState.enterReleasedSinceGameOver = false;
+        st.nameEntryActive = true;
+        st.nameEntry = '';
+        st.nameEntryInputCooldown = 0.3;
       }
     }
 
