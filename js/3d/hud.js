@@ -1127,9 +1127,15 @@ export function drawHUD(ctx, s, deps) {
       ctx.fillStyle = isSelected ? '#1a1a2a' : '#111118';
       ctx.fillRect(cx, csCardY, csCardW, csCardH);
 
-      // Upgrade name
+      // Upgrade name (main label)
       ctx.fillStyle = u.color; ctx.font = 'bold 16px ' + GAME_FONT;
-      ctx.fillText(u.name, cx + csCardW / 2, csCardY + csCardH / 2 + 6);
+      ctx.fillText(u.name, cx + csCardW / 2, csCardY + csCardH / 2 - 2);
+
+      // Subtext description
+      if (u.desc) {
+        ctx.fillStyle = '#aaaaaa'; ctx.font = '12px ' + GAME_FONT;
+        ctx.fillText(u.desc, cx + csCardW / 2, csCardY + csCardH / 2 + 18);
+      }
 
       // Selection arrow
       if (isSelected) {
