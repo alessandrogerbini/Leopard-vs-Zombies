@@ -158,14 +158,14 @@ export const WEAPON_TYPES = {
  */
 export const HOWL_TYPES = {
   power: { id: 'power', name: 'POWER HOWL', color: '#ff4444', desc: 'Hit harder!', maxLevel: 5 },
-  haste: { id: 'haste', name: 'HASTE HOWL', color: '#ffaa44', desc: 'Attack faster!', maxLevel: 5 },
+  haste: { id: 'haste', name: 'HASTE HOWL', color: '#ffaa44', desc: 'Shorter cooldowns!', maxLevel: 5 },
   arcane: { id: 'arcane', name: 'ARCANE HOWL', color: '#aa44ff', desc: 'Shoot more stuff!', maxLevel: 3 },
   vitality: { id: 'vitality', name: 'VITALITY HOWL', color: '#44ff44', desc: 'More hearts!', maxLevel: 5 },
   fortune: { id: 'fortune', name: 'FORTUNE HOWL', color: '#ffff44', desc: 'Level up faster!', maxLevel: 3 },
   range: { id: 'range', name: 'RANGE HOWL', color: '#44aaff', desc: 'Reach farther!', maxLevel: 5 },
   thorns: { id: 'thorns', name: 'THORNS HOWL', color: '#cc4422', desc: 'Hurt them back!', maxLevel: 3 },
   magnet: { id: 'magnet', name: 'MAGNET HOWL', color: '#cccccc', desc: 'Grab stuff easier!', maxLevel: 4 },
-  frenzy: { id: 'frenzy', name: 'FRENZY HOWL', color: '#ff44ff', desc: 'Attack faster!', maxLevel: 4 },
+  frenzy: { id: 'frenzy', name: 'FRENZY HOWL', color: '#ff44ff', desc: 'Attack speed up!', maxLevel: 4 },
   guardian: { id: 'guardian', name: 'GUARDIAN HOWL', color: '#44ff88', desc: 'Tougher and heal!', maxLevel: 3 },
 };
 
