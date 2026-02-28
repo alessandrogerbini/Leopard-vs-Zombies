@@ -1437,6 +1437,8 @@ export function drawHUD(ctx, s, deps) {
       ctx.fillStyle = '#44ff44';
       ctx.fillRect(leftX - 3, wcCardY - 3, wcCardW + 6, wcCardH + 6);
     }
+    // BD-264: dim current card when REPLACE (right) is selected
+    ctx.globalAlpha = leftSelected ? 1.0 : 0.5;
     ctx.fillStyle = leftSelected ? '#1a1a2a' : '#111118';
     ctx.fillRect(leftX, wcCardY, wcCardW, wcCardH);
 
@@ -1469,6 +1471,7 @@ export function drawHUD(ctx, s, deps) {
 
     // Selection arrow for left card
     if (leftSelected) {
+      ctx.globalAlpha = 1.0; // BD-264: ensure selection arrow is full opacity
       const t = Date.now() * 0.003;
       const arrowBob = Math.sin(t * 3) * 4;
       ctx.fillStyle = '#ffcc00';
@@ -1478,6 +1481,7 @@ export function drawHUD(ctx, s, deps) {
       ctx.lineTo(leftX + wcCardW / 2 + 10, wcCardY - 22 + arrowBob);
       ctx.closePath(); ctx.fill();
     }
+    ctx.globalAlpha = 1.0; // BD-264: restore full opacity after left card
 
     // --- Right card: NEW ITEM ---
     const rightX = wcStartX + wcCardW + wcGap;
@@ -1486,6 +1490,8 @@ export function drawHUD(ctx, s, deps) {
       ctx.fillStyle = '#ffcc00';
       ctx.fillRect(rightX - 3, wcCardY - 3, wcCardW + 6, wcCardH + 6);
     }
+    // BD-264: dim new card when KEEP (left) is selected
+    ctx.globalAlpha = rightSelected ? 1.0 : 0.5;
     ctx.fillStyle = rightSelected ? '#1a1a2a' : '#111118';
     ctx.fillRect(rightX, wcCardY, wcCardW, wcCardH);
 
@@ -1516,6 +1522,7 @@ export function drawHUD(ctx, s, deps) {
 
     // Selection arrow for right card
     if (rightSelected) {
+      ctx.globalAlpha = 1.0; // BD-264: ensure selection arrow is full opacity
       const t = Date.now() * 0.003;
       const arrowBob = Math.sin(t * 3) * 4;
       ctx.fillStyle = '#ffcc00';
@@ -1525,17 +1532,18 @@ export function drawHUD(ctx, s, deps) {
       ctx.lineTo(rightX + wcCardW / 2 + 10, wcCardY - 22 + arrowBob);
       ctx.closePath(); ctx.fill();
     }
+    ctx.globalAlpha = 1.0; // BD-264: restore full opacity after right card
 
-    // --- "VS" divider ---
-    ctx.fillStyle = '#ff4444'; ctx.font = 'bold 24px "Courier New"';
-    ctx.fillText('VS', W / 2, wcCardY + wcCardH / 2 + 6);
+    // --- BD-264: arrow divider between cards ---
+    ctx.fillStyle = '#aaaaaa'; ctx.font = 'bold 28px "Courier New"';
+    ctx.fillText('\u2192', W / 2, wcCardY + wcCardH / 2 + 6);
 
     // --- Bottom labels ---
     const labelY = wcCardY + wcCardH + 28;
     ctx.fillStyle = leftSelected ? '#44ff44' : '#666'; ctx.font = 'bold 14px "Courier New"';
     ctx.fillText('KEEP CURRENT', leftX + wcCardW / 2, labelY);
     ctx.fillStyle = rightSelected ? '#ffcc00' : '#666'; ctx.font = 'bold 14px "Courier New"';
-    ctx.fillText('EQUIP NEW', rightX + wcCardW / 2, labelY);
+    ctx.fillText('REPLACE', rightX + wcCardW / 2, labelY);
 
     // Arrow keys hint
     ctx.fillStyle = '#666'; ctx.font = '14px "Courier New"';
