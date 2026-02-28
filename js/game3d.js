@@ -51,19 +51,19 @@ import {
   TOTEM_COUNT, LOOT_CRATE_COUNT, MIN_SHRINE_SPACING, MAX_PLACEMENT_ATTEMPTS,
   AUGMENT_REGEN_CAP,
   WEAPON_COOLDOWN_REDUCTION_L4, LIGHTNING_CHAIN_RANGE_SQ,
-} from './3d/constants.js?v=8';
+} from './3d/constants.js?v=9';
 
 import {
   noise2D, smoothNoise, terrainHeight, getBiome, BIOME_COLORS,
   getChunkKey, createTerrainState, getNearbyColliders,
   generateChunk as terrainGenerateChunk,
   unloadChunk as terrainUnloadChunk, updateChunks as terrainUpdateChunks,
-} from './3d/terrain.js?v=8';
+} from './3d/terrain.js?v=9';
 
-import { box, clearCaches } from './3d/utils.js?v=8';
-import { buildPlayerModel, animatePlayer, updateMuscleGrowth, updateItemVisuals, buildWearableMesh, updateWearableVisuals } from './3d/player-model.js?v=8';
-import { drawHUD } from './3d/hud.js?v=8';
-import { initAudio, playSound, toggleMute, isMuted, getVolume, disposeAudio } from './3d/audio.js?v=8';
+import { box, clearCaches } from './3d/utils.js?v=9';
+import { buildPlayerModel, animatePlayer, updateMuscleGrowth, updateItemVisuals, buildWearableMesh, updateWearableVisuals } from './3d/player-model.js?v=9';
+import { drawHUD } from './3d/hud.js?v=9';
+import { initAudio, playSound, toggleMute, isMuted, getVolume, disposeAudio } from './3d/audio.js?v=9';
 
 
 /**
@@ -404,6 +404,10 @@ export function launch3DGame(options) {
     fogRevealed: new Set(), // BD-97: fog-of-war grid cells revealed by player
     // Wearable comparison menu (BD-199)
     wearableCompare: null, // { currentId, newPickup, slot, pickupIndex, choice }
+    // BD-260: Item pickup fanfare (slot-machine reveal + showcase + reroll)
+    itemFanfare: null,          // null=inactive, object when active
+    itemFanfareRerolls: 2,      // rerolls remaining this wave
+    itemFanfareWave: 1,         // wave when rerolls last reset
     // Power attack + interaction (BD-102: auto-attack removed)
     autoAttackTimer: 0, // kept for compatibility, no longer used
     interactionTimer: 0, // cooldown for shrine/totem hits
@@ -864,6 +868,41 @@ export function launch3DGame(options) {
         e.stopPropagation();
         return;
       }
+    } else if (st.itemFanfare && st.itemFanfare.phase === 'showcase' && !st.gameOver) {
+      // BD-260: Item fanfare showcase input
+      if (st.itemFanfare.slotOccupied) {
+        // Arrow keys to choose keep/equip
+        if (e.code === 'ArrowLeft' || e.code === 'KeyA') st.itemFanfare.choice = 0; // keep current
+        if (e.code === 'ArrowRight' || e.code === 'KeyD') st.itemFanfare.choice = 1; // equip new
+      }
+      if (isFreshConfirm) {
+        applyItemFanfareChoice();
+        e.preventDefault();
+        e.stopPropagation();
+        return;
+      }
+      if (e.code === 'KeyR' && st.itemFanfareRerolls > 0 && !st.itemFanfare.isBossForced) {
+        st.itemFanfareRerolls--;
+        // Reroll: pick new random item from pool
+        const pool = buildItemFanfarePool();
+        if (pool.length > 0) {
+          const newItem = weightedRandomItem(pool);
+          st.itemFanfare.item = newItem;
+          st.itemFanfare.phase = 'rolling';
+          st.itemFanfare.rollTimer = 1.5;
+          st.itemFanfare.rollSpeed = 20;
+          st.itemFanfare.rollAccum = 0;
+          st.itemFanfare.rollPool = pool.length > 1 ? pool : [newItem];
+          st.itemFanfare.landed = false;
+          st.itemFanfare.landFlash = 0;
+          // Re-check slot occupancy for new item
+          const { slotOccupied, currentItemId } = checkSlotOccupied(newItem);
+          st.itemFanfare.slotOccupied = slotOccupied;
+          st.itemFanfare.currentItemId = currentItemId;
+          st.itemFanfare.choice = slotOccupied ? 1 : 0;
+          playSound('sfx_item_pickup');
+        }
+      }
     } else if (st.wearableCompare && !st.gameOver) {
       // BD-199: Wearable comparison menu navigation
       if (e.code === 'ArrowLeft' || e.code === 'KeyA') st.wearableCompare.choice = 0; // KEEP CURRENT
@@ -952,7 +991,7 @@ export function launch3DGame(options) {
       inputState.enterReleasedSinceGameOver = true;
     }
     // Power attack release
-    if ((e.code === 'Enter' || e.code === 'NumpadEnter' || e.code === 'KeyB') && inputState.charging && !st.gameOver && !st.deathSequence && !st.upgradeMenu && !st.pauseMenu && !st.chargeShrineMenu && !st.wearableCompare) {
+    if ((e.code === 'Enter' || e.code === 'NumpadEnter' || e.code === 'KeyB') && inputState.charging && !st.gameOver && !st.deathSequence && !st.upgradeMenu && !st.pauseMenu && !st.chargeShrineMenu && !st.wearableCompare && !st.itemFanfare) {
       inputState.charging = false;
       inputState.powerAttackReady = true;
     }
@@ -2303,7 +2342,7 @@ export function launch3DGame(options) {
         );
         mesh.position.set(px, h + 0.8, pz);
         scene.add(mesh);
-        return { mesh, itype: forcedItem, x: px, z: pz, bobPhase: Math.random() * Math.PI * 2, alive: true };
+        return { mesh, itype: forcedItem, x: px, z: pz, bobPhase: Math.random() * Math.PI * 2, alive: true, isBossForced: true };
       }
     }
 
@@ -2363,6 +2402,176 @@ export function launch3DGame(options) {
     mesh.position.set(px, h + 0.8, pz);
     scene.add(mesh);
     return { mesh, itype, x: px, z: pz, bobPhase: Math.random() * Math.PI * 2, alive: true };
+  }
+
+  // === BD-260: ITEM FANFARE HELPERS ===
+
+  /**
+   * Build the available item pool for the fanfare carousel.
+   * Reuses the same filtering logic as createItemPickup (available items check).
+   * @returns {Array} Array of ITEMS_3D entries that could be rolled.
+   */
+  function buildItemFanfarePool() {
+    return ITEMS_3D.filter(it => {
+      // Stackable items are always available
+      if (it.stackable) return true;
+      // Armor: allow different armor to spawn even if slot occupied (comparison)
+      if (it.slot === 'armor') {
+        if (st.items.armor === it.id) return false; // already have this exact armor
+        return true;
+      }
+      if (it.slot === 'glasses') return !st.items.glasses;
+      // Boots: allow different boots even if slot occupied
+      if (it.slot === 'boots') {
+        if (st.items.boots === it.id) return false;
+        return true;
+      }
+      // Boolean-slot items
+      if (st.items[it.slot] !== undefined && typeof st.items[it.slot] === 'boolean') return !st.items[it.slot];
+      return true;
+    });
+  }
+
+  /**
+   * Perform a weighted random item selection from a pool (same logic as createItemPickup).
+   * @param {Array} pool - Array of ITEMS_3D entries.
+   * @returns {Object} Selected ITEMS_3D entry.
+   */
+  function weightedRandomItem(pool) {
+    let totalWeight = 0;
+    for (const it of pool) {
+      totalWeight += (ITEM_RARITIES[it.rarity] || ITEM_RARITIES.common).weight;
+    }
+    let roll = Math.random() * totalWeight;
+    let selected = pool[0];
+    for (const it of pool) {
+      roll -= (ITEM_RARITIES[it.rarity] || ITEM_RARITIES.common).weight;
+      if (roll <= 0) { selected = it; break; }
+    }
+    return selected;
+  }
+
+  /**
+   * BD-260: Check if a non-stackable item's slot is occupied.
+   * @param {Object} it - ITEMS_3D entry.
+   * @returns {{slotOccupied: boolean, currentItemId: string|null}}
+   */
+  function checkSlotOccupied(it) {
+    if (it.stackable) return { slotOccupied: false, currentItemId: null };
+    let slotOccupied = false;
+    let currentItemId = null;
+    if (it.slot === 'armor' && st.items.armor !== null) {
+      slotOccupied = true;
+      currentItemId = st.items.armor;
+    } else if (it.slot === 'boots' && st.items.boots !== null) {
+      slotOccupied = true;
+      currentItemId = st.items.boots;
+    } else if (it.slot === 'glasses' && st.items.glasses) {
+      slotOccupied = true;
+      const slotItem = ITEMS_3D.find(si => si.slot === 'glasses' && !si.stackable);
+      currentItemId = slotItem ? slotItem.id : 'glasses';
+    } else {
+      // Boolean-slot items
+      if (st.items[it.slot] !== undefined && typeof st.items[it.slot] === 'boolean' && st.items[it.slot]) {
+        slotOccupied = true;
+        const slotItem = ITEMS_3D.find(si => si.slot === it.slot && !si.stackable);
+        currentItemId = slotItem ? slotItem.id : it.slot;
+      }
+    }
+    return { slotOccupied, currentItemId };
+  }
+
+  /**
+   * BD-260: Start the item fanfare sequence (slot-machine reveal).
+   * Pauses the game, builds the carousel pool, and initializes the rolling animation.
+   * @param {Object} pickup - The world pickup object (removed from scene on fanfare start).
+   * @param {Object} rolledItem - The ITEMS_3D entry that was rolled.
+   * @param {boolean} [isBossForced=false] - If true, skip rolling and go straight to showcase.
+   */
+  function startItemFanfare(pickup, rolledItem, isBossForced) {
+    const pool = buildItemFanfarePool();
+    const { slotOccupied, currentItemId } = checkSlotOccupied(rolledItem);
+
+    st.itemFanfare = {
+      phase: isBossForced ? 'showcase' : 'rolling',
+      item: rolledItem,
+      pickup: pickup,
+      rollTimer: 1.5,
+      rollPool: pool.length > 1 ? pool : [rolledItem],
+      rollIndex: 0,
+      rollSpeed: 20,           // items/sec
+      rollAccum: 0,            // fractional accumulator for item cycling
+      slotOccupied: slotOccupied,
+      currentItemId: currentItemId,
+      choice: slotOccupied ? 1 : 0, // default to "equip new" if comparing, else "accept"
+      landed: isBossForced,
+      landFlash: isBossForced ? 0.3 : 0,
+      isBossForced: !!isBossForced,
+    };
+    st.paused = true;
+    // Clear input to prevent auto-confirm
+    keys3d['Enter'] = false;
+    keys3d['NumpadEnter'] = false;
+    keys3d['Space'] = false;
+    inputState.charging = false;
+    inputState.chargeTime = 0;
+    playSound('sfx_item_pickup');
+    if (isBossForced) playSound('sfx_level_up');
+  }
+
+  /**
+   * BD-260: Apply the item from the fanfare to the player's state.
+   * Mirrors the existing equip logic from the item pickup flow.
+   */
+  function applyItemFanfareChoice() {
+    const f = st.itemFanfare;
+    if (!f) return;
+    const it = f.item;
+
+    // If slot occupied and player chose to keep current (choice === 0), discard new item
+    if (f.slotOccupied && f.choice === 0) {
+      // Player chose to keep current — discard the new item
+    } else {
+      // Apply item: mirror the equip logic from the original pickup flow
+      if (it.stackable) {
+        st.items[it.id]++;
+        if (it.id === 'thickFur') { st.maxHp += 15; if (st.hp > 0) st.hp = Math.min(st.hp + 15, st.maxHp); }
+      } else if (it.slot === 'armor') { st.items.armor = it.id; }
+      else if (it.slot === 'glasses') { st.items.glasses = true; }
+      else if (it.slot === 'boots') { st.items.boots = it.id; }
+      else if (it.slot === 'ring') { st.items.ring = true; st.collectRadius *= 1.5; }
+      else if (it.slot === 'charm') st.items.charm = true;
+      else if (it.slot === 'vest') st.items.vest = true;
+      else if (it.slot === 'pendant') { st.items.pendant = true; st.augments.pendant = (st.augments.pendant || 0) + 1; recomputeAugments(); }
+      else if (it.slot === 'bracelet') st.items.bracelet = true;
+      else if (it.slot === 'gloves') st.items.gloves = true;
+      else if (it.slot === 'cushion') st.items.cushion = true;
+      else if (it.slot === 'turboshoes') { st.items.turboshoes = true; st.dodgeChance += 0.10; }
+      else if (it.slot === 'goldenbone') st.items.goldenbone = true;
+      else if (it.slot === 'crown') st.items.crown = true;
+      else if (it.slot === 'zombiemagnet') st.items.zombiemagnet = true;
+      else if (it.slot === 'scarf') st.items.scarf = true;
+
+      // Track acquisition order for display cap (BD-160)
+      const itemKey = it.stackable ? it.id : (it.slot || it.id);
+      const existIdx = st.itemAcquireOrder.indexOf(itemKey);
+      if (existIdx !== -1) st.itemAcquireOrder.splice(existIdx, 1);
+      st.itemAcquireOrder.push(itemKey);
+
+      updateItemVisuals(playerModel, st.items, animalData.id);
+    }
+
+    // Cleanup
+    st.itemFanfare = null;
+    st.paused = false;
+    st.invincible = Math.max(st.invincible, 1.0); // 1s post-pickup invincibility
+    inputState.menuDismissedAt = performance.now();
+    keys3d['Enter'] = false;
+    keys3d['NumpadEnter'] = false;
+    keys3d['Space'] = false;
+    inputState.charging = false;
+    inputState.chargeTime = 0;
+    playSound('sfx_level_up');
   }
 
   // === WEARABLE PICKUP ===
@@ -2567,6 +2776,7 @@ export function launch3DGame(options) {
       st.enemies.push(createEnemy(pos.x, pos.z, waveHp, tier));
     }
     st.wave++;
+    st.itemFanfareRerolls = 2;  // BD-260: reset item rerolls each wave
     // Wave-driven difficulty escalation
     st.zombieDmgMult += 0.15;   // +15% zombie contact damage per wave
     st.enemySpeedMult += 0.03;  // +3% zombie speed per wave
@@ -7359,7 +7569,7 @@ export function launch3DGame(options) {
         inputState.enterCooldown -= gameDt;
       }
       const chargeKey = keys3d['Enter'] || keys3d['NumpadEnter'] || keys3d['KeyB'];
-      if (chargeKey && !st.gameOver && !st.deathSequence && !st.upgradeMenu && !st.pauseMenu && !st.chargeShrineMenu && !st.wearableCompare && inputState.enterCooldown <= 0 && (performance.now() - inputState.menuDismissedAt > 500)) {
+      if (chargeKey && !st.gameOver && !st.deathSequence && !st.upgradeMenu && !st.pauseMenu && !st.chargeShrineMenu && !st.wearableCompare && !st.itemFanfare && inputState.enterCooldown <= 0 && (performance.now() - inputState.menuDismissedAt > 500)) {
         if (!inputState.charging) {
           inputState.charging = true;
           inputState.chargeTime = 0;
@@ -7634,9 +7844,9 @@ export function launch3DGame(options) {
       }
 
       // === ITEM PICKUPS ===
-      // Walk into floating items to equip them. Each item occupies a unique slot.
-      // Some items have immediate effects (magnetRing boosts collectRadius, pendant adds regen).
-      // Shows floating text with item name and description on pickup.
+      // BD-260: Walk into floating items to trigger fanfare (slot-machine reveal + showcase).
+      // Items are no longer auto-equipped — the fanfare pauses the game, shows the roll, and
+      // lets the player confirm or reroll before applying.
       for (let i = st.itemPickups.length - 1; i >= 0; i--) {
         const item = st.itemPickups[i];
         if (!item.alive) continue;
@@ -7648,97 +7858,19 @@ export function launch3DGame(options) {
         const dz = st.playerZ - item.z;
         const distSq = dx * dx + dz * dz;
         const idy = Math.abs(st.playerY - item.mesh.position.y);
-        if (distSq < 2.25 && idy < 2.0 && !st.deathSequence) { // 1.5*1.5 — BD-228: no pickup during death
-          // Equip item
+        if (distSq < 2.25 && idy < 2.0 && !st.deathSequence && !st.itemFanfare) { // BD-260: only one fanfare at a time
+          // BD-260: Instead of immediate equip, open fanfare
           const it = item.itype;
-          // BD-199: Check if non-stackable slot is occupied — show comparison menu
-          let slotOccupied = false;
-          if (!it.stackable) {
-            if (it.slot === 'armor' && st.items.armor !== null) slotOccupied = true;
-            else if (it.slot === 'boots' && st.items.boots !== null) slotOccupied = true;
-            else if (it.slot === 'glasses' && st.items.glasses) slotOccupied = true;
-            else if (it.slot === 'ring' && st.items.ring) slotOccupied = true;
-            else if (it.slot === 'charm' && st.items.charm) slotOccupied = true;
-            else if (it.slot === 'vest' && st.items.vest) slotOccupied = true;
-            else if (it.slot === 'pendant' && st.items.pendant) slotOccupied = true;
-            else if (it.slot === 'bracelet' && st.items.bracelet) slotOccupied = true;
-            else if (it.slot === 'gloves' && st.items.gloves) slotOccupied = true;
-            else if (it.slot === 'cushion' && st.items.cushion) slotOccupied = true;
-            else if (it.slot === 'turboshoes' && st.items.turboshoes) slotOccupied = true;
-            else if (it.slot === 'goldenbone' && st.items.goldenbone) slotOccupied = true;
-            else if (it.slot === 'crown' && st.items.crown) slotOccupied = true;
-            else if (it.slot === 'zombiemagnet' && st.items.zombiemagnet) slotOccupied = true;
-            else if (it.slot === 'scarf' && st.items.scarf) slotOccupied = true;
-          }
-          if (slotOccupied && !st.wearableCompare) {
-            // Slot occupied: open comparison menu instead of auto-equipping
-            // Determine the current item ID for this slot
-            let currentId;
-            if (it.slot === 'armor') currentId = st.items.armor;
-            else if (it.slot === 'boots') currentId = st.items.boots;
-            else {
-              // Boolean slots: look up the item ID from ITEMS_3D by slot name
-              const slotItem = ITEMS_3D.find(si => si.slot === it.slot && !si.stackable);
-              currentId = slotItem ? slotItem.id : it.slot;
-            }
-            st.wearableCompare = {
-              currentId: currentId,
-              newPickup: item,
-              slot: it.slot,
-              pickupIndex: i,
-              choice: 1, // default to "EQUIP NEW"
-            };
-            st.paused = true;
-            playSound('sfx_item_pickup');
-          } else if (!slotOccupied) {
-            // Slot empty: auto-equip immediately
-            if (it.stackable) {
-              // Stackable items: increment count and apply per-stack effects
-              st.items[it.id]++;
-              // Thick Fur: +15 max HP per stack (immediate)
-              if (it.id === 'thickFur') { st.maxHp += 15; if (st.hp > 0) st.hp = Math.min(st.hp + 15, st.maxHp); } // BD-239: hp>0 guard
-            } else if (it.slot === 'armor') { st.items.armor = it.id; }
-            else if (it.slot === 'glasses') { st.items.glasses = true; }
-            else if (it.slot === 'boots') { st.items.boots = it.id; }
-            else if (it.slot === 'ring') { st.items.ring = true; st.collectRadius *= 1.5; }
-            else if (it.slot === 'charm') st.items.charm = true;
-            else if (it.slot === 'vest') st.items.vest = true;
-            else if (it.slot === 'pendant') { st.items.pendant = true; st.augments.pendant = (st.augments.pendant || 0) + 1; recomputeAugments(); }
-            else if (it.slot === 'bracelet') st.items.bracelet = true;
-            else if (it.slot === 'gloves') st.items.gloves = true;
-            // New non-stackable slots
-            else if (it.slot === 'cushion') st.items.cushion = true;
-            else if (it.slot === 'turboshoes') { st.items.turboshoes = true; st.dodgeChance += 0.10; }
-            else if (it.slot === 'goldenbone') st.items.goldenbone = true;
-            else if (it.slot === 'crown') st.items.crown = true;
-            else if (it.slot === 'zombiemagnet') st.items.zombiemagnet = true;
-            else if (it.slot === 'scarf') st.items.scarf = true;
-            // Floating text for item pickup (color by rarity)
-            const rarityColor = (ITEM_RARITIES[it.rarity] || ITEM_RARITIES.common).color;
-            // Track acquisition order for display cap (BD-160)
-            const itemKey = it.stackable ? it.id : (it.slot || it.id);
-            const existIdx = st.itemAcquireOrder.indexOf(itemKey);
-            if (existIdx !== -1) st.itemAcquireOrder.splice(existIdx, 1);
-            st.itemAcquireOrder.push(itemKey);
-            playSound('sfx_item_pickup');
-            // BD-147: Item pickup event feedback
-            st.itemFlashTimer = 0.2;
-            st.itemFlashColor = rarityColor;
-            st.itemSlowTimer = 0.3;
-            st.itemAnnouncement = {
-              name: it.name,
-              desc: it.desc,
-              color: rarityColor,
-              timer: 2.5
-            };
-            playSound('sfx_level_up'); // celebration sound until Julian records a proper pickup sound
-            updateItemVisuals(playerModel, st.items, animalData.id);
-            item.alive = false;
-            scene.remove(item.mesh);
-            item.mesh.geometry.dispose();
-            item.mesh.material.dispose();
-            st.itemPickups.splice(i, 1);
-          }
+          const isBossForced = !!item.isBossForced;
+          // Remove pickup mesh from world immediately (so it can't be picked up again)
+          item.alive = false;
+          scene.remove(item.mesh);
+          item.mesh.geometry.dispose();
+          item.mesh.material.dispose();
+          st.itemPickups.splice(i, 1);
+          // Start the fanfare
+          startItemFanfare(item, it, isBossForced);
+          break; // Only one pickup per frame
         }
         if (distSq > ENTITY_DESPAWN_DISTANCE * ENTITY_DESPAWN_DISTANCE) {
           item.alive = false;
@@ -7896,7 +8028,7 @@ export function launch3DGame(options) {
       // === CHARGE SHRINE INTERACTION ===
       // Player stands near an uncharged charge shrine to accumulate charge.
       // On charge completion, 3 random upgrades from the shrine's rarity tier are offered.
-      if (!st.chargeShrineMenu && !st.upgradeMenu && !st.pauseMenu && !st.wearableCompare && !st.gameOver && !st.deathSequence) {
+      if (!st.chargeShrineMenu && !st.upgradeMenu && !st.pauseMenu && !st.wearableCompare && !st.itemFanfare && !st.gameOver && !st.deathSequence) {
         let nearestShrine = null;
         let nearestDist = Infinity;
         for (const cs of st.chargeShrines) {
@@ -8117,6 +8249,8 @@ export function launch3DGame(options) {
         st._deathSlowmoPlayed = false;
         // BD-234: Reset killer label flag for glow highlight
         st._killerLabelSpawned = false;
+        // BD-260: Force-close item fanfare on death
+        if (st.itemFanfare) { st.itemFanfare = null; st.paused = false; }
         // Disable player input
         keys3d['Enter'] = false;
         keys3d['NumpadEnter'] = false;
@@ -8126,6 +8260,34 @@ export function launch3DGame(options) {
         inputState.powerAttackReady = false;
       }
 
+    }
+
+    // BD-260: Item fanfare rolling animation (runs outside pause gate)
+    if (st.itemFanfare && st.itemFanfare.phase === 'rolling') {
+      const f = st.itemFanfare;
+      f.rollTimer -= realDt;
+      // Decelerate — frame-rate independent
+      f.rollSpeed *= Math.pow(0.96, realDt * 60);
+      f.rollAccum += f.rollSpeed * realDt;
+      if (f.rollAccum >= 1) {
+        const steps = Math.floor(f.rollAccum);
+        f.rollIndex = (f.rollIndex + steps) % f.rollPool.length;
+        f.rollAccum -= steps;
+      }
+      // Snap to final item when slow enough or timer expired
+      if (f.rollSpeed < 0.5 || f.rollTimer <= 0) {
+        // Find the rolled item in the pool and snap to it
+        const targetIdx = f.rollPool.findIndex(it => it.id === f.item.id);
+        if (targetIdx >= 0) f.rollIndex = targetIdx;
+        f.phase = 'showcase';
+        f.landed = true;
+        f.landFlash = 0.3;
+        playSound('sfx_level_up');
+      }
+    }
+    // BD-260: Land flash countdown (runs outside pause gate)
+    if (st.itemFanfare && st.itemFanfare.landFlash > 0) {
+      st.itemFanfare.landFlash -= realDt;
     }
 
     // === CAMERA + RENDER (runs even when paused/game over) ===

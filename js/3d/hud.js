@@ -1162,6 +1162,251 @@ export function drawHUD(ctx, s, deps) {
     ctx.textAlign = 'left';
   }
 
+  // --- BD-260: Item Fanfare (slot-machine reveal + showcase card) ---
+  if (s.itemFanfare && !s.gameOver) {
+    ctx.shadowColor = 'transparent'; ctx.shadowBlur = 0; ctx.shadowOffsetX = 0; ctx.shadowOffsetY = 0;
+    ctx.fillStyle = 'rgba(0,0,0,0.7)'; ctx.fillRect(0, 0, W, H);
+    ctx.textAlign = 'center';
+
+    const f = s.itemFanfare;
+    const rolledItem = f.item;
+    const rolledRarity = ITEM_RARITIES[rolledItem.rarity] || ITEM_RARITIES.common;
+
+    if (f.phase === 'rolling') {
+      // --- Rolling Phase: Carousel animation ---
+      ctx.fillStyle = '#ffffff'; ctx.font = 'bold 28px ' + GAME_FONT;
+      ctx.fillText('ITEM FOUND!', W / 2, 80);
+
+      // Carousel area: show 3 items vertically (prev, current, next)
+      const carouselCX = W / 2;
+      const carouselCY = H / 2 - 20;
+      const cardH = 60;
+      const cardW = 260;
+      const pool = f.rollPool;
+      const scrollOffset = f.rollAccum * cardH; // smooth sub-item scrolling
+
+      for (let slot = -1; slot <= 1; slot++) {
+        const idx = ((f.rollIndex + slot) % pool.length + pool.length) % pool.length;
+        const poolItem = pool[idx];
+        const rar = ITEM_RARITIES[poolItem.rarity] || ITEM_RARITIES.common;
+        const cy = carouselCY + slot * (cardH + 8) - scrollOffset;
+
+        // Fade adjacent items
+        const isCurrent = slot === 0;
+        ctx.globalAlpha = isCurrent ? 1.0 : 0.35;
+
+        // Card background
+        ctx.fillStyle = '#111118';
+        ctx.fillRect(carouselCX - cardW / 2, cy - cardH / 2, cardW, cardH);
+        // Rarity border
+        ctx.strokeStyle = rar.color;
+        ctx.lineWidth = 2;
+        ctx.strokeRect(carouselCX - cardW / 2, cy - cardH / 2, cardW, cardH);
+
+        // Item icon: colored square with first letter
+        const iconSize = 36;
+        const iconX = carouselCX - cardW / 2 + 14;
+        const iconY = cy - iconSize / 2;
+        ctx.fillStyle = rar.color + '44';
+        ctx.fillRect(iconX, iconY, iconSize, iconSize);
+        ctx.strokeStyle = rar.color;
+        ctx.lineWidth = 1;
+        ctx.strokeRect(iconX, iconY, iconSize, iconSize);
+        ctx.fillStyle = rar.color;
+        ctx.font = 'bold 20px ' + GAME_FONT;
+        ctx.fillText(poolItem.name.charAt(0), iconX + iconSize / 2, iconY + iconSize / 2 + 7);
+
+        // Item name
+        ctx.fillStyle = rar.color;
+        ctx.font = 'bold 14px ' + GAME_FONT;
+        ctx.fillText(poolItem.name, carouselCX + 20, cy + 2);
+
+        // Rarity label below name
+        ctx.fillStyle = rar.color;
+        ctx.font = '11px ' + GAME_FONT;
+        ctx.fillText(rar.name, carouselCX + 20, cy + 18);
+      }
+      ctx.globalAlpha = 1.0;
+    } else if (f.phase === 'showcase') {
+      // --- Showcase Phase: Large card with item details ---
+
+      // Land flash
+      if (f.landFlash > 0) {
+        const flashAlpha = Math.min(0.3, f.landFlash / 0.3 * 0.3);
+        ctx.fillStyle = rolledRarity.color;
+        ctx.globalAlpha = flashAlpha;
+        ctx.fillRect(0, 0, W, H);
+        ctx.globalAlpha = 1.0;
+      }
+
+      // Rarity label at top
+      ctx.fillStyle = rolledRarity.color; ctx.font = 'bold 16px ' + GAME_FONT;
+      const rarityStars = rolledItem.rarity === 'legendary' ? '   ' : (rolledItem.rarity === 'rare' ? '  ' : '');
+      ctx.fillText(rarityStars + rolledRarity.name.toUpperCase() + rarityStars, W / 2, 80);
+
+      // Showcase card dimensions
+      const scW = 360, scH = f.slotOccupied ? 340 : 240;
+      const scX = W / 2 - scW / 2;
+      const scY = 100;
+
+      // Card background
+      ctx.fillStyle = '#1a1a2a';
+      ctx.fillRect(scX, scY, scW, scH);
+      // Rarity border
+      ctx.strokeStyle = rolledRarity.color;
+      ctx.lineWidth = 3;
+      ctx.strokeRect(scX, scY, scW, scH);
+
+      // Item icon: large colored square
+      const iconSz = 64;
+      const iconCX = W / 2;
+      const iconCY = scY + 50;
+      ctx.fillStyle = rolledRarity.color + '33';
+      ctx.fillRect(iconCX - iconSz / 2, iconCY - iconSz / 2, iconSz, iconSz);
+      ctx.strokeStyle = rolledRarity.color;
+      ctx.lineWidth = 2;
+      ctx.strokeRect(iconCX - iconSz / 2, iconCY - iconSz / 2, iconSz, iconSz);
+      // First letter large
+      ctx.fillStyle = rolledRarity.color;
+      ctx.font = 'bold 32px ' + GAME_FONT;
+      ctx.fillText(rolledItem.name.charAt(0), iconCX, iconCY + 12);
+
+      // Item name
+      ctx.fillStyle = rolledRarity.color; ctx.font = 'bold 20px ' + GAME_FONT;
+      ctx.fillText(rolledItem.name, W / 2, scY + 105);
+
+      // Description (word-wrapped)
+      ctx.fillStyle = '#cccccc'; ctx.font = '14px ' + GAME_FONT;
+      const descWords = rolledItem.desc.split(' ');
+      let descLine = '', descY = scY + 130;
+      for (const w of descWords) {
+        const test = descLine + w + ' ';
+        if (ctx.measureText(test).width > scW - 40) {
+          ctx.fillText(descLine.trim(), W / 2, descY);
+          descLine = w + ' '; descY += 18;
+        } else { descLine = test; }
+      }
+      if (descLine.trim()) { ctx.fillText(descLine.trim(), W / 2, descY); descY += 18; }
+
+      // Stackable count display
+      if (rolledItem.stackable) {
+        const currentCount = s.items[rolledItem.id] || 0;
+        ctx.fillStyle = '#88ccff'; ctx.font = 'bold 16px ' + GAME_FONT;
+        ctx.fillText('x' + currentCount + '  \u2192  x' + (currentCount + 1), W / 2, descY + 8);
+      }
+
+      // Comparison section (if slot occupied, non-stackable)
+      if (f.slotOccupied) {
+        const compY = scY + 175;
+        const compCardW = 150, compCardH = 100, compGap = 30;
+        const compTotalW = 2 * compCardW + compGap;
+        const compStartX = W / 2 - compTotalW / 2;
+
+        // Divider
+        ctx.fillStyle = '#444'; ctx.font = '12px ' + GAME_FONT;
+        ctx.fillText('\u2500\u2500 Currently Equipped \u2500\u2500', W / 2, compY);
+
+        const leftX = compStartX;
+        const rightX = compStartX + compCardW + compGap;
+        const cardTop = compY + 10;
+
+        // Current item card (left)
+        const currentItem = ITEMS_3D.find(it => it.id === f.currentItemId);
+        const currentRarity = currentItem ? (ITEM_RARITIES[currentItem.rarity] || ITEM_RARITIES.common) : ITEM_RARITIES.common;
+        const leftSel = f.choice === 0;
+
+        if (leftSel) {
+          ctx.fillStyle = '#44ff44';
+          ctx.fillRect(leftX - 2, cardTop - 2, compCardW + 4, compCardH + 4);
+        }
+        ctx.fillStyle = leftSel ? '#1a1a2a' : '#111118';
+        ctx.fillRect(leftX, cardTop, compCardW, compCardH);
+
+        ctx.fillStyle = '#888'; ctx.font = 'bold 10px ' + GAME_FONT;
+        ctx.fillText('KEEP', leftX + compCardW / 2, cardTop + 15);
+        ctx.fillStyle = currentItem ? currentRarity.color : '#aaa'; ctx.font = 'bold 12px ' + GAME_FONT;
+        ctx.fillText(currentItem ? currentItem.name : 'UNKNOWN', leftX + compCardW / 2, cardTop + 38);
+        ctx.fillStyle = '#cccccc'; ctx.font = '11px ' + GAME_FONT;
+        if (currentItem) ctx.fillText(currentItem.desc, leftX + compCardW / 2, cardTop + 58);
+
+        // New item card (right)
+        const rightSel = f.choice === 1;
+        if (rightSel) {
+          ctx.fillStyle = '#ffcc00';
+          ctx.fillRect(rightX - 2, cardTop - 2, compCardW + 4, compCardH + 4);
+        }
+        ctx.fillStyle = rightSel ? '#1a1a2a' : '#111118';
+        ctx.fillRect(rightX, cardTop, compCardW, compCardH);
+
+        ctx.fillStyle = '#888'; ctx.font = 'bold 10px ' + GAME_FONT;
+        ctx.fillText('EQUIP NEW', rightX + compCardW / 2, cardTop + 15);
+        ctx.fillStyle = rolledRarity.color; ctx.font = 'bold 12px ' + GAME_FONT;
+        ctx.fillText(rolledItem.name, rightX + compCardW / 2, cardTop + 38);
+        ctx.fillStyle = '#cccccc'; ctx.font = '11px ' + GAME_FONT;
+        ctx.fillText(rolledItem.desc, rightX + compCardW / 2, cardTop + 58);
+
+        // VS divider
+        ctx.fillStyle = '#ff4444'; ctx.font = 'bold 18px ' + GAME_FONT;
+        ctx.fillText('VS', W / 2, cardTop + compCardH / 2 + 6);
+
+        // Selection arrows
+        if (leftSel) {
+          const t = Date.now() * 0.003;
+          const arrowBob = Math.sin(t * 3) * 3;
+          ctx.fillStyle = '#ffcc00';
+          ctx.beginPath();
+          ctx.moveTo(leftX + compCardW / 2, cardTop - 6 + arrowBob);
+          ctx.lineTo(leftX + compCardW / 2 - 8, cardTop - 14 + arrowBob);
+          ctx.lineTo(leftX + compCardW / 2 + 8, cardTop - 14 + arrowBob);
+          ctx.closePath(); ctx.fill();
+        }
+        if (rightSel) {
+          const t = Date.now() * 0.003;
+          const arrowBob = Math.sin(t * 3) * 3;
+          ctx.fillStyle = '#ffcc00';
+          ctx.beginPath();
+          ctx.moveTo(rightX + compCardW / 2, cardTop - 6 + arrowBob);
+          ctx.lineTo(rightX + compCardW / 2 - 8, cardTop - 14 + arrowBob);
+          ctx.lineTo(rightX + compCardW / 2 + 8, cardTop - 14 + arrowBob);
+          ctx.closePath(); ctx.fill();
+        }
+      }
+
+      // Bottom prompts
+      const promptY = scY + scH + 20;
+
+      if (f.slotOccupied) {
+        ctx.fillStyle = '#666'; ctx.font = '14px ' + GAME_FONT;
+        ctx.fillText('<  ARROW KEYS  >', W / 2, promptY);
+      }
+
+      // Pulsing ENTER prompt
+      {
+        const alpha = 0.6 + 0.4 * Math.sin(Date.now() * 0.005);
+        ctx.globalAlpha = alpha;
+        ctx.fillStyle = '#ffcc00'; ctx.font = 'bold 22px ' + GAME_FONT;
+        const enterText = f.slotOccupied ? 'PRESS ENTER TO SELECT' : 'PRESS ENTER TO ACCEPT';
+        ctx.fillText(enterText, W / 2, promptY + 30);
+        ctx.globalAlpha = 1;
+      }
+
+      // Reroll prompt
+      if (!f.isBossForced) {
+        if (s.itemFanfareRerolls > 0) {
+          ctx.fillStyle = '#88ccff'; ctx.font = 'bold 18px ' + GAME_FONT;
+          ctx.fillText('Press R for NEW ROLL! (' + s.itemFanfareRerolls + ' left)', W / 2, promptY + 58);
+        } else {
+          ctx.fillStyle = '#444'; ctx.font = '14px ' + GAME_FONT;
+          ctx.fillText('No rerolls left', W / 2, promptY + 58);
+        }
+      } else {
+        ctx.fillStyle = '#ff8800'; ctx.font = 'bold 14px ' + GAME_FONT;
+        ctx.fillText('BOSS REWARD!', W / 2, promptY + 58);
+      }
+    }
+    ctx.textAlign = 'left';
+  }
+
   // --- BD-199: Wearable Comparison Menu ---
   if (s.wearableCompare && !s.gameOver) {
     ctx.shadowColor = 'transparent'; ctx.shadowBlur = 0; ctx.shadowOffsetX = 0; ctx.shadowOffsetY = 0;
@@ -1490,8 +1735,8 @@ export function drawHUD(ctx, s, deps) {
     ctx.globalAlpha = 1.0;
   }
 
-  // BD-147: Item pickup center-screen announcement
-  if (s.itemAnnouncement) {
+  // BD-147: Item pickup center-screen announcement (BD-260: suppressed during fanfare)
+  if (s.itemAnnouncement && !s.itemFanfare) {
     const ann = s.itemAnnouncement;
     const fadeIn = Math.min(1, (2.5 - ann.timer) / 0.2);
     const fadeOut = Math.min(1, ann.timer / 0.3);
