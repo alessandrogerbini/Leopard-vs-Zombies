@@ -20,7 +20,7 @@ import {
   WEAPON_TYPES, HOWL_TYPES, ITEMS_3D, ITEM_RARITIES, SHRINE_AUGMENTS, ZOMBIE_TIERS, WEARABLES_3D,
   MAP_HALF,
   CHARGE_SHRINE_TIME,
-} from './constants.js';
+} from './constants.js?v=12';
 
 const GAME_FONT = '"Fredoka One", "Comic Sans MS", "Arial Rounded MT Bold", sans-serif';
 

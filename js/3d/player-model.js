@@ -16,7 +16,7 @@
  * Exports: buildPlayerModel, animatePlayer, updateMuscleGrowth, updateItemVisuals
  */
 
-import { box } from './utils.js';
+import { box } from './utils.js?v=12';
 
 /**
  * @typedef {Object} PlayerModel
