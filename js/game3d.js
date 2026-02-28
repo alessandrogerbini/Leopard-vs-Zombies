@@ -2537,7 +2537,8 @@ export function launch3DGame(options) {
       if (st.wave >= 2) {
         const roll = Math.random();
         const maxTier = Math.min(st.wave, 5);
-        if (roll < 0.03 * st.wave) tier = Math.min(maxTier, 2 + Math.floor(Math.random() * (maxTier - 1)));
+        // BD-268: Gentler ambient tier ramp
+        if (roll < 0.02 * st.wave) tier = Math.min(maxTier, 2 + Math.floor(Math.random() * Math.min(2, maxTier - 1)));
       }
       st.enemies.push(createEnemy(pos.x, pos.z, baseHp * tier, tier));
     }
@@ -2561,7 +2562,15 @@ export function launch3DGame(options) {
       const dist = 20 + Math.random() * 15;
       const pos = getValidSpawnPos(dist, st.playerX, st.playerZ);
       if (!pos) continue; // BD-217: skip if too close to player
-      const tier = Math.random() < 0.15 * st.wave ? Math.min(st.wave + 1, 5) : 1;
+      // BD-268: Graduated tier ramp — much gentler scaling
+      let tier = 1;
+      const tierRoll = Math.random();
+      if (tierRoll < 0.03 * st.wave) {
+        // When triggered, spawn tier 2-3, not jumping straight to max
+        const maxTier = Math.min(st.wave, 5);
+        tier = 1 + Math.ceil(Math.random() * Math.min(2, maxTier - 1));
+        tier = Math.min(tier, maxTier);
+      }
       st.enemies.push(createEnemy(pos.x, pos.z, waveHp, tier));
     }
     st.wave++;
