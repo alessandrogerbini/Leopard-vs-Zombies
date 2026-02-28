@@ -7398,7 +7398,7 @@ export function launch3DGame(options) {
               newPickup: item,
               slot: it.slot,
               pickupIndex: i,
-              choice: 1, // default to "EQUIP NEW"
+              choice: 0, // BD-264: default to KEEP CURRENT (safe default)
             };
             st.paused = true;
             playSound('sfx_item_pickup');
