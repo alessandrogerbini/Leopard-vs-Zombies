@@ -1,5 +1,7 @@
 # BD-267: Death animation STILL not transitioning to game-over/leaderboard (5th report)
 
+**Status: OPEN — ACTIVE REGRESSION** (2026-02-28) — This was previously fixed and working, but has regressed. The death-screen hang is currently the active bug. All prior fixes (BD-251 pause gate, BD-256 cache-bust, BD-258 try-catch) are applied but the issue persists. This is the canonical tracking bead for this problem.
+
 **Date:** 2026-02-28
 **Source:** Manual playthrough — after dying, the death slow-motion plays but the game never transitions to the game-over screen with name entry and leaderboard. This is the 5th report of this symptom (BD-228, BD-251, BD-256, BD-258, now BD-267).
 

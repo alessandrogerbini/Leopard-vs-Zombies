@@ -1,5 +1,7 @@
 # BD-239: Player still immortal — regen resurrects from 0 HP every frame
 
+**Status: RESOLVED** (2026-02-28) — Player can now die. Full immortality chain (BD-212/237/239) confirmed fixed.
+
 **Category:** Bug — Game-Breaking
 **Priority:** P0-Critical
 **Reopens:** BD-212 (partial fix), BD-237 (partial fix)

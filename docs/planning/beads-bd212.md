@@ -1,5 +1,7 @@
 # Bead: BD-212 — Player is unkillable (cannot drop below 1 HP)
 
+**Status: RESOLVED** (2026-02-28) — Player can now die. Fixed across BD-212/237/239 chain.
+
 **Date:** 2026-02-24
 **Source:** Julian's playtest — player literally cannot die, HP never reaches 0.
 

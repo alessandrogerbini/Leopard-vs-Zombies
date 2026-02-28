@@ -23,6 +23,8 @@ Waves 1–3 spawn Titan bosses (tier 9), wave 4+ spawn Overlord bosses (tier 10)
 
 ### BD-237: Player can't die — heals rescue from 0 HP
 
+**Status: RESOLVED** (2026-02-28) — Player can now die. Fixed across BD-212/237/239 chain.
+
 **Category:** Bug Fix — Player Death
 **Priority:** P0 (Critical)
 **File(s):** `js/game3d.js`

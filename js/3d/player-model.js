@@ -31,6 +31,10 @@ import { box } from './utils.js?v=12';
  * @property {THREE.Mesh[]} feet     - [leftFoot, rightFoot] foot meshes.
  * @property {Object.<string, THREE.Mesh|THREE.Mesh[]>} features - Animal-specific cosmetic parts
  *   (leopard: spots array; redPanda: faceMask; lion: mane array; gator: ridges array).
+ * @property {Array.<{mesh: THREE.Mesh, origX: number, origY: number, origZ: number}>} faceFeatures
+ *   - BD-275: Face feature meshes with original offsets from headCenter for growth repositioning.
+ * @property {{x: number, y: number, z: number}} headCenter
+ *   - BD-275: Head center position used to compute face feature offsets during muscle growth.
  * @property {THREE.Group} wingGroup - Angel wings group (child of group, initially hidden).
  * @property {Object} wingMeshes     - Individual wing segment meshes for flap animation.
  * @property {THREE.Mesh} wingMeshes.wingL1 - Left wing inner segment.
@@ -61,6 +65,8 @@ export function buildPlayerModel(animalId, scene) {
   const hands = [];    // [leftHand, rightHand] paw/hand meshes
   const feet = [];     // [leftFoot, rightFoot] foot meshes
   const features = {}; // Animal-specific cosmetic parts (spots, mane, etc.)
+  const faceFeatures = []; // BD-275: Track face meshes + original positions for growth repositioning
+  let headCenter = { x: 0, y: 0, z: 0 }; // BD-275: Head center for offset calculation
 
   if (animalId === 'leopard') {
     // === BIPEDAL LEOPARD ===
@@ -81,21 +87,22 @@ export function buildPlayerModel(animalId, scene) {
     box(group, 0.3, 0.25, 0.22, 0xe8a828, 0, 1.25, 0);
     // Head
     head = box(group, 0.5, 0.42, 0.45, 0xe8a828, 0, 1.55, 0, true);
-    box(group, 0.4, 0.12, 0.1, 0xe8a828, 0, 1.75, 0);
+    headCenter = { x: 0, y: 1.55, z: 0 };
+    faceFeatures.push({ mesh: box(group, 0.4, 0.12, 0.1, 0xe8a828, 0, 1.75, 0) }); // top of head
     // Snout
-    box(group, 0.22, 0.18, 0.22, 0xf0c050, 0, 1.42, 0.25);
-    box(group, 0.1, 0.06, 0.05, 0xff6688, 0, 1.47, 0.36); // nose
-    box(group, 0.12, 0.03, 0.05, 0xc08018, 0, 1.38, 0.33); // mouth
+    faceFeatures.push({ mesh: box(group, 0.22, 0.18, 0.22, 0xf0c050, 0, 1.42, 0.25) });
+    faceFeatures.push({ mesh: box(group, 0.1, 0.06, 0.05, 0xff6688, 0, 1.47, 0.36) }); // nose
+    faceFeatures.push({ mesh: box(group, 0.12, 0.03, 0.05, 0xc08018, 0, 1.38, 0.33) }); // mouth
     // Eyes
-    box(group, 0.1, 0.08, 0.06, 0x00dd00, -0.14, 1.58, 0.2);
-    box(group, 0.1, 0.08, 0.06, 0x00dd00, 0.14, 1.58, 0.2);
-    box(group, 0.04, 0.08, 0.03, 0x000000, -0.14, 1.58, 0.23);
-    box(group, 0.04, 0.08, 0.03, 0x000000, 0.14, 1.58, 0.23);
+    faceFeatures.push({ mesh: box(group, 0.1, 0.08, 0.06, 0x00dd00, -0.14, 1.58, 0.2) });
+    faceFeatures.push({ mesh: box(group, 0.1, 0.08, 0.06, 0x00dd00, 0.14, 1.58, 0.2) });
+    faceFeatures.push({ mesh: box(group, 0.04, 0.08, 0.03, 0x000000, -0.14, 1.58, 0.23) });
+    faceFeatures.push({ mesh: box(group, 0.04, 0.08, 0.03, 0x000000, 0.14, 1.58, 0.23) });
     // Ears
-    box(group, 0.1, 0.15, 0.07, 0xd09020, -0.16, 1.82, 0);
-    box(group, 0.1, 0.15, 0.07, 0xd09020, 0.16, 1.82, 0);
-    box(group, 0.06, 0.1, 0.04, 0xe8a0a0, -0.16, 1.82, 0.02);
-    box(group, 0.06, 0.1, 0.04, 0xe8a0a0, 0.16, 1.82, 0.02);
+    faceFeatures.push({ mesh: box(group, 0.1, 0.15, 0.07, 0xd09020, -0.16, 1.82, 0) });
+    faceFeatures.push({ mesh: box(group, 0.1, 0.15, 0.07, 0xd09020, 0.16, 1.82, 0) });
+    faceFeatures.push({ mesh: box(group, 0.06, 0.1, 0.04, 0xe8a0a0, -0.16, 1.82, 0.02) });
+    faceFeatures.push({ mesh: box(group, 0.06, 0.1, 0.04, 0xe8a0a0, 0.16, 1.82, 0.02) });
     // Arms (at sides)
     muscles.bicepL = box(group, 0.16, 0.35, 0.16, 0xe8a828, -0.48, 0.85, 0, true);
     muscles.bicepR = box(group, 0.16, 0.35, 0.16, 0xe8a828, 0.48, 0.85, 0, true);
@@ -129,29 +136,32 @@ export function buildPlayerModel(animalId, scene) {
     box(group, 0.28, 0.22, 0.2, 0xcc4422, 0, 1.22, 0);
     // Head (large, round)
     head = box(group, 0.58, 0.5, 0.5, 0xcc4422, 0, 1.55, 0, true);
-    box(group, 0.48, 0.12, 0.1, 0xcc4422, 0, 1.78, 0);
+    headCenter = { x: 0, y: 1.55, z: 0 };
+    faceFeatures.push({ mesh: box(group, 0.48, 0.12, 0.1, 0xcc4422, 0, 1.78, 0) }); // top of head
     // White face mask
-    features.faceMask = box(group, 0.44, 0.26, 0.12, 0xffffff, 0, 1.48, 0.22);
+    const faceMaskMesh = box(group, 0.44, 0.26, 0.12, 0xffffff, 0, 1.48, 0.22);
+    features.faceMask = faceMaskMesh;
+    faceFeatures.push({ mesh: faceMaskMesh });
     // White cheek patches
-    box(group, 0.16, 0.15, 0.1, 0xffffff, -0.28, 1.45, 0.2);
-    box(group, 0.16, 0.15, 0.1, 0xffffff, 0.28, 1.45, 0.2);
+    faceFeatures.push({ mesh: box(group, 0.16, 0.15, 0.1, 0xffffff, -0.28, 1.45, 0.2) });
+    faceFeatures.push({ mesh: box(group, 0.16, 0.15, 0.1, 0xffffff, 0.28, 1.45, 0.2) });
     // Dark eye patches (tear marks)
-    box(group, 0.14, 0.14, 0.06, 0x441100, -0.14, 1.55, 0.22);
-    box(group, 0.14, 0.14, 0.06, 0x441100, 0.14, 1.55, 0.22);
+    faceFeatures.push({ mesh: box(group, 0.14, 0.14, 0.06, 0x441100, -0.14, 1.55, 0.22) });
+    faceFeatures.push({ mesh: box(group, 0.14, 0.14, 0.06, 0x441100, 0.14, 1.55, 0.22) });
     // Dark beady eyes
-    box(group, 0.07, 0.07, 0.05, 0x111111, -0.14, 1.55, 0.26);
-    box(group, 0.07, 0.07, 0.05, 0x111111, 0.14, 1.55, 0.26);
+    faceFeatures.push({ mesh: box(group, 0.07, 0.07, 0.05, 0x111111, -0.14, 1.55, 0.26) });
+    faceFeatures.push({ mesh: box(group, 0.07, 0.07, 0.05, 0x111111, 0.14, 1.55, 0.26) });
     // White snout
-    box(group, 0.2, 0.14, 0.18, 0xffffff, 0, 1.4, 0.25);
+    faceFeatures.push({ mesh: box(group, 0.2, 0.14, 0.18, 0xffffff, 0, 1.4, 0.25) });
     // Black nose
-    box(group, 0.08, 0.06, 0.05, 0x111111, 0, 1.44, 0.35);
+    faceFeatures.push({ mesh: box(group, 0.08, 0.06, 0.05, 0x111111, 0, 1.44, 0.35) });
     // Ears (large pointed, with white rims)
-    box(group, 0.12, 0.25, 0.08, 0x882211, -0.2, 1.88, 0);
-    box(group, 0.12, 0.25, 0.08, 0x882211, 0.2, 1.88, 0);
-    box(group, 0.03, 0.23, 0.08, 0xffffff, -0.28, 1.88, 0);
-    box(group, 0.03, 0.23, 0.08, 0xffffff, 0.28, 1.88, 0);
-    box(group, 0.06, 0.16, 0.05, 0xffffff, -0.2, 1.88, 0.02);
-    box(group, 0.06, 0.16, 0.05, 0xffffff, 0.2, 1.88, 0.02);
+    faceFeatures.push({ mesh: box(group, 0.12, 0.25, 0.08, 0x882211, -0.2, 1.88, 0) });
+    faceFeatures.push({ mesh: box(group, 0.12, 0.25, 0.08, 0x882211, 0.2, 1.88, 0) });
+    faceFeatures.push({ mesh: box(group, 0.03, 0.23, 0.08, 0xffffff, -0.28, 1.88, 0) });
+    faceFeatures.push({ mesh: box(group, 0.03, 0.23, 0.08, 0xffffff, 0.28, 1.88, 0) });
+    faceFeatures.push({ mesh: box(group, 0.06, 0.16, 0.05, 0xffffff, -0.2, 1.88, 0.02) });
+    faceFeatures.push({ mesh: box(group, 0.06, 0.16, 0.05, 0xffffff, 0.2, 1.88, 0.02) });
     // Arms (BLACK - characteristic)
     muscles.bicepL = box(group, 0.15, 0.35, 0.15, 0x111111, -0.44, 0.85, 0, true);
     muscles.bicepR = box(group, 0.15, 0.35, 0.15, 0x111111, 0.44, 0.85, 0, true);
@@ -193,18 +203,19 @@ export function buildPlayerModel(animalId, scene) {
     features.mane = [maneOuter, maneInner];
     // Head
     head = box(group, 0.5, 0.44, 0.48, 0xdda030, 0, 1.62, 0.05, true);
+    headCenter = { x: 0, y: 1.62, z: 0.05 };
     // Snout
-    box(group, 0.26, 0.2, 0.22, 0xeec060, 0, 1.48, 0.28);
-    box(group, 0.12, 0.08, 0.06, 0x996620, 0, 1.53, 0.4); // nose
-    box(group, 0.12, 0.03, 0.05, 0x885510, 0, 1.44, 0.38); // mouth
+    faceFeatures.push({ mesh: box(group, 0.26, 0.2, 0.22, 0xeec060, 0, 1.48, 0.28) });
+    faceFeatures.push({ mesh: box(group, 0.12, 0.08, 0.06, 0x996620, 0, 1.53, 0.4) }); // nose
+    faceFeatures.push({ mesh: box(group, 0.12, 0.03, 0.05, 0x885510, 0, 1.44, 0.38) }); // mouth
     // Eyes (amber)
-    box(group, 0.12, 0.08, 0.06, 0xffaa00, -0.13, 1.66, 0.24);
-    box(group, 0.12, 0.08, 0.06, 0xffaa00, 0.13, 1.66, 0.24);
-    box(group, 0.05, 0.08, 0.03, 0x000000, -0.13, 1.66, 0.27);
-    box(group, 0.05, 0.08, 0.03, 0x000000, 0.13, 1.66, 0.27);
+    faceFeatures.push({ mesh: box(group, 0.12, 0.08, 0.06, 0xffaa00, -0.13, 1.66, 0.24) });
+    faceFeatures.push({ mesh: box(group, 0.12, 0.08, 0.06, 0xffaa00, 0.13, 1.66, 0.24) });
+    faceFeatures.push({ mesh: box(group, 0.05, 0.08, 0.03, 0x000000, -0.13, 1.66, 0.27) });
+    faceFeatures.push({ mesh: box(group, 0.05, 0.08, 0.03, 0x000000, 0.13, 1.66, 0.27) });
     // Ears
-    box(group, 0.1, 0.12, 0.07, 0xc89020, -0.18, 1.9, 0);
-    box(group, 0.1, 0.12, 0.07, 0xc89020, 0.18, 1.9, 0);
+    faceFeatures.push({ mesh: box(group, 0.1, 0.12, 0.07, 0xc89020, -0.18, 1.9, 0) });
+    faceFeatures.push({ mesh: box(group, 0.1, 0.12, 0.07, 0xc89020, 0.18, 1.9, 0) });
     // Arms
     muscles.bicepL = box(group, 0.18, 0.4, 0.18, 0xdda030, -0.52, 0.85, 0, true);
     muscles.bicepR = box(group, 0.18, 0.4, 0.18, 0xdda030, 0.52, 0.85, 0, true);
@@ -247,25 +258,26 @@ export function buildPlayerModel(animalId, scene) {
     box(group, 0.32, 0.22, 0.25, 0x44aa44, 0, 1.2, 0);
     // Head (with snout extending forward)
     head = box(group, 0.4, 0.3, 0.35, 0x44aa44, 0, 1.42, 0.05, true);
+    headCenter = { x: 0, y: 1.42, z: 0.05 };
     // Upper jaw (long snout)
-    box(group, 0.3, 0.15, 0.45, 0x3a9a3a, 0, 1.38, 0.35);
-    box(group, 0.25, 0.1, 0.4, 0x44aa44, 0, 1.42, 0.35);
+    faceFeatures.push({ mesh: box(group, 0.3, 0.15, 0.45, 0x3a9a3a, 0, 1.38, 0.35) });
+    faceFeatures.push({ mesh: box(group, 0.25, 0.1, 0.4, 0x44aa44, 0, 1.42, 0.35) });
     // Lower jaw
-    box(group, 0.25, 0.08, 0.4, 0x2d882d, 0, 1.28, 0.35);
+    faceFeatures.push({ mesh: box(group, 0.25, 0.08, 0.4, 0x2d882d, 0, 1.28, 0.35) });
     // Nostrils
-    box(group, 0.12, 0.08, 0.06, 0x338833, 0, 1.46, 0.58);
+    faceFeatures.push({ mesh: box(group, 0.12, 0.08, 0.06, 0x338833, 0, 1.46, 0.58) });
     // Teeth
     for (let t = 0; t < 3; t++) {
-      box(group, 0.04, 0.05, 0.03, 0xffffff, -0.06 + t * 0.06, 1.32, 0.35 + t * 0.1);
-      box(group, 0.04, 0.05, 0.03, 0xffffff, -0.04 + t * 0.06, 1.26, 0.38 + t * 0.1);
+      faceFeatures.push({ mesh: box(group, 0.04, 0.05, 0.03, 0xffffff, -0.06 + t * 0.06, 1.32, 0.35 + t * 0.1) });
+      faceFeatures.push({ mesh: box(group, 0.04, 0.05, 0.03, 0xffffff, -0.04 + t * 0.06, 1.26, 0.38 + t * 0.1) });
     }
     // Eyes (protruding on top)
-    box(group, 0.15, 0.15, 0.15, 0x44aa44, -0.1, 1.58, 0.1);
-    box(group, 0.15, 0.15, 0.15, 0x44aa44, 0.1, 1.58, 0.1);
-    box(group, 0.1, 0.1, 0.1, 0xccff44, -0.1, 1.6, 0.14);
-    box(group, 0.1, 0.1, 0.1, 0xccff44, 0.1, 1.6, 0.14);
-    box(group, 0.03, 0.1, 0.04, 0x000000, -0.1, 1.6, 0.18);
-    box(group, 0.03, 0.1, 0.04, 0x000000, 0.1, 1.6, 0.18);
+    faceFeatures.push({ mesh: box(group, 0.15, 0.15, 0.15, 0x44aa44, -0.1, 1.58, 0.1) });
+    faceFeatures.push({ mesh: box(group, 0.15, 0.15, 0.15, 0x44aa44, 0.1, 1.58, 0.1) });
+    faceFeatures.push({ mesh: box(group, 0.1, 0.1, 0.1, 0xccff44, -0.1, 1.6, 0.14) });
+    faceFeatures.push({ mesh: box(group, 0.1, 0.1, 0.1, 0xccff44, 0.1, 1.6, 0.14) });
+    faceFeatures.push({ mesh: box(group, 0.03, 0.1, 0.04, 0x000000, -0.1, 1.6, 0.18) });
+    faceFeatures.push({ mesh: box(group, 0.03, 0.1, 0.04, 0x000000, 0.1, 1.6, 0.18) });
     // Arms
     muscles.bicepL = box(group, 0.17, 0.35, 0.17, 0x338833, -0.48, 0.82, 0, true);
     muscles.bicepR = box(group, 0.17, 0.35, 0.17, 0x338833, 0.48, 0.82, 0, true);
@@ -299,6 +311,13 @@ export function buildPlayerModel(animalId, scene) {
     // Tail ridges
     box(group, 0.08, 0.06, 0.08, 0x338833, 0, 0.62, -0.4);
     box(group, 0.06, 0.05, 0.06, 0x338833, 0, 0.58, -0.6);
+  }
+
+  // BD-275: Record original offsets from head center for each face feature
+  for (const ff of faceFeatures) {
+    ff.origX = ff.mesh.position.x - headCenter.x;
+    ff.origY = ff.mesh.position.y - headCenter.y;
+    ff.origZ = ff.mesh.position.z - headCenter.z;
   }
 
   scene.add(group);
@@ -347,6 +366,8 @@ export function buildPlayerModel(animalId, scene) {
     hands,
     feet,
     features,
+    faceFeatures,   // BD-275: face meshes with original offsets for growth repositioning
+    headCenter,     // BD-275: head center position for offset calculation
     wingGroup,
     wingMeshes: { wingL1, wingL2, wingL3, wingR1, wingR2, wingR3 },
   };
@@ -538,6 +559,10 @@ export function animatePlayer(model, st, clock, len, mx, mz) {
  * - **Tier 4: Head** — maxGrowth=0.4, rate=0.05, approaches 1.4x.
  * - **Tier 5: Cosmetic** (tail, features) — maxGrowth=0.3, rate=0.04, approaches 1.3x.
  *
+ * Additionally repositions face features (BD-275) to prevent them from being swallowed
+ * by the enlarging head mesh. Face features are sibling meshes of the head in the group,
+ * so their positions are scaled outward from the head center by the head scale factor.
+ *
  * @param {PlayerModel} model - The player model object returned by buildPlayerModel.
  * @param {number} level - Current player level (1-based).
  */
@@ -582,6 +607,21 @@ export function updateMuscleGrowth(model, level) {
   // Tier 4: Head — minimal growth to maintain proportions
   const hS = logScale(0.4, 0.05);
   if (model.head) model.head.scale.set(hS, hS, hS);
+
+  // BD-275: Reposition face features outward from head center to match head growth.
+  // Face features are siblings (not children) of the head in the group, so when the
+  // head scales up from its center, features at their original positions get swallowed.
+  // We reposition each feature by scaling its offset from the head center by the head scale.
+  if (model.faceFeatures && model.headCenter) {
+    const hc = model.headCenter;
+    for (const ff of model.faceFeatures) {
+      ff.mesh.position.set(
+        hc.x + ff.origX * hS,
+        hc.y + ff.origY * hS,
+        hc.z + ff.origZ * hS
+      );
+    }
+  }
 
   // Tier 5: Cosmetic (tail, features) — very subtle
   const fS = logScale(0.3, 0.04);

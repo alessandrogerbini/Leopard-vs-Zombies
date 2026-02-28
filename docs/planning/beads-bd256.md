@@ -1,6 +1,7 @@
 # BD-256: P0 Investigation — Game-Over Screen Still Not Appearing After Death
 
-## Status: INVESTIGATION COMPLETE
+## Status: INVESTIGATION COMPLETE — FIX APPLIED BUT ISSUE HAS REGRESSED (2026-02-28)
+Cache-busting and pauseMenu clearing were applied. Fix worked temporarily but death-screen hang has returned. See BD-267 for latest report.
 
 ## Context
 This is the THIRD report of the game-over screen failing to appear after player death in 3D mode. BD-251 was supposed to fix this by moving the death sequence tick outside the `!st.paused && !st.gameOver` gate. The user reports that after BD-251 and BD-252 merges, "the player dies, and the game just hangs."

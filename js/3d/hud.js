@@ -429,8 +429,8 @@ export function drawHUD(ctx, s, deps) {
         if (s.items[slot]) {
           const itemDef = ITEMS_3D.find(i => i.slot === slot);
           if (itemDef) {
-            const rarityColor = (ITEM_RARITIES[itemDef.rarity] || ITEM_RARITIES.common).color;
-            visibleItems.push({ name: itemDef.name, desc: itemDef.desc || '', color: rarityColor });
+            const rarityData = ITEM_RARITIES[itemDef.rarity] || ITEM_RARITIES.common;
+            visibleItems.push({ name: itemDef.name, desc: itemDef.desc || '', color: rarityData.color, rarity: itemDef.rarity || 'common', rarityName: rarityData.name });
           }
         }
       }
@@ -440,8 +440,8 @@ export function drawHUD(ctx, s, deps) {
         if (s.items[id] > 0) {
           const itemDef = ITEMS_3D.find(i => i.id === id);
           if (itemDef) {
-            const rarityColor = (ITEM_RARITIES[itemDef.rarity] || ITEM_RARITIES.common).color;
-            visibleItems.push({ name: `${itemDef.name} x${s.items[id]}`, desc: itemDef.desc || '', color: rarityColor });
+            const rarityData = ITEM_RARITIES[itemDef.rarity] || ITEM_RARITIES.common;
+            visibleItems.push({ name: `${itemDef.name} x${s.items[id]}`, desc: itemDef.desc || '', color: rarityData.color, rarity: itemDef.rarity || 'common', rarityName: rarityData.name });
           }
         }
       }
@@ -487,17 +487,28 @@ export function drawHUD(ctx, s, deps) {
         ctx.fillText('ITEMS', itemsPanelX + ITEMS_PAD + 2, iy);
         iy += headerH;
 
-        // Two-line item entries: name (bold 14px, rarity color) + desc (10px, gray)
+        // BD-278: Two-line item entries with rarity border + label
         for (let ii = 0; ii < displayCount; ii++) {
           const item = visibleItems[ii];
-          // Line 1: Item name in rarity color
+          // Rarity color left-border accent (3px wide vertical bar)
+          ctx.fillStyle = item.color;
+          ctx.fillRect(itemsPanelX + 1, iy - 10, 3, itemLineH - 2);
+          // Line 1: Item name in rarity color + small rarity label
           ctx.fillStyle = item.color;
           ctx.font = 'bold 14px ' + GAME_FONT;
-          ctx.fillText(item.name, itemsPanelX + ITEMS_PAD + 2, iy);
+          const nameX = itemsPanelX + ITEMS_PAD + 6;
+          ctx.fillText(item.name, nameX, iy);
+          // Rarity tier label (small, after name)
+          if (item.rarityName && item.rarity !== 'common') {
+            const nameW = ctx.measureText(item.name).width;
+            ctx.font = 'bold 9px ' + GAME_FONT;
+            ctx.fillStyle = item.color + 'bb';
+            ctx.fillText(item.rarityName.toUpperCase(), nameX + nameW + 4, iy);
+          }
           // Line 2: Effect description in gray
           ctx.fillStyle = '#aaaaaa';
           ctx.font = '10px ' + GAME_FONT;
-          ctx.fillText(item.desc, itemsPanelX + ITEMS_PAD + 2, iy + 13);
+          ctx.fillText(item.desc, nameX, iy + 13);
           iy += itemLineH;
         }
         // Overflow indicator
@@ -536,7 +547,7 @@ export function drawHUD(ctx, s, deps) {
       ctx.textAlign = 'right';
       let ry = 98; // starts below timer (which ends at Y=75) with gap
 
-      // Howls (powers)
+      // Howls (powers) — BD-278: colored right-edge accent bar per howl
       const howlEntries = Object.entries(s.howls).filter(([, v]) => v > 0);
       if (howlEntries.length > 0) {
         ctx.fillStyle = '#ffcc00'; ctx.font = 'bold 16px ' + GAME_FONT;
@@ -545,6 +556,9 @@ export function drawHUD(ctx, s, deps) {
         for (const [tid, count] of howlEntries) {
           const def = HOWL_TYPES[tid];
           const shortName = def.name.replace(' HOWL', '');
+          // BD-278: Colored accent bar on right edge
+          ctx.fillStyle = def.color;
+          ctx.fillRect(W - 16, ry - 12, 3, 14);
           ctx.fillStyle = def.color; ctx.font = '16px ' + GAME_FONT;
           ctx.fillText(`${shortName} x${count}`, W - 20, ry);
           ry += 18;
@@ -591,7 +605,7 @@ export function drawHUD(ctx, s, deps) {
           ctx.fillText(c.ptype.name, sx, sy);
         }
       }
-      // Item pickup labels (glasses reveal)
+      // Item pickup labels (glasses reveal) — BD-278: rarity label below name
       for (const ip of s.itemPickups) {
         if (!ip.alive) continue;
         _v.set(ip.x, getGroundAt(ip.x, ip.z) + 1.8, ip.z);
@@ -599,11 +613,15 @@ export function drawHUD(ctx, s, deps) {
         const sx = (_v.x * 0.5 + 0.5) * W;
         const sy = (-_v.y * 0.5 + 0.5) * H;
         if (_v.z > 0 && _v.z < 1) {
-          ctx.fillStyle = ip.itype.color; ctx.font = 'bold 14px ' + GAME_FONT; ctx.textAlign = 'center';
+          const ipRarityData = ITEM_RARITIES[ip.itype.rarity] || ITEM_RARITIES.common;
+          ctx.fillStyle = ipRarityData.color; ctx.font = 'bold 14px ' + GAME_FONT; ctx.textAlign = 'center';
           ctx.fillText(ip.itype.name, sx, sy);
+          // BD-278: Small rarity tier label below item name
+          ctx.font = 'bold 9px ' + GAME_FONT;
+          ctx.fillText(ipRarityData.name, sx, sy + 12);
         }
       }
-      // Wearable pickup labels (glasses reveal)
+      // Wearable pickup labels (glasses reveal) — BD-278: rarity label
       if (s.wearablePickups) {
         for (const wp of s.wearablePickups) {
           if (!wp.alive) continue;
@@ -612,9 +630,12 @@ export function drawHUD(ctx, s, deps) {
           const sx = (_v.x * 0.5 + 0.5) * W;
           const sy = (-_v.y * 0.5 + 0.5) * H;
           if (_v.z > 0 && _v.z < 1) {
-            const rarityColor = (ITEM_RARITIES[wp.wearableData.rarity] || ITEM_RARITIES.common).color;
-            ctx.fillStyle = rarityColor; ctx.font = 'bold 14px ' + GAME_FONT; ctx.textAlign = 'center';
+            const wpRarityData = ITEM_RARITIES[wp.wearableData.rarity] || ITEM_RARITIES.common;
+            ctx.fillStyle = wpRarityData.color; ctx.font = 'bold 14px ' + GAME_FONT; ctx.textAlign = 'center';
             ctx.fillText(wp.wearableData.name, sx, sy);
+            // BD-278: Small rarity tier label below wearable name
+            ctx.font = 'bold 9px ' + GAME_FONT;
+            ctx.fillText(wpRarityData.name, sx, sy + 12);
           }
         }
       }
@@ -1016,17 +1037,36 @@ export function drawHUD(ctx, s, deps) {
     const startX = (W - totalW) / 2;
     const cardY = 160;
 
+    // BD-278: Type-based border colors and tier descriptor labels
+    const _typeBorderColors = { weapon: '#ff8844', howl: '#aa44ff', heal: '#44ff44' };
+    const _typeLabels = { weapon: 'WEAPON', howl: 'HOWL', heal: 'HEAL' };
+    const _typeLabelColors = { weapon: '#ff8844', howl: '#aa44ff', heal: '#44ff44' };
+
     for (let i = 0; i < s.upgradeChoices.length; i++) {
       const u = s.upgradeChoices[i];
       const cx = startX + i * (cardW + gap);
       const isSelected = i === s.selectedUpgrade;
 
-      if (isSelected) {
-        ctx.fillStyle = u.color;
-        ctx.fillRect(cx - 3, cardY - 3, cardW + 6, cardH + 6);
-      }
+      // BD-278: Colored type border (3px) around every card
+      const borderColor = _typeBorderColors[u.upgradeType] || '#666666';
+      const borderW = 3;
+      ctx.fillStyle = isSelected ? u.color : borderColor;
+      ctx.fillRect(cx - borderW, cardY - borderW, cardW + borderW * 2, cardH + borderW * 2);
+
       ctx.fillStyle = isSelected ? '#1a1a2a' : '#111118';
       ctx.fillRect(cx, cardY, cardW, cardH);
+
+      // BD-278: Type descriptor label (small, top of card)
+      const typeLabel = _typeLabels[u.upgradeType] || '';
+      if (typeLabel) {
+        ctx.font = 'bold 10px ' + GAME_FONT;
+        const typeLabelColor = _typeLabelColors[u.upgradeType] || '#888';
+        const tlW = ctx.measureText(typeLabel).width + 8;
+        ctx.fillStyle = typeLabelColor + '33';
+        ctx.fillRect(cx + cardW / 2 - tlW / 2, cardY + 2, tlW, 14);
+        ctx.fillStyle = typeLabelColor;
+        ctx.fillText(typeLabel, cx + cardW / 2, cardY + 13);
+      }
 
       // Category badge
       const badgeColors = { 'NEW!': '#ff8844', 'BETTER!': '#44aaff', 'POWER!': '#aa44ff', 'HEAL': '#44ff44' };
@@ -1035,19 +1075,19 @@ export function drawHUD(ctx, s, deps) {
       // Badge background
       const badgeW = ctx.measureText(u.category).width + 12;
       ctx.fillStyle = badgeColor + 'aa';
-      ctx.fillRect(cx + cardW / 2 - badgeW / 2, cardY + 10, badgeW, 20);
+      ctx.fillRect(cx + cardW / 2 - badgeW / 2, cardY + 20, badgeW, 20);
       ctx.fillStyle = badgeColor; ctx.font = 'bold 16px ' + GAME_FONT;
-      ctx.fillText(u.category, cx + cardW / 2, cardY + 25);
+      ctx.fillText(u.category, cx + cardW / 2, cardY + 35);
 
       // Name
       ctx.fillStyle = u.color; ctx.font = 'bold 16px ' + GAME_FONT;
-      ctx.fillText(u.name, cx + cardW / 2, cardY + 65);
+      ctx.fillText(u.name, cx + cardW / 2, cardY + 70);
 
       // Description
       ctx.fillStyle = '#cccccc'; ctx.font = '16px ' + GAME_FONT;
       // Word wrap description
       const words = u.desc.split(' ');
-      let line = '', lineY = cardY + 100;
+      let line = '', lineY = cardY + 105;
       for (const word of words) {
         const test = line + word + ' ';
         if (ctx.measureText(test).width > cardW - 20) {
@@ -1470,13 +1510,13 @@ export function drawHUD(ctx, s, deps) {
     const wcStartX = (W - wcTotalW) / 2;
     const wcCardY = H / 2 - 90;
 
-    // --- Left card: CURRENT ITEM ---
+    // --- Left card: CURRENT ITEM --- BD-278: rarity-colored border
     const leftX = wcStartX;
     const leftSelected = wc.choice === 0;
-    if (leftSelected) {
-      ctx.fillStyle = '#44ff44';
-      ctx.fillRect(leftX - 3, wcCardY - 3, wcCardW + 6, wcCardH + 6);
-    }
+    // BD-278: Always draw rarity border (3px), brighten when selected
+    const leftBorder = 3;
+    ctx.fillStyle = leftSelected ? currentRarity.color : (currentRarity.color + '88');
+    ctx.fillRect(leftX - leftBorder, wcCardY - leftBorder, wcCardW + leftBorder * 2, wcCardH + leftBorder * 2);
     // BD-264: dim current card when REPLACE (right) is selected
     ctx.globalAlpha = leftSelected ? 1.0 : 0.5;
     ctx.fillStyle = leftSelected ? '#1a1a2a' : '#111118';
@@ -1526,10 +1566,10 @@ export function drawHUD(ctx, s, deps) {
     // --- Right card: NEW ITEM ---
     const rightX = wcStartX + wcCardW + wcGap;
     const rightSelected = wc.choice === 1;
-    if (rightSelected) {
-      ctx.fillStyle = '#ffcc00';
-      ctx.fillRect(rightX - 3, wcCardY - 3, wcCardW + 6, wcCardH + 6);
-    }
+    // BD-278: Always draw rarity border (3px), brighten when selected
+    const rightBorder = 3;
+    ctx.fillStyle = rightSelected ? newRarity.color : (newRarity.color + '88');
+    ctx.fillRect(rightX - rightBorder, wcCardY - rightBorder, wcCardW + rightBorder * 2, wcCardH + rightBorder * 2);
     // BD-264: dim new card when KEEP (left) is selected
     ctx.globalAlpha = rightSelected ? 1.0 : 0.5;
     ctx.fillStyle = rightSelected ? '#1a1a2a' : '#111118';
@@ -1783,7 +1823,7 @@ export function drawHUD(ctx, s, deps) {
     ctx.globalAlpha = 1.0;
   }
 
-  // BD-147: Item pickup center-screen announcement (BD-260: suppressed during fanfare)
+  // BD-147: Item pickup center-screen announcement (BD-260: suppressed during fanfare, BD-278: rarity border + label)
   if (s.itemAnnouncement && !s.itemFanfare) {
     const ann = s.itemAnnouncement;
     const fadeIn = Math.min(1, (2.5 - ann.timer) / 0.2);
@@ -1794,25 +1834,34 @@ export function drawHUD(ctx, s, deps) {
     ctx.globalAlpha = alpha;
 
     const bannerW = 320;
-    const bannerH = 60;
+    const bannerH = 70;
     const bx = (W - bannerW) / 2;
     const by = H * 0.3;
-    ctx.fillStyle = 'rgba(0,0,0,0.7)';
+
+    // BD-278: Rarity-colored border (3px)
+    const annBorder = 3;
+    ctx.fillStyle = ann.color;
+    ctx.fillRect(bx - annBorder, by - annBorder, bannerW + annBorder * 2, bannerH + annBorder * 2);
+
+    ctx.fillStyle = 'rgba(0,0,0,0.75)';
     ctx.fillRect(bx, by, bannerW, bannerH);
 
-    ctx.strokeStyle = ann.color;
-    ctx.lineWidth = 2;
-    ctx.strokeRect(bx, by, bannerW, bannerH);
-
+    // BD-278: Rarity tier label (top of banner)
+    const annRarityData = ITEM_RARITIES[ann.rarity] || ITEM_RARITIES.common;
     ctx.fillStyle = ann.color;
-    ctx.font = 'bold 18px monospace';
+    ctx.font = 'bold 10px ' + GAME_FONT;
     ctx.textAlign = 'center';
-    ctx.fillText(ann.name, W / 2, by + 24);
+    ctx.fillText(annRarityData.name.toUpperCase(), W / 2, by + 14);
 
+    // Item name
+    ctx.fillStyle = ann.color;
+    ctx.font = 'bold 18px ' + GAME_FONT;
+    ctx.fillText(ann.name, W / 2, by + 36);
+
+    // Effect description
     ctx.fillStyle = '#cccccc';
-    ctx.font = '13px monospace';
-    ctx.fillText(ann.desc, W / 2, by + 46);
-
+    ctx.font = '13px ' + GAME_FONT;
+    ctx.fillText(ann.desc, W / 2, by + 56);
 
     ctx.restore();
   }

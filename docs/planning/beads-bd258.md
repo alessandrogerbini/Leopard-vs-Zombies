@@ -1,5 +1,7 @@
 # BD-258: Death sequence hangs AGAIN — game-over screen never appears (4th report)
 
+**Status: FIX APPLIED BUT ISSUE HAS REGRESSED** (2026-02-28) — try-catch and realDt fixes were applied and worked, but the death-screen hang has returned again. See BD-267 for the active tracking bead.
+
 **Date:** 2026-02-28
 **Source:** Manual playthrough — after dying in 3D mode, the game hangs on the death slow-motion scene. Player never reaches the game-over/leaderboard screen and cannot restart. This is the FOURTH report of this same symptom:
 - BD-228 introduced the 1.5s death slow-motion sequence

@@ -387,6 +387,7 @@ export function launch3DGame(options) {
     deathTimeScale: 1.0,
     deathKillerPos: null,
     _deathSlowmoPlayed: false, // BD-233: tracks whether slow-mo audio has played
+    _deathElapsed: 0, // BD-267: cumulative real-time elapsed during death sequence (emergency timeout)
     // BD-234: Killer highlight glow — tracks whether floating tier label was spawned
     _killerLabelSpawned: false,
     paused: false,
@@ -2714,19 +2715,45 @@ export function launch3DGame(options) {
    * @param {number} playerZ  - Current player Z position.
    * @returns {{x: number, z: number}|null} Valid position or null to skip.
    */
-  function getValidSpawnPos(baseDist, playerX, playerZ) {
-    const MIN_SPAWN_DIST = MIN_SPAWN_DISTANCE;
-    for (let attempt = 0; attempt < 3; attempt++) {
-      const angle = Math.random() * Math.PI * 2;
-      const sx = Math.max(-MAP_HALF + 2, Math.min(MAP_HALF - 2, playerX + Math.cos(angle) * baseDist));
-      const sz = Math.max(-MAP_HALF + 2, Math.min(MAP_HALF - 2, playerZ + Math.sin(angle) * baseDist));
-      const dx = sx - playerX;
-      const dz = sz - playerZ;
-      if (dx * dx + dz * dz >= MIN_SPAWN_DIST * MIN_SPAWN_DIST) {
-        return { x: sx, z: sz };
+  /**
+   * Enforce a minimum exclusion radius around the player for a spawn position.
+   * If the position is too close, push it outward along the player-to-spawn
+   * direction. If the spawn is exactly at the player position, pick a random
+   * direction. Returns the adjusted { x, z }.
+   * @param {number} spawnX
+   * @param {number} spawnZ
+   * @param {number} playerX
+   * @param {number} playerZ
+   * @param {number} [minDist=MIN_SPAWN_DISTANCE] - Minimum allowed distance
+   * @returns {{x: number, z: number}}
+   */
+  function enforceSpawnExclusion(spawnX, spawnZ, playerX, playerZ, minDist) {
+    if (minDist === undefined) minDist = MIN_SPAWN_DISTANCE;
+    const dx = spawnX - playerX;
+    const dz = spawnZ - playerZ;
+    const dist = Math.sqrt(dx * dx + dz * dz);
+    if (dist < minDist) {
+      if (dist < 0.1) {
+        // Spawn is effectively on top of the player — pick a random direction
+        const angle = Math.random() * Math.PI * 2;
+        spawnX = playerX + Math.cos(angle) * minDist;
+        spawnZ = playerZ + Math.sin(angle) * minDist;
+      } else {
+        // Push outward along existing direction
+        spawnX = playerX + (dx / dist) * minDist;
+        spawnZ = playerZ + (dz / dist) * minDist;
       }
     }
-    return null; // Skip this zombie
+    return { x: spawnX, z: spawnZ };
+  }
+
+  function getValidSpawnPos(baseDist, playerX, playerZ) {
+    const angle = Math.random() * Math.PI * 2;
+    let sx = Math.max(-MAP_HALF + 2, Math.min(MAP_HALF - 2, playerX + Math.cos(angle) * baseDist));
+    let sz = Math.max(-MAP_HALF + 2, Math.min(MAP_HALF - 2, playerZ + Math.sin(angle) * baseDist));
+    // BD-276: Push spawn outward if map-edge clamping brought it too close
+    const adjusted = enforceSpawnExclusion(sx, sz, playerX, playerZ);
+    return adjusted;
   }
 
   // === AMBIENT SPAWNING (constant trickle) ===
@@ -2743,7 +2770,6 @@ export function launch3DGame(options) {
     for (let i = 0; i < count; i++) {
       const dist = (elapsedMin < 2) ? (18 + Math.random() * 8) : (25 + Math.random() * 10);
       const pos = getValidSpawnPos(dist, st.playerX, st.playerZ);
-      if (!pos) continue; // BD-217: skip if too close to player
       // Progressive tier spawning: after wave 2, chance of higher tier ambient zombies
       let tier = 1;
       if (st.wave >= 2) {
@@ -2773,7 +2799,6 @@ export function launch3DGame(options) {
     for (let i = 0; i < count; i++) {
       const dist = 20 + Math.random() * 15;
       const pos = getValidSpawnPos(dist, st.playerX, st.playerZ);
-      if (!pos) continue; // BD-217: skip if too close to player
       // BD-268: Graduated tier ramp — much gentler scaling
       let tier = 1;
       const tierRoll = Math.random();
@@ -4810,6 +4835,7 @@ export function launch3DGame(options) {
             name: def.name,
             color: def.color,
             desc: def.desc,
+            upgradeType: 'weapon',
             apply: s => {
               s.weapons.push({ typeId: id, level: 1, cooldownTimer: 0 });
             }
@@ -4828,6 +4854,7 @@ export function launch3DGame(options) {
           name: `${def.name} LV${w.level + 1}`,
           color: def.color,
           desc: nextDesc,
+          upgradeType: 'weapon',
           apply: () => { w.level++; }
         });
       }
@@ -4842,6 +4869,7 @@ export function launch3DGame(options) {
           name: def.name,
           color: def.color,
           desc: def.desc,
+          upgradeType: 'howl',
           apply: s => {
             s.howls[id]++;
             if (id === 'vitality') {
@@ -4869,6 +4897,7 @@ export function launch3DGame(options) {
         name: 'HEAL',
         color: '#44ff44',
         desc: 'Feel better!',
+        upgradeType: 'heal',
         apply: s => { s.hp = Math.min(s.hp + 30, s.maxHp); }
       });
       pool.push({
@@ -4876,6 +4905,7 @@ export function launch3DGame(options) {
         name: 'MAX HP +10',
         color: '#88ff88',
         desc: 'More hearts!',
+        upgradeType: 'heal',
         apply: s => { s.maxHp += 10; s.hp = Math.min(s.hp + 10, s.maxHp); }
       });
     }
@@ -5243,7 +5273,7 @@ export function launch3DGame(options) {
       }
 
       if (st.deathSequenceTimer <= 0) {
-        console.log('[BD-267] Game-over transition: timer=' + st.deathSequenceTimer.toFixed(3));
+        console.error('[BD-267] Death sequence complete, transitioning to game-over.');
         st.gameOver = true;
         st.deathSequence = false;
         st.showFullMap = false;
@@ -5258,6 +5288,27 @@ export function launch3DGame(options) {
         st.nameEntry = '';
         st.nameEntryInputCooldown = 0.3;
         // playSound('sfx_death_sting'); // TODO: Sound Pack Beta
+      }
+    }
+
+    // BD-267: Emergency death-sequence timeout — forces game-over if death hangs for 5s.
+    // This is a safety net against any code path that blocks the normal death timer tick.
+    if (st.deathSequence && !st.gameOver) {
+      st._deathElapsed = (st._deathElapsed || 0) + realDt;
+      if (st._deathElapsed > 5) {
+        console.error('[BD-267] Emergency: death sequence stuck for 5s, forcing game-over. paused=' + st.paused + ' pauseMenu=' + st.pauseMenu + ' upgradeMenu=' + st.upgradeMenu + ' chargeShrineMenu=' + st.chargeShrineMenu + ' wearableCompare=' + !!st.wearableCompare);
+        st.gameOver = true;
+        st.deathSequence = false;
+        st.showFullMap = false;
+        st.paused = false;
+        st.pauseMenu = false;
+        st.upgradeMenu = false;
+        st.chargeShrineMenu = false;
+        st.wearableCompare = null;
+        inputState.enterReleasedSinceGameOver = false;
+        st.nameEntryActive = true;
+        st.nameEntry = '';
+        st.nameEntryInputCooldown = 0.3;
       }
     }
 
@@ -5309,12 +5360,14 @@ export function launch3DGame(options) {
         }
       }
 
-      // === OBJECT COLLISION (BD-69, BD-156: chunk-indexed) ===
+      // === OBJECT COLLISION (BD-69, BD-156: chunk-indexed, BD-272: height-aware) ===
       if (terrainState) {
         const PR = 0.5; // player radius
         const nearby = getNearbyColliders(st.playerX, st.playerZ, terrainState);
         for (let ci = 0; ci < nearby.length; ci++) {
           const c = nearby[ci];
+          // BD-272: Skip collision if player is above the decoration's hitbox height
+          if (c.topY !== undefined && st.playerY >= c.topY) continue;
           const dx = st.playerX - c.x;
           const dz = st.playerZ - c.z;
           const dist = Math.sqrt(dx * dx + dz * dz);
@@ -5899,7 +5952,6 @@ export function launch3DGame(options) {
         for (let i = 0; i < INITIAL_BURST_COUNT; i++) {
           const dist = 15 + Math.random() * 5;
           const pos = getValidSpawnPos(dist, st.playerX, st.playerZ);
-          if (!pos) continue; // BD-217: skip if too close to player
           st.enemies.push(createEnemy(pos.x, pos.z, INITIAL_BURST_HP, 1));
         }
       }
@@ -7062,8 +7114,11 @@ export function launch3DGame(options) {
                     const summonLifetime = isChill ? 10 : 15;
                     for (let si = 0; si < actualSpawn; si++) {
                       const spAngle = (si / actualSpawn) * Math.PI * 2;
-                      const sx = e.group.position.x + Math.cos(spAngle) * spawnDist;
-                      const sz = e.group.position.z + Math.sin(spAngle) * spawnDist;
+                      let sx = e.group.position.x + Math.cos(spAngle) * spawnDist;
+                      let sz = e.group.position.z + Math.sin(spAngle) * spawnDist;
+                      // BD-276: Enforce spawn exclusion zone around player
+                      const sAdj = enforceSpawnExclusion(sx, sz, st.playerX, st.playerZ);
+                      sx = sAdj.x; sz = sAdj.z;
                       const sTier = isChill ? 1 : (1 + Math.floor(Math.random() * maxSummonTier));
                       const sBaseHp = 8 * sTier;
                       const summoned = createEnemy(sx, sz, sBaseHp, sTier);
@@ -8168,7 +8223,9 @@ export function launch3DGame(options) {
           // Spawn boss zombie
           const bossHp = (8 + Math.floor((st.gameTime / 60) * 2.5)) * BOSS_HP_MULT;
           const bossTier = st.wave >= 4 ? 10 : 9; // BD-236: was capped at 8, tier 9+ needed for boss attacks
-          const boss = createEnemy(cs.x + 5, cs.z + 5, bossHp, bossTier);
+          // BD-276: Enforce spawn exclusion zone around player for boss
+          const bossAdj = enforceSpawnExclusion(cs.x + 5, cs.z + 5, st.playerX, st.playerZ);
+          const boss = createEnemy(bossAdj.x, bossAdj.z, bossHp, bossTier);
           boss.isBoss = true;
           boss.isTotemSpawned = true; // BD-96: flag for guaranteed loot drop
           boss.bossShrine = cs;
@@ -8286,15 +8343,17 @@ export function launch3DGame(options) {
         console.log('[BD-267] Death triggered: hp=' + st.hp);
         st.hp = 0;
         st.deathSequence = true;
-        // BD-251: Force-close all menus -- death overrides everything.
-        // Prevents upgrade menu / shrine / wearable compare from blocking
-        // the death sequence or overlaying the death animation.
-        st.upgradeMenu = false;
+        st.deathSequenceTimer = 1.5;
+        st._deathElapsed = 0; // BD-267: Reset emergency timeout counter
+        // BD-267: Force-clear pause/menu state so death sequence tick is never blocked.
+        if (st.paused || st.pauseMenu || st.upgradeMenu || st.chargeShrineMenu || st.wearableCompare) {
+          console.error('[BD-267] Death triggered while paused/menu active — force-clearing. paused=' + st.paused + ' pauseMenu=' + st.pauseMenu + ' upgradeMenu=' + st.upgradeMenu + ' chargeShrineMenu=' + st.chargeShrineMenu + ' wearableCompare=' + !!st.wearableCompare);
+        }
         st.paused = false;
         st.pauseMenu = false;
+        st.upgradeMenu = false;
         st.chargeShrineMenu = false;
-        st.wearableCompare = false;
-        st.deathSequenceTimer = 1.5;
+        st.wearableCompare = null;
         st._deathStartGameTime = st.gameTime; // BD-267: record for emergency timeout
         st.deathTimeScale = 1.0;
         // Capture killer position for camera zoom (BD-229)
@@ -8320,6 +8379,7 @@ export function launch3DGame(options) {
         inputState.charging = false;
         inputState.chargeTime = 0;
         inputState.powerAttackReady = false;
+        console.error('[BD-267] Death sequence started. timer=' + st.deathSequenceTimer);
       }
 
     }

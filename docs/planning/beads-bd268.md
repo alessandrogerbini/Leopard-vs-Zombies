@@ -1,5 +1,7 @@
 # BD-268: Way too many high-tier zombies at wave 5 — scaling formula too aggressive
 
+**Status: RESOLVED** (2026-02-28) — Wave 5 zombie numbers confirmed no longer an issue per playtester report.
+
 **Date:** 2026-02-28
 **Source:** Manual playthrough — at wave 5 (~5 minutes in), the game is flooded with high-level zombies. The difficulty ramp is far too steep for early-mid game.
 

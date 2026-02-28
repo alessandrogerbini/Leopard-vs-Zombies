@@ -1,5 +1,7 @@
 # BD-251: Death does not transition to leaderboard / name-entry screen
 
+**Status: PARTIALLY RESOLVED / REGRESSED** (2026-02-28) — Fix was successfully applied and worked, but the death-screen hang has regressed and is currently happening again. See BD-267 for latest report. The underlying fix (moving death tick outside pause gate) remains correct; the regression is likely a different root cause.
+
 **Date:** 2026-02-27
 **Source:** Manual playthrough — player dies (HP shows 0/131) but the game never shows the game-over / name-entry / leaderboard screen. The game continues rendering the gameplay view with the dead player standing in place.
 **Related:** BD-249 (detailed root-cause investigation of game-over hang)

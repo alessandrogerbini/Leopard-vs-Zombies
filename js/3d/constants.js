@@ -808,8 +808,8 @@ export const POST_UPGRADE_INVINCIBILITY = 1.0;
 export const AMBIENT_SPAWN_INTERVAL = 1.89;
 /** @constant {number} FIRST_WAVE_EVENT_TIMER - Seconds until the first wave event (~1.25 minutes). */
 export const FIRST_WAVE_EVENT_TIMER = 75;
-/** @constant {number} WAVE_EVENT_INTERVAL - Seconds between subsequent wave events (1.5 minutes). */
-export const WAVE_EVENT_INTERVAL = 90;
+/** @constant {number} WAVE_EVENT_INTERVAL - Seconds between subsequent wave events (~2.25 minutes). */
+export const WAVE_EVENT_INTERVAL = 135;
 /** @constant {number} WAVE_WARNING_DURATION - Countdown warning duration before a wave event in seconds. */
 export const WAVE_WARNING_DURATION = 10;
 /** @constant {number} AMBIENT_CRATE_INTERVAL - Seconds between ambient powerup crate spawns. */

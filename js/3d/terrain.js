@@ -117,7 +117,7 @@ export function getChunkKey(cx, cz) { return `${cx},${cz}`; }
  * @property {Map.<string, Array>} decorationsByChunk - Decorations indexed by chunk key for O(1) unload.
  * @property {THREE.Mesh[]} canopyMeshes - Flat array of all canopy meshes for wind animation.
  * @property {Map.<string, THREE.Mesh[]>} canopyMeshesByChunk - Canopy meshes indexed by chunk key for cleanup.
- * @property {Map.<string, Array.<{x: number, z: number, radius: number}>>} collidersByChunk - Chunk-indexed collision circles for solid objects (trees, rocks).
+ * @property {Map.<string, Array.<{x: number, z: number, radius: number, topY: number}>>} collidersByChunk - Chunk-indexed collision cylinders for solid objects (trees, rocks). topY is the absolute Y above which the player can pass over.
  */
 
 /**
@@ -134,7 +134,7 @@ export function createTerrainState() {
     decorationsByChunk: new Map(),   // Chunk key -> decoration[] for O(1) unload (BD-172)
     canopyMeshes: [],                // Flat array of canopy meshes for wind animation (BD-173)
     canopyMeshesByChunk: new Map(),  // Chunk key -> canopy mesh[] for cleanup (BD-173)
-    collidersByChunk: new Map(),     // Chunk key -> array of { x, z, radius } for solid objects
+    collidersByChunk: new Map(),     // Chunk key -> array of { x, z, radius, topY } for solid objects
   };
 }
 
@@ -146,7 +146,7 @@ export function createTerrainState() {
  * @param {number} wx - World X position to query around.
  * @param {number} wz - World Z position to query around.
  * @param {TerrainState} ts - The terrain state with collidersByChunk.
- * @returns {Array.<{x: number, z: number, radius: number}>} Combined colliders from 9 nearby chunks.
+ * @returns {Array.<{x: number, z: number, radius: number, topY: number}>} Combined colliders from 9 nearby chunks.
  */
 export function getNearbyColliders(wx, wz, ts) {
   const cx = Math.floor(wx / CHUNK_SIZE);
@@ -656,7 +656,8 @@ export function generateChunk(cx, cz, scene, ts) {
     ts.decorations.push(dec);
     ts.decorationsByChunk.get(key).push(dec);
     if (!ts.collidersByChunk.has(key)) ts.collidersByChunk.set(key, []);
-    ts.collidersByChunk.get(key).push({ x: dx, z: dz, radius: 1.2 });
+    // BD-272: topY = terrain height + logical hitbox height (trunk + lower canopy)
+    ts.collidersByChunk.get(key).push({ x: dx, z: dz, radius: 1.2, topY: h + 3.5 });
     // BD-173: Track canopy meshes for wind animation
     for (const cm of tree.canopyMeshes) {
       ts.canopyMeshes.push(cm);
@@ -677,7 +678,8 @@ export function generateChunk(cx, cz, scene, ts) {
     ts.decorations.push(rockDec);
     ts.decorationsByChunk.get(key).push(rockDec);
     if (!ts.collidersByChunk.has(key)) ts.collidersByChunk.set(key, []);
-    ts.collidersByChunk.get(key).push({ x: dx, z: dz, radius: 1.0 });
+    // BD-272: topY = terrain height + logical hitbox height (boulder)
+    ts.collidersByChunk.get(key).push({ x: dx, z: dz, radius: 1.0, topY: h + 1.5 });
   }
 
   // Fallen logs: 0-1 per chunk
