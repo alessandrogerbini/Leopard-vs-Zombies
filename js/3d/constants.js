@@ -805,7 +805,7 @@ export const POST_UPGRADE_INVINCIBILITY = 1.0;
 
 // --- Spawning ---
 /** @constant {number} AMBIENT_SPAWN_INTERVAL - Seconds between ambient zombie spawn waves. */
-export const AMBIENT_SPAWN_INTERVAL = 1.36;
+export const AMBIENT_SPAWN_INTERVAL = 1.70;
 /** @constant {number} FIRST_WAVE_EVENT_TIMER - Seconds until the first wave event (~1.25 minutes). */
 export const FIRST_WAVE_EVENT_TIMER = 75;
 /** @constant {number} WAVE_EVENT_INTERVAL - Seconds between subsequent wave events (1.5 minutes). */
