@@ -51,19 +51,19 @@ import {
   TOTEM_COUNT, LOOT_CRATE_COUNT, MIN_SHRINE_SPACING, MAX_PLACEMENT_ATTEMPTS,
   AUGMENT_REGEN_CAP,
   WEAPON_COOLDOWN_REDUCTION_L4, LIGHTNING_CHAIN_RANGE_SQ,
-} from './3d/constants.js?v=13';
+} from './3d/constants.js?v=14';
 
 import {
   noise2D, smoothNoise, terrainHeight, getBiome, BIOME_COLORS,
   getChunkKey, createTerrainState, getNearbyColliders,
   generateChunk as terrainGenerateChunk,
   unloadChunk as terrainUnloadChunk, updateChunks as terrainUpdateChunks,
-} from './3d/terrain.js?v=13';
+} from './3d/terrain.js?v=14';
 
-import { box, clearCaches } from './3d/utils.js?v=13';
-import { buildPlayerModel, animatePlayer, updateMuscleGrowth, updateItemVisuals, buildWearableMesh, updateWearableVisuals } from './3d/player-model.js?v=13';
-import { drawHUD } from './3d/hud.js?v=13';
-import { initAudio, playSound, toggleMute, isMuted, getVolume, disposeAudio } from './3d/audio.js?v=13';
+import { box, clearCaches } from './3d/utils.js?v=14';
+import { buildPlayerModel, animatePlayer, updateMuscleGrowth, updateItemVisuals, buildWearableMesh, updateWearableVisuals } from './3d/player-model.js?v=14';
+import { drawHUD } from './3d/hud.js?v=14';
+import { initAudio, playSound, toggleMute, isMuted, getVolume, disposeAudio } from './3d/audio.js?v=14';
 
 
 /**
