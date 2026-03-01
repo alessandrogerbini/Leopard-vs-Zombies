@@ -1,0 +1,61 @@
+{
+  "iterations": [
+    {
+      "iteration": 1,
+      "timestamp": "2026-03-01",
+      "scores": {
+        "overallSilhouette": 3,
+        "totalSizeIncrease": 4,
+        "shoulderDefinition": 2,
+        "armThickness": 3,
+        "chestAbDefinition": 2,
+        "headToBodyRatio": 4,
+        "stanceWidth": 3,
+        "wearableVisibility": 5
+      },
+      "total": 26,
+      "percentage": 33,
+      "changes": ["Added group.scale (maxGrowth 0.8)", "Replaced box shoulders with SphereGeometry (r=0.22)", "Added wearable level-aware repositioning"]
+    },
+    {
+      "iteration": 2,
+      "timestamp": "2026-03-01",
+      "scores": {
+        "overallSilhouette": 4,
+        "totalSizeIncrease": 4,
+        "shoulderDefinition": 5,
+        "armThickness": 3,
+        "chestAbDefinition": 2,
+        "headToBodyRatio": 5,
+        "stanceWidth": 3,
+        "wearableVisibility": 6
+      },
+      "total": 32,
+      "percentage": 40,
+      "changes": ["Boosted group.scale (maxGrowth 1.5)", "Larger shoulder spheres (r=0.28)", "Aggressive arm/leg push (0.6)", "Wider shoulder scale (1.3x)", "Faster growth rate"]
+    },
+    {
+      "iteration": 3,
+      "timestamp": "2026-03-01",
+      "scores": {
+        "overallSilhouette": 6,
+        "totalSizeIncrease": 7,
+        "shoulderDefinition": 7,
+        "armThickness": 6,
+        "chestAbDefinition": 3,
+        "headToBodyRatio": 7,
+        "stanceWidth": 6,
+        "wearableVisibility": 6
+      },
+      "total": 48,
+      "percentage": 60,
+      "changes": ["Thicker legs (1.15x cross-section)", "Reduced leg push (0.45)", "Better wearable Z-push for body slot", "Balanced stance proportions"]
+    }
+  ],
+  "exitCriteria": {
+    "targetScore": 7,
+    "maxIterations": 3,
+    "met": false,
+    "reason": "3 iterations completed. 4 of 8 dimensions at >= 7. Chest/ab definition (3) limited by top-down camera angle rather than model quality."
+  }
+}

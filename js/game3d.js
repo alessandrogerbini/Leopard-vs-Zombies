@@ -61,7 +61,7 @@ import {
 } from './3d/terrain.js?v=14';
 
 import { box, clearCaches } from './3d/utils.js?v=14';
-import { buildPlayerModel, animatePlayer, updateMuscleGrowth, updateItemVisuals, buildWearableMesh, updateWearableVisuals } from './3d/player-model.js?v=14';
+import { buildPlayerModel, animatePlayer, updateMuscleGrowth, updateItemVisuals, buildWearableMesh, updateWearableVisuals } from './3d/player-model.js?v=15';
 import { drawHUD } from './3d/hud.js?v=14';
 import { initAudio, playSound, toggleMute, isMuted, getVolume, disposeAudio } from './3d/audio.js?v=14';
 
@@ -8214,7 +8214,7 @@ export function launch3DGame(options) {
             st.wearables[slot] = wp.wearableId;
             st.wearableFlash[slot] = 1.5;
             playSound('sfx_item_pickup');
-            updateWearableVisuals(playerModel, st.wearables);
+            updateWearableVisuals(playerModel, st.wearables, st.level);
             wp.alive = false;
             disposeSceneObject(wp.mesh);
             st.wearablePickups.splice(i, 1);

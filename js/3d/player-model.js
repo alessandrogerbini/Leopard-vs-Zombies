@@ -16,7 +16,30 @@
  * Exports: buildPlayerModel, animatePlayer, updateMuscleGrowth, updateItemVisuals
  */
 
-import { box } from './utils.js?v=12';
+import { box, getCachedMat } from './utils.js?v=14';
+
+/**
+ * Create a sphere mesh with a cached LambertMaterial, then add it to a Three.js group.
+ * Used for rounded muscle shapes (shoulder caps, bicep bulges) that look more muscular
+ * than box primitives.
+ *
+ * @param {THREE.Group} group - Parent group to add the mesh to.
+ * @param {number} radius - Sphere radius.
+ * @param {number} color - Hex color for LambertMaterial.
+ * @param {number} x - Local X position within the group.
+ * @param {number} y - Local Y position within the group.
+ * @param {number} z - Local Z position within the group.
+ * @param {boolean} [shadow] - If truthy, enables castShadow on the mesh.
+ * @returns {THREE.Mesh} The created sphere mesh.
+ */
+function sphere(group, radius, color, x, y, z, shadow) {
+  const geo = new THREE.SphereGeometry(radius, 8, 6);
+  const m = new THREE.Mesh(geo, getCachedMat(color));
+  m.position.set(x, y, z);
+  if (shadow) m.castShadow = true;
+  group.add(m);
+  return m;
+}
 
 /**
  * @typedef {Object} PlayerModel
@@ -38,6 +61,8 @@ import { box } from './utils.js?v=12';
  * @property {Array.<{mesh: THREE.Mesh, origX: number, origZ: number, scaleAxis: string}>} bodyFeatures
  *   - BD-282: Body parts to reposition during muscle growth. Each entry tracks the original
  *   X/Z position offset from torso center and which axes to scale ('x', 'z', or 'xz').
+ * @property {Object} growthMeshes - BD-289: Hidden muscle definition meshes (shoulder caps, bicep bulges,
+ *   forearms, pecs, abs) that start at scale(0,0,0) and are revealed by updateMuscleGrowth.
  * @property {THREE.Group} wingGroup - Angel wings group (child of group, initially hidden).
  * @property {Object} wingMeshes     - Individual wing segment meshes for flap animation.
  * @property {THREE.Mesh} wingMeshes.wingL1 - Left wing inner segment.
@@ -70,6 +95,7 @@ export function buildPlayerModel(animalId, scene) {
   const features = {}; // Animal-specific cosmetic parts (spots, mane, etc.)
   const faceFeatures = []; // BD-275: Track face meshes + original positions for growth repositioning
   let headCenter = { x: 0, y: 0, z: 0 }; // BD-275: Head center for offset calculation
+  const growthMeshes = {}; // BD-289: Hidden muscle definition meshes revealed by updateMuscleGrowth
 
   if (animalId === 'leopard') {
     // === BIPEDAL LEOPARD ===
@@ -124,6 +150,22 @@ export function buildPlayerModel(animalId, scene) {
     tail = box(group, 0.08, 0.08, 0.25, 0xe8a828, 0, 0.6, -0.3);
     box(group, 0.08, 0.08, 0.2, 0xd09020, 0, 0.55, -0.5);
     box(group, 0.06, 0.06, 0.15, 0x1a1a1a, 0, 0.52, -0.68);
+    // BD-289: Growth meshes (hidden at level 1, revealed by updateMuscleGrowth)
+    // Shoulder caps use SphereGeometry for rounded muscular look
+    growthMeshes.shoulderCapL = sphere(group, 0.28, 0xe8a828, -0.42, 1.22, 0, true);
+    growthMeshes.shoulderCapR = sphere(group, 0.28, 0xe8a828, 0.42, 1.22, 0, true);
+    growthMeshes.bicepBulgeL = sphere(group, 0.18, 0xe8a828, -0.58, 0.88, 0, true);
+    growthMeshes.bicepBulgeR = sphere(group, 0.18, 0xe8a828, 0.58, 0.88, 0, true);
+    growthMeshes.forearmL = box(group, 0.16, 0.2, 0.16, 0xe8a828, -0.48, 0.72, 0.02);
+    growthMeshes.forearmR = box(group, 0.16, 0.2, 0.16, 0xe8a828, 0.48, 0.72, 0.02);
+    growthMeshes.pecL = box(group, 0.25, 0.2, 0.15, 0xe8a828, -0.15, 0.95, 0.22);
+    growthMeshes.pecR = box(group, 0.25, 0.2, 0.15, 0xe8a828, 0.15, 0.95, 0.22);
+    growthMeshes.abs = [
+      box(group, 0.12, 0.1, 0.08, 0xf0c858, -0.1, 0.78, 0.2),
+      box(group, 0.12, 0.1, 0.08, 0xf0c858, 0.1, 0.78, 0.2),
+      box(group, 0.12, 0.1, 0.08, 0xf0c858, -0.1, 0.68, 0.18),
+      box(group, 0.12, 0.1, 0.08, 0xf0c858, 0.1, 0.68, 0.18),
+    ];
 
   } else if (animalId === 'redPanda') {
     // === BIPEDAL RED PANDA ===
@@ -185,6 +227,22 @@ export function buildPlayerModel(animalId, scene) {
     box(group, 0.22, 0.22, 0.3, 0xcc4422, 0, 0.55, -0.55);
     box(group, 0.23, 0.12, 0.06, 0xffccaa, 0, 0.55, -0.45);
     box(group, 0.2, 0.2, 0.12, 0x882211, 0, 0.52, -0.72);
+    // BD-289: Growth meshes (hidden at level 1, revealed by updateMuscleGrowth)
+    // Shoulder caps use SphereGeometry for rounded muscular look
+    growthMeshes.shoulderCapL = sphere(group, 0.28, 0xcc4422, -0.38, 1.22, 0, true);
+    growthMeshes.shoulderCapR = sphere(group, 0.28, 0xcc4422, 0.38, 1.22, 0, true);
+    growthMeshes.bicepBulgeL = sphere(group, 0.18, 0x111111, -0.54, 0.88, 0, true);
+    growthMeshes.bicepBulgeR = sphere(group, 0.18, 0x111111, 0.54, 0.88, 0, true);
+    growthMeshes.forearmL = box(group, 0.16, 0.2, 0.16, 0x111111, -0.44, 0.72, 0.02);
+    growthMeshes.forearmR = box(group, 0.16, 0.2, 0.16, 0x111111, 0.44, 0.72, 0.02);
+    growthMeshes.pecL = box(group, 0.25, 0.2, 0.15, 0xcc4422, -0.14, 0.95, 0.2);
+    growthMeshes.pecR = box(group, 0.25, 0.2, 0.15, 0xcc4422, 0.14, 0.95, 0.2);
+    growthMeshes.abs = [
+      box(group, 0.12, 0.1, 0.08, 0x1a1a1a, -0.1, 0.78, 0.18),
+      box(group, 0.12, 0.1, 0.08, 0x1a1a1a, 0.1, 0.78, 0.18),
+      box(group, 0.12, 0.1, 0.08, 0x1a1a1a, -0.1, 0.68, 0.16),
+      box(group, 0.12, 0.1, 0.08, 0x1a1a1a, 0.1, 0.68, 0.16),
+    ];
 
   } else if (animalId === 'lion') {
     // === BIPEDAL LION ===
@@ -237,6 +295,22 @@ export function buildPlayerModel(animalId, scene) {
     tail = box(group, 0.08, 0.08, 0.25, 0xdda030, 0, 0.6, -0.32);
     box(group, 0.06, 0.06, 0.2, 0xdda030, 0, 0.55, -0.52);
     box(group, 0.18, 0.18, 0.15, 0xaa6610, 0, 0.52, -0.68);
+    // BD-289: Growth meshes (hidden at level 1, revealed by updateMuscleGrowth)
+    // Shoulder caps use SphereGeometry for rounded muscular look
+    growthMeshes.shoulderCapL = sphere(group, 0.28, 0xdda030, -0.48, 1.24, 0, true);
+    growthMeshes.shoulderCapR = sphere(group, 0.28, 0xdda030, 0.48, 1.24, 0, true);
+    growthMeshes.bicepBulgeL = sphere(group, 0.18, 0xdda030, -0.62, 0.88, 0, true);
+    growthMeshes.bicepBulgeR = sphere(group, 0.18, 0xdda030, 0.62, 0.88, 0, true);
+    growthMeshes.forearmL = box(group, 0.16, 0.2, 0.16, 0xdda030, -0.52, 0.72, 0.02);
+    growthMeshes.forearmR = box(group, 0.16, 0.2, 0.16, 0xdda030, 0.52, 0.72, 0.02);
+    growthMeshes.pecL = box(group, 0.25, 0.2, 0.15, 0xdda030, -0.17, 0.95, 0.24);
+    growthMeshes.pecR = box(group, 0.25, 0.2, 0.15, 0xdda030, 0.17, 0.95, 0.24);
+    growthMeshes.abs = [
+      box(group, 0.12, 0.1, 0.08, 0xeec060, -0.12, 0.78, 0.22),
+      box(group, 0.12, 0.1, 0.08, 0xeec060, 0.12, 0.78, 0.22),
+      box(group, 0.12, 0.1, 0.08, 0xeec060, -0.12, 0.68, 0.2),
+      box(group, 0.12, 0.1, 0.08, 0xeec060, 0.12, 0.68, 0.2),
+    ];
 
   } else if (animalId === 'gator') {
     // === BIPEDAL GATOR ===
@@ -314,6 +388,22 @@ export function buildPlayerModel(animalId, scene) {
     // Tail ridges
     box(group, 0.08, 0.06, 0.08, 0x338833, 0, 0.62, -0.4);
     box(group, 0.06, 0.05, 0.06, 0x338833, 0, 0.58, -0.6);
+    // BD-289: Growth meshes (hidden at level 1, revealed by updateMuscleGrowth)
+    // Shoulder caps use SphereGeometry for rounded muscular look
+    growthMeshes.shoulderCapL = sphere(group, 0.28, 0x44aa44, -0.44, 1.2, 0, true);
+    growthMeshes.shoulderCapR = sphere(group, 0.28, 0x44aa44, 0.44, 1.2, 0, true);
+    growthMeshes.bicepBulgeL = sphere(group, 0.18, 0x338833, -0.58, 0.85, 0, true);
+    growthMeshes.bicepBulgeR = sphere(group, 0.18, 0x338833, 0.58, 0.85, 0, true);
+    growthMeshes.forearmL = box(group, 0.16, 0.2, 0.16, 0x338833, -0.48, 0.7, 0.02);
+    growthMeshes.forearmR = box(group, 0.16, 0.2, 0.16, 0x338833, 0.48, 0.7, 0.02);
+    growthMeshes.pecL = box(group, 0.25, 0.2, 0.15, 0x44aa44, -0.16, 0.92, 0.24);
+    growthMeshes.pecR = box(group, 0.25, 0.2, 0.15, 0x44aa44, 0.16, 0.92, 0.24);
+    growthMeshes.abs = [
+      box(group, 0.12, 0.1, 0.08, 0x88cc88, -0.1, 0.75, 0.22),
+      box(group, 0.12, 0.1, 0.08, 0x88cc88, 0.1, 0.75, 0.22),
+      box(group, 0.12, 0.1, 0.08, 0x88cc88, -0.1, 0.65, 0.2),
+      box(group, 0.12, 0.1, 0.08, 0x88cc88, 0.1, 0.65, 0.2),
+    ];
   }
 
   // BD-275: Record original offsets from head center for each face feature
@@ -321,6 +411,15 @@ export function buildPlayerModel(animalId, scene) {
     ff.origX = ff.mesh.position.x - headCenter.x;
     ff.origY = ff.mesh.position.y - headCenter.y;
     ff.origZ = ff.mesh.position.z - headCenter.z;
+  }
+
+  // BD-289: Initialize all growth meshes to invisible (scale 0) at level 1
+  for (const key of ['shoulderCapL', 'shoulderCapR', 'bicepBulgeL', 'bicepBulgeR',
+                      'forearmL', 'forearmR', 'pecL', 'pecR']) {
+    if (growthMeshes[key]) growthMeshes[key].scale.set(0, 0, 0);
+  }
+  if (growthMeshes.abs) {
+    for (const ab of growthMeshes.abs) ab.scale.set(0, 0, 0);
   }
 
   // === BD-282: Track body features for repositioning during muscle growth ===
@@ -366,6 +465,21 @@ export function buildPlayerModel(animalId, scene) {
       } else {
         bodyFeatures.push({ mesh: feat, origX: feat.position.x, origZ: feat.position.z, scaleAxis: 'xz' });
       }
+    }
+  }
+  // BD-289: Growth meshes track with body — shoulder caps follow shoulders, bicep/forearm follow arms
+  if (growthMeshes.shoulderCapL) bodyFeatures.push({ mesh: growthMeshes.shoulderCapL, origX: growthMeshes.shoulderCapL.position.x, origZ: growthMeshes.shoulderCapL.position.z, scaleAxis: 'x' });
+  if (growthMeshes.shoulderCapR) bodyFeatures.push({ mesh: growthMeshes.shoulderCapR, origX: growthMeshes.shoulderCapR.position.x, origZ: growthMeshes.shoulderCapR.position.z, scaleAxis: 'x' });
+  if (growthMeshes.bicepBulgeL) bodyFeatures.push({ mesh: growthMeshes.bicepBulgeL, origX: growthMeshes.bicepBulgeL.position.x, origZ: growthMeshes.bicepBulgeL.position.z, scaleAxis: 'x' });
+  if (growthMeshes.bicepBulgeR) bodyFeatures.push({ mesh: growthMeshes.bicepBulgeR, origX: growthMeshes.bicepBulgeR.position.x, origZ: growthMeshes.bicepBulgeR.position.z, scaleAxis: 'x' });
+  if (growthMeshes.forearmL) bodyFeatures.push({ mesh: growthMeshes.forearmL, origX: growthMeshes.forearmL.position.x, origZ: growthMeshes.forearmL.position.z, scaleAxis: 'x' });
+  if (growthMeshes.forearmR) bodyFeatures.push({ mesh: growthMeshes.forearmR, origX: growthMeshes.forearmR.position.x, origZ: growthMeshes.forearmR.position.z, scaleAxis: 'x' });
+  // Pecs and abs reposition on Z-axis (front of torso)
+  if (growthMeshes.pecL) bodyFeatures.push({ mesh: growthMeshes.pecL, origX: growthMeshes.pecL.position.x, origZ: growthMeshes.pecL.position.z, scaleAxis: 'xz' });
+  if (growthMeshes.pecR) bodyFeatures.push({ mesh: growthMeshes.pecR, origX: growthMeshes.pecR.position.x, origZ: growthMeshes.pecR.position.z, scaleAxis: 'xz' });
+  if (growthMeshes.abs) {
+    for (const ab of growthMeshes.abs) {
+      bodyFeatures.push({ mesh: ab, origX: ab.position.x, origZ: ab.position.z, scaleAxis: 'xz' });
     }
   }
 
@@ -418,6 +532,7 @@ export function buildPlayerModel(animalId, scene) {
     faceFeatures,   // BD-275: face meshes with original offsets for growth repositioning
     headCenter,     // BD-275: head center position for offset calculation
     bodyFeatures, // BD-282: body parts to reposition during muscle growth
+    growthMeshes, // BD-289: hidden muscle definition meshes revealed by updateMuscleGrowth
     wingGroup,
     wingMeshes: { wingL1, wingL2, wingL3, wingR1, wingR2, wingR3 },
   };
@@ -593,30 +708,28 @@ export function animatePlayer(model, st, clock, len, mx, mz) {
 }
 
 /**
- * Update muscle growth visual scaling based on player level using 5-tier logarithmic curves.
+ * Update muscle growth visual scaling based on player level using 5-tier logarithmic curves
+ * plus BD-289 growth mesh reveal for bodybuilder muscle definition.
  *
  * Uses the formula: scale = 1 + maxGrowth * (1 - Math.exp(-growthRate * t))
  * where t = level - 1 (so level 1 = no growth). This produces an asymptotic curve
- * that never fully stops growing, replacing the old linear-with-hard-cap system that
- * plateaued completely by level 17-21.
+ * that never fully stops growing.
  *
- * Five growth tiers prevent the "blobby" look by scaling body parts at different rates:
- * - **Tier 1: Core muscles** (chest, shoulders) — maxGrowth=1.2, rate=0.08, approaches 2.2x.
- *   Non-uniform scaling (wider > taller, Y *= 0.7).
- * - **Tier 2: Limbs** (biceps, thighs) — maxGrowth=0.9, rate=0.07, approaches 1.9x.
+ * Five growth tiers use MODERATE base scaling to avoid the blobby look:
+ * - **Tier 1: Core muscles** (chest, shoulders) — maxGrowth=0.6, rate=0.10, approaches 1.6x.
+ *   Non-uniform scaling (wider > taller, Y *= 0.75).
+ * - **Tier 2: Limbs** (biceps, thighs) — maxGrowth=0.5, rate=0.08, approaches 1.5x.
  *   Slight Z-axis reduction (Z *= 0.9) on thighs to prevent boxy look.
- * - **Tier 3: Extremities** (hands, feet) — maxGrowth=0.7, rate=0.06, approaches 1.7x.
- * - **Tier 4: Head** — maxGrowth=0.4, rate=0.05, approaches 1.4x.
- * - **Tier 5: Cosmetic** (tail, features) — maxGrowth=0.3, rate=0.04, approaches 1.3x.
+ * - **Tier 3: Extremities** (hands, feet) — maxGrowth=0.4, rate=0.07, approaches 1.4x.
+ * - **Tier 4: Head** — maxGrowth=0.15, rate=0.04, approaches 1.15x (stays SMALL).
+ * - **Tier 5: Cosmetic** (tail, features) — maxGrowth=0.2, rate=0.04, approaches 1.2x.
  *
- * Additionally repositions face features (BD-275) to prevent them from being swallowed
- * by the enlarging head mesh. Face features are sibling meshes of the head in the group,
- * so their positions are scaled outward from the head center by the head scale factor.
+ * BD-289: Growth meshes (shoulder caps, bicep bulges, forearms, pecs, abs) are revealed
+ * from scale(0,0,0) to full size using an exponential growth factor. This creates defined
+ * muscle shapes instead of uniform box scaling — the bodybuilder look.
  *
- * BD-282: After scaling, body features tracked in model.bodyFeatures are repositioned
- * proportionally to the Tier 1 (torso) scale factor. This prevents arms, hands, shoulders,
- * tail, legs, feet, and torso-surface decorations (spots, ridges) from clipping into the
- * enlarged chest mesh at higher levels.
+ * Additionally repositions face features (BD-275) and body features (BD-282) to prevent
+ * clipping as meshes grow.
  *
  * @param {PlayerModel} model - The player model object returned by buildPlayerModel.
  * @param {number} level - Current player level (1-based).
@@ -627,40 +740,45 @@ export function updateMuscleGrowth(model, level) {
   // Logarithmic growth helper: asymptotically approaches (1 + maxGrowth) but never caps
   const logScale = (maxGrowth, growthRate) => 1 + maxGrowth * (1 - Math.exp(-growthRate * t));
 
-  // Tier 1: Core muscles (chest, shoulders) — widest growth, non-uniform (wider > taller)
-  // Only scale muscles that are NOT children of arm/leg groups (chest, shoulderL, shoulderR)
-  // bicepL/R and thighL/R ARE the arm/leg array entries — skip them here to avoid double-scaling
-  const mS = logScale(1.2, 0.08);
+  // === OVERALL SIZE INCREASE ===
+  // The whole model group scales up — this is the single biggest visual impact.
+  // Aggressive curve: Level 1: 1.0x, Level 5: ~1.45x, Level 10: ~1.82x, Level 15: ~2.05x, Level 20: ~2.18x
+  const groupScale = logScale(1.5, 0.10);
+  model.group.scale.set(groupScale, groupScale, groupScale);
+
+  // Tier 1: Core muscles (chest, shoulders) — aggressive widening for inverted-triangle silhouette
+  // Shoulders scale wider than tall for boulder-shoulder look
+  const mS = logScale(1.0, 0.12);
   if (model.muscles) {
-    for (const key of ['chest', 'shoulderL', 'shoulderR']) {
-      if (model.muscles[key]) model.muscles[key].scale.set(mS, mS * 0.7, mS);
-    }
+    if (model.muscles.chest) model.muscles.chest.scale.set(mS, mS * 0.75, mS);
+    // Shoulders: extra wide (1.3x) for the inverted-triangle bodybuilder look
+    if (model.muscles.shoulderL) model.muscles.shoulderL.scale.set(mS * 1.3, mS * 0.8, mS * 1.2);
+    if (model.muscles.shoulderR) model.muscles.shoulderR.scale.set(mS * 1.3, mS * 0.8, mS * 1.2);
   }
 
-  // Tier 2: Limbs (arms, legs) — moderate proportional growth
-  // Thighs use 90% Z-axis scale to prevent boxy look at high levels
-  const lS = logScale(0.9, 0.07);
+  // Tier 2: Limbs — thick arms for the gorilla look, sturdy legs
+  const lS = logScale(0.8, 0.10);
   if (model.arms) {
     for (const arm of model.arms) {
-      if (arm) arm.scale.set(lS, lS, lS);
+      if (arm) arm.scale.set(lS * 1.1, lS, lS * 1.1); // wider cross-section
     }
   }
   if (model.legs) {
     for (const leg of model.legs) {
-      if (leg) leg.scale.set(lS, lS, lS * 0.9);
+      if (leg) leg.scale.set(lS * 1.15, lS, lS); // thicker legs for planted stance
     }
   }
 
-  // Tier 3: Extremities (hands, feet) — subtle growth
-  const eS = logScale(0.7, 0.06);
+  // Tier 3: Extremities (hands, feet) — moderate growth for thick fists/paws
+  const eS = logScale(0.5, 0.08);
   for (const arr of [model.hands, model.feet]) {
     if (arr) for (const part of arr) {
       if (part) part.scale.set(eS, eS, eS);
     }
   }
 
-  // Tier 4: Head — minimal growth to maintain proportions
-  const hS = logScale(0.4, 0.05);
+  // Tier 4: Head — VERY minimal growth for the classic tiny-head-on-massive-body look
+  const hS = logScale(0.08, 0.04);
   if (model.head) model.head.scale.set(hS, hS, hS);
 
   // BD-275: Reposition face features outward from head center to match head growth.
@@ -679,7 +797,7 @@ export function updateMuscleGrowth(model, level) {
   }
 
   // Tier 5: Cosmetic (tail, features) — very subtle
-  const fS = logScale(0.3, 0.04);
+  const fS = logScale(0.2, 0.04);
   if (model.tail) model.tail.scale.set(fS, fS, fS);
   if (model.features) {
     for (const k in model.features) {
@@ -694,15 +812,63 @@ export function updateMuscleGrowth(model, level) {
     }
   }
 
+  // === BD-289: Reveal growth meshes from invisible to full size ===
+  // Faster reveal: 0 at level 1, ~0.53 at level 5, ~0.78 at level 10, ~0.90 at level 15
+  const growthFactor = 1.0 * (1 - Math.exp(-0.15 * t));
+  if (model.growthMeshes) {
+    const gm = model.growthMeshes;
+    // Shoulder caps — biggest visual impact, oversized for boulder-shoulder effect
+    const shoulderGF = growthFactor * 1.4; // 40% larger than base growth
+    if (gm.shoulderCapL) gm.shoulderCapL.scale.set(shoulderGF * 1.2, shoulderGF, shoulderGF * 1.2);
+    if (gm.shoulderCapR) gm.shoulderCapR.scale.set(shoulderGF * 1.2, shoulderGF, shoulderGF * 1.2);
+    // Bicep bulges — slightly delayed (80% of growth factor)
+    const bicepGF = growthFactor * 0.8;
+    if (gm.bicepBulgeL) gm.bicepBulgeL.scale.set(bicepGF, bicepGF, bicepGF);
+    if (gm.bicepBulgeR) gm.bicepBulgeR.scale.set(bicepGF, bicepGF, bicepGF);
+    // Forearms — same timing as biceps
+    if (gm.forearmL) gm.forearmL.scale.set(bicepGF, bicepGF, bicepGF);
+    if (gm.forearmR) gm.forearmR.scale.set(bicepGF, bicepGF, bicepGF);
+    // Pecs — slightly delayed (75% of growth factor)
+    const pecGF = growthFactor * 0.75;
+    if (gm.pecL) gm.pecL.scale.set(pecGF, pecGF, pecGF);
+    if (gm.pecR) gm.pecR.scale.set(pecGF, pecGF, pecGF);
+    // Abs — most delayed, appear later (60% of growth factor)
+    const absGF = growthFactor * 0.6;
+    if (gm.abs) {
+      for (const ab of gm.abs) ab.scale.set(absGF, absGF, absGF);
+    }
+  }
+
   // === BD-282: Reposition body features to prevent clipping as torso grows ===
   // The torso (chest) scales by mS on X and Z axes. Body parts at their original
   // positions would be swallowed inside the enlarged torso. Reposition them
   // proportionally so they stay on the surface.
+  // BD-289: Arms and legs get extra outward push for bodybuilder wide stance
+  const armPush = 1 + growthFactor * 0.6; // extra 60% outward at full growth — gorilla arms
+  const legPush = 1 + growthFactor * 0.45;  // wide planted stance (not too splayed)
   if (model.bodyFeatures) {
+    // Build sets for O(1) lookup of arm/leg features
+    const armMeshes = new Set();
+    if (model.arms) for (const a of model.arms) { if (a) armMeshes.add(a); }
+    if (model.hands) for (const h of model.hands) { if (h) armMeshes.add(h); }
+    if (model.growthMeshes) {
+      for (const k of ['bicepBulgeL', 'bicepBulgeR', 'forearmL', 'forearmR',
+                        'shoulderCapL', 'shoulderCapR']) {
+        if (model.growthMeshes[k]) armMeshes.add(model.growthMeshes[k]);
+      }
+    }
+    const legMeshes = new Set();
+    if (model.legs) for (const l of model.legs) { if (l) legMeshes.add(l); }
+    if (model.feet) for (const f of model.feet) { if (f) legMeshes.add(f); }
+
     for (const bf of model.bodyFeatures) {
       if (!bf.mesh) continue;
+      // Determine extra outward multiplier based on body part type
+      let xMult = mS;
+      if (armMeshes.has(bf.mesh)) xMult = mS * armPush;
+      else if (legMeshes.has(bf.mesh)) xMult = mS * legPush;
       if (bf.scaleAxis === 'x' || bf.scaleAxis === 'xz') {
-        bf.mesh.position.x = bf.origX * mS;
+        bf.mesh.position.x = bf.origX * xMult;
       }
       if (bf.scaleAxis === 'z' || bf.scaleAxis === 'xz') {
         bf.mesh.position.z = bf.origZ * mS;
@@ -1077,11 +1243,14 @@ export function buildWearableMesh(wearableId) {
 /**
  * Update the visual wearable meshes on the player model to reflect current equipped wearables.
  * Removes all existing wearable meshes, then re-creates meshes for each equipped wearable.
+ * Adjusts wearable positions to account for muscle growth scaling so they don't clip inside
+ * the enlarged body at higher levels.
  *
  * @param {PlayerModel} model - The player model object returned by buildPlayerModel.
  * @param {Object} wearables - The st.wearables object { head, body, feet } with wearable IDs or null.
+ * @param {number} [level=1] - Current player level for muscle growth position adjustment.
  */
-export function updateWearableVisuals(model, wearables) {
+export function updateWearableVisuals(model, wearables, level) {
   // Remove all existing wearable meshes
   if (model.wearableMeshes) {
     for (const slot in model.wearableMeshes) {
@@ -1097,13 +1266,49 @@ export function updateWearableVisuals(model, wearables) {
   }
   model.wearableMeshes = {};
 
+  // Compute muscle growth scale factors to adjust wearable positions.
+  // Mirrors the logScale formula from updateMuscleGrowth.
+  const t = (level || 1) - 1;
+  const logScale = (maxGrowth, growthRate) => 1 + maxGrowth * (1 - Math.exp(-growthRate * t));
+  const mS = logScale(0.6, 0.10); // chest/torso scale
+  const hS = logScale(0.15, 0.04); // head scale
+
+  // Reference positions for scaling offsets (torso center at y=0.85, head center at y~1.55)
+  const torsoCenterY = 0.85;
+  const headCenterY = 1.55;
+
   for (const slot of ['head', 'body', 'feet']) {
     const wId = wearables[slot];
     if (!wId) continue;
     const grp = buildWearableMesh(wId);
-    if (grp) {
-      model.group.add(grp);
-      model.wearableMeshes[slot] = grp;
+    if (!grp) continue;
+
+    // Adjust child mesh positions for muscle growth clipping prevention.
+    // Body-slot wearables: scale X/Z from torso center by chest scale so they wrap
+    // around the enlarged torso instead of being swallowed inside it.
+    // Head-slot wearables: offset Y by head scale growth.
+    if (t > 0) {
+      grp.traverse(child => {
+        if (!child.isMesh) return;
+        if (slot === 'body') {
+          // Push X outward and Z forward proportionally to torso growth.
+          // Use mS + 10% so the wearable sits ON TOP of the enlarged torso, not inside.
+          const wrapScale = mS * 1.1;
+          child.position.x *= wrapScale;
+          child.position.z = child.position.z * wrapScale + 0.05 * (mS - 1); // extra Z push forward
+          // Scale width/depth to wrap around the enlarged torso
+          child.scale.set(wrapScale, 1, wrapScale);
+        } else if (slot === 'head') {
+          // Head wearables: offset Y to account for head growing upward from its center
+          const yOffsetFromHead = child.position.y - headCenterY;
+          child.position.y = headCenterY + yOffsetFromHead * hS;
+        }
+        // Feet wearables need no adjustment — feet positions are already
+        // repositioned by bodyFeatures in updateMuscleGrowth
+      });
     }
+
+    model.group.add(grp);
+    model.wearableMeshes[slot] = grp;
   }
 }
