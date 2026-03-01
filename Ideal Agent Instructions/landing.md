@@ -69,15 +69,11 @@ Known issues for future work:
 - Deferred work: [list]
 
 ### 6. Bead Update
-Update bead with:
-```yaml
-status: complete|blocked
-files_modified: [list]
-verification_status: "[summary]"
-risks: "[summary]"
-ready_to_merge: true|false
-block_reason: "[if blocked]"
+Update via `bd` CLI:
+```bash
+bd update <id> --status done    # or blocked if not ready
 ```
+Record in the bead: files_modified, verification_status, risks, ready_to_merge, block_reason (if blocked).
 
 ### 7. Ready-to-Merge Declaration
 State ONE of:

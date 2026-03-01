@@ -8,7 +8,7 @@ Implement exactly what was approved in navigation. No scope expansion. No archit
 ## Execution Ritual
 
 ### 1. Bead Checkpoint
-- Verify bead `status: implementing`
+- Run `bd show <id>` to verify bead `status: implementing`
 - Read `architecture_approach`, `trunks`, `branches`, `dependency_rules`
 - If any field missing: STOP. Return to navigation phase.
 
@@ -49,7 +49,7 @@ If answer is "no" to any: simplify before presenting.
 
 ### 6. Completion Trigger
 When scope is satisfied:
-- Update bead `status: landing`
+- Run `bd update <id> --status landing` (or equivalent)
 - List all modified files in bead
 - Inform user: "Implementation complete. Say 'done' or 'complete' to enter landing phase."
 

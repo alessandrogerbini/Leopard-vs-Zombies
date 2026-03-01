@@ -54,13 +54,26 @@ project/
 
 **Context loaded:** ~400-500 lines (bead + landing ritual + modified files)
 
-## Bead Schema (Canonical)
+## Beads Tool (`bd` CLI)
+
+Beads are managed via the **`bd` CLI** (https://github.com/steveyegge/beads), stored in `.beads/`.
+
+```bash
+bd create "Task title" -p 1          # Create bead
+bd update <id> --status in_progress  # Update status
+bd show <id>                         # View details
+bd list                              # List all beads
+```
+
+**Do NOT create markdown files as beads.** The `docs/planning/beads-*.md` files are a deprecated pattern kept as historical archive. All new work uses `bd` exclusively.
+
+### Bead Schema (Canonical)
 
 ```yaml
 # Required (enforced by agents.md)
-id: string
+id: string                            # assigned by bd create (e.g. Leopard vs Zombies-a1b2)
 status: planning|implementing|landing|blocked|complete
-scope: string  # one-sentence task description
+scope: string                         # one-sentence task description
 
 # Phase-specific (populated by phase docs)
 architecture_approach: string      # navigation.md
@@ -105,9 +118,11 @@ If user requests new functionality mid-execution:
 ## Usage in New Projects
 
 1. Copy all files to project root
-2. Create first bead with `status: planning`
-3. Say "plan [task]" to enter navigation phase
-4. Agent guides through architecture, then execution, then landing
+2. Install Beads CLI: `curl -sSL https://raw.githubusercontent.com/steveyegge/beads/main/scripts/install.sh | bash`
+3. Initialize: `bd init`
+4. Create first bead: `bd create "Task description" -p 1`
+5. Say "plan [task]" to enter navigation phase
+6. Agent guides through architecture, then execution, then landing
 
 ## Token Efficiency Comparison
 

@@ -8,9 +8,10 @@ Define architecture and approach BEFORE writing code. Maximize post-hoc composab
 ## Navigation Ritual (Execute in Order)
 
 ### 1. Bead Checkpoint
-- Verify bead exists with `status: planning`
+- Run `bd show <id>` to verify bead exists with `status: planning`
 - Read bead `scope` field
-- If scope ambiguous: clarify with user, update bead
+- If scope ambiguous: clarify with user, run `bd update <id>` to fix scope
+- If no bead exists: run `bd create "Task description" -p <priority>`
 
 ### 2. Architecture Analysis
 Read modularity-primer.md and answer:
@@ -65,14 +66,11 @@ State which approach you recommend and why.
 Do NOT proceed to implementation without explicit approval.
 
 ### 6. Bead Update (After Approval)
-Update bead with:
-```yaml
-status: implementing
-architecture_approach: "[chosen approach name]"
-trunks: [list]
-branches: [list]
-dependency_rules: "[key constraints]"
+Update via `bd` CLI:
+```bash
+bd update <id> --status implementing
 ```
+Record the chosen approach, trunks, branches, and dependency rules in the bead description.
 
 ### 7. Phase Transition
 Inform user: "Architecture locked. Ready to implement. Say 'implement' or 'build' to proceed to execution phase."

@@ -21,16 +21,20 @@ The orchestrating agent builds a conflict matrix, batches tasks, writes detailed
 - See `parallelization.md` for the full protocol and anti-patterns
 
 ## Bead Mandate (Non-Negotiable)
-ALL work requires a bead. Beads are the source of truth.
+ALL work requires a bead tracked via the **`bd` CLI tool** (https://github.com/steveyegge/beads).
 
-**Minimal Required Schema:**
-```yaml
-id: string
-status: [planning|implementing|landing|blocked|complete]
-scope: string  # one-sentence task description
+**Beads are stored in `.beads/` — NOT as markdown files.** Use the CLI:
+```bash
+bd create "Task title" -p 1          # Create a new bead
+bd update <id> --status in_progress  # Update status
+bd show <id>                         # View bead details
+bd list                              # List all beads
+bd dep add <child> <parent>          # Set dependencies
 ```
 
-If no bead exists for current work: STOP. Create one. Set `status: planning`.
+If no bead exists for current work: STOP. Run `bd create`. Never create `docs/planning/beads-*.md` files — that pattern is deprecated. Historical markdown specs in `docs/planning/` are archived reference only.
+
+If `bd` is unavailable or errors, flag it to the user rather than falling back to markdown.
 
 ## Universal Architecture Rules (Always Apply)
 1. **Dependency Inversion**: High-level policy never depends on low-level details
