@@ -3,7 +3,8 @@
  * @description Canvas 2D HUD and menu drawing for the Animal Rescue RPG alpha.
  *
  * Dependencies: save-system.js
- * Exports: drawSaveSelect, drawRuntimeShell, getSaveSlotLayout, hitTestSaveSlot
+ * Exports: drawSaveSelect, drawRuntimeShell, drawHub, drawDialogue,
+ *   drawQuestBoard, drawWorldMap, getSaveSlotLayout, hitTestSaveSlot
  */
 
 import { SAVE_SLOT_COUNT } from './save-system.js';
@@ -188,3 +189,219 @@ export function drawRuntimeShell(ctx, view) {
   ctx.fillText('Press Escape to save and return', w / 2, h * 0.66);
 }
 
+function drawTopBar(ctx, title, subtitle = '') {
+  const w = ctx.canvas.width;
+  ctx.fillStyle = 'rgba(9, 18, 16, 0.82)';
+  roundedRect(ctx, 18, 16, w - 36, 58, 8);
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(245, 214, 107, 0.42)';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  ctx.textAlign = 'left';
+  ctx.fillStyle = '#f5d66b';
+  fitText(ctx, title, Math.min(420, w - 78), 24, 16);
+  ctx.fillText(title, 38, 50);
+
+  if (subtitle) {
+    ctx.textAlign = 'right';
+    ctx.fillStyle = '#d8e4c5';
+    fitText(ctx, subtitle, Math.min(360, w * 0.45), 15, 11, '"Courier New", monospace', 'normal');
+    ctx.fillText(subtitle, w - 38, 49);
+  }
+}
+
+function drawHubGround(ctx, w, h) {
+  const cx = w * 0.5;
+  const cy = h * 0.52;
+  ctx.fillStyle = '#29452a';
+  roundedRect(ctx, cx - 220, cy - 128, 440, 256, 8);
+  ctx.fill();
+  ctx.strokeStyle = '#82a36d';
+  ctx.lineWidth = 3;
+  ctx.stroke();
+
+  ctx.fillStyle = '#2f6a38';
+  for (let i = 0; i < 11; i++) {
+    const x = cx - 205 + i * 41;
+    ctx.fillRect(x, cy + 118, 18, 5);
+  }
+}
+
+function hubPoint(w, h, x, z) {
+  return {
+    x: w * 0.5 + x * 58,
+    y: h * 0.52 + z * 42,
+  };
+}
+
+function drawHubToken(ctx, point, label, color, selected) {
+  ctx.fillStyle = selected ? '#fff1a6' : color;
+  roundedRect(ctx, point.x - 42, point.y - 18, 84, 36, 8);
+  ctx.fill();
+  ctx.strokeStyle = selected ? '#f5d66b' : 'rgba(255,255,255,0.34)';
+  ctx.lineWidth = selected ? 3 : 1;
+  ctx.stroke();
+  ctx.textAlign = 'center';
+  ctx.fillStyle = selected ? '#1b2419' : '#f4f8ec';
+  fitText(ctx, label, 72, 12, 9);
+  ctx.fillText(label, point.x, point.y + 4);
+}
+
+export function drawHub(ctx, view) {
+  const w = ctx.canvas.width;
+  const h = ctx.canvas.height;
+  const hub = view.hub;
+  const focus = view.focusItem;
+  const activeQuest = view.activeQuest;
+
+  ctx.clearRect(0, 0, w, h);
+  drawBackground(ctx, w, h);
+  drawTopBar(ctx, 'Rescue Hub', activeQuest ? activeQuest.objective : 'Safe camp');
+  drawHubGround(ctx, w, h);
+
+  hub.interactables.forEach(item => {
+    const point = hubPoint(w, h, item.x, item.z);
+    drawHubToken(ctx, point, item.label, '#3b6350', focus?.id === item.id);
+  });
+
+  hub.npcs.forEach(npc => {
+    const point = hubPoint(w, h, npc.x, npc.z);
+    drawHubToken(ctx, point, npc.name.split(' ')[0], '#7b5e35', focus?.id === npc.id);
+  });
+
+  ctx.fillStyle = 'rgba(8, 15, 14, 0.84)';
+  roundedRect(ctx, 22, h - 122, w - 44, 84, 8);
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(216, 228, 197, 0.35)';
+  ctx.stroke();
+
+  ctx.textAlign = 'left';
+  ctx.fillStyle = '#f5d66b';
+  fitText(ctx, focus ? focus.label : 'Hub', w - 72, 18, 12);
+  ctx.fillText(focus ? focus.label : 'Hub', 42, h - 88);
+  ctx.fillStyle = '#d8e4c5';
+  ctx.font = '14px "Courier New", monospace';
+  const prompt = activeQuest
+    ? `${activeQuest.title}: ${activeQuest.destinationZone}`
+    : 'Quest board ready: The Hero Sign-Up Sheet';
+  ctx.fillText(prompt, 42, h - 58);
+}
+
+export function drawDialogue(ctx, view) {
+  const w = ctx.canvas.width;
+  const h = ctx.canvas.height;
+  const dialogue = view.dialogue;
+  drawHub(ctx, view);
+
+  ctx.fillStyle = 'rgba(5, 10, 11, 0.9)';
+  roundedRect(ctx, Math.max(24, w * 0.12), Math.max(110, h * 0.22), Math.min(720, w * 0.76), 160, 8);
+  ctx.fill();
+  ctx.strokeStyle = '#f5d66b';
+  ctx.lineWidth = 3;
+  ctx.stroke();
+
+  const x = Math.max(44, w * 0.12 + 24);
+  const y = Math.max(110, h * 0.22);
+  ctx.textAlign = 'left';
+  ctx.fillStyle = '#f5d66b';
+  fitText(ctx, dialogue.name, Math.min(660, w * 0.68), 22, 15);
+  ctx.fillText(dialogue.name, x, y + 42);
+
+  ctx.fillStyle = '#eef6dc';
+  ctx.font = '18px "Courier New", monospace';
+  dialogue.lines.forEach((line, index) => {
+    ctx.fillText(line, x, y + 82 + index * 28);
+  });
+}
+
+export function drawQuestBoard(ctx, view) {
+  const w = ctx.canvas.width;
+  const h = ctx.canvas.height;
+  const available = view.questBoard.available;
+  const selectedQuest = view.questBoard.selectedQuest || 0;
+  const activeQuest = view.activeQuest;
+
+  ctx.clearRect(0, 0, w, h);
+  drawBackground(ctx, w, h);
+  drawTopBar(ctx, 'Quest Board', activeQuest ? `Active: ${activeQuest.title}` : 'Forest Edge');
+
+  const x = Math.max(28, w * 0.12);
+  const y = Math.max(112, h * 0.22);
+  const panelW = Math.min(720, w - x * 2);
+  const panelH = Math.min(320, h - y - 62);
+  ctx.fillStyle = 'rgba(8, 15, 14, 0.86)';
+  roundedRect(ctx, x, y, panelW, panelH, 8);
+  ctx.fill();
+  ctx.strokeStyle = '#82a36d';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  ctx.textAlign = 'left';
+  if (available.length === 0) {
+    ctx.fillStyle = '#eef6dc';
+    fitText(ctx, 'No new board quests', panelW - 46, 24, 16);
+    ctx.fillText('No new board quests', x + 24, y + 58);
+    ctx.font = '16px "Courier New", monospace';
+    ctx.fillStyle = '#cbd9bb';
+    ctx.fillText(activeQuest ? activeQuest.objective : 'Check back after helping Forest Edge.', x + 24, y + 94);
+    return;
+  }
+
+  available.forEach((quest, index) => {
+    const rowY = y + 28 + index * 94;
+    ctx.fillStyle = index === selectedQuest ? '#243a22' : '#16251d';
+    roundedRect(ctx, x + 18, rowY, panelW - 36, 78, 8);
+    ctx.fill();
+    ctx.strokeStyle = index === selectedQuest ? '#f5d66b' : 'rgba(216, 228, 197, 0.25)';
+    ctx.stroke();
+
+    ctx.fillStyle = index === selectedQuest ? '#fff1a6' : '#eef6dc';
+    fitText(ctx, quest.title, panelW - 76, 20, 14);
+    ctx.fillText(quest.title, x + 38, rowY + 30);
+    ctx.fillStyle = '#cbd9bb';
+    ctx.font = '14px "Courier New", monospace';
+    ctx.fillText(`Destination: ${quest.destinationZone}`, x + 38, rowY + 52);
+    ctx.fillText(quest.rewardPreview, x + 300, rowY + 52);
+  });
+}
+
+export function drawWorldMap(ctx, view) {
+  const w = ctx.canvas.width;
+  const h = ctx.canvas.height;
+  const entries = view.worldMap.entries;
+  const selected = view.worldMap.selectedMapEntry || 0;
+
+  ctx.clearRect(0, 0, w, h);
+  drawBackground(ctx, w, h);
+  drawTopBar(ctx, 'World Map', 'Alpha route');
+
+  const cols = w >= 760 ? 3 : 2;
+  const gap = 14;
+  const margin = Math.max(24, Math.min(54, w * 0.08));
+  const cardW = Math.floor((w - margin * 2 - gap * (cols - 1)) / cols);
+  const cardH = w >= 760 ? 102 : 88;
+  const startY = Math.max(104, h * 0.22);
+
+  entries.forEach((entry, index) => {
+    const col = index % cols;
+    const row = Math.floor(index / cols);
+    const x = margin + col * (cardW + gap);
+    const y = startY + row * (cardH + gap);
+    const isSelected = index === selected;
+    ctx.fillStyle = entry.unlocked ? (isSelected ? '#243a22' : '#1a2b1f') : '#251e25';
+    roundedRect(ctx, x, y, cardW, cardH, 8);
+    ctx.fill();
+    ctx.strokeStyle = isSelected ? '#f5d66b' : entry.unlocked ? '#6da85f' : '#8b6e7a';
+    ctx.lineWidth = isSelected ? 3 : 2;
+    ctx.stroke();
+
+    ctx.textAlign = 'left';
+    ctx.fillStyle = entry.unlocked ? '#eef6dc' : '#d5bbc6';
+    fitText(ctx, entry.label, cardW - 28, 18, 12);
+    ctx.fillText(entry.label, x + 14, y + 32);
+    ctx.fillStyle = entry.unlocked ? '#b7e36a' : '#c9a7b4';
+    ctx.font = '13px "Courier New", monospace';
+    ctx.fillText(entry.unlocked ? 'Open' : entry.reason, x + 14, y + 62);
+  });
+}

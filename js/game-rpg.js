@@ -7,7 +7,11 @@
  */
 
 import { deleteSaveSlot, listSaveSummaries, readSaveSlot, writeSaveSlot } from './rpg/save-system.js';
-import { drawRuntimeShell, drawSaveSelect, hitTestSaveSlot } from './rpg/hud-rpg.js';
+import { createHubNpcs } from './rpg/npc.js';
+import { acceptQuest, getActiveQuestTracker, getAvailableQuests } from './rpg/quest-system.js';
+import { createHubZone } from './rpg/zone.js';
+import { getWorldMapEntries } from './rpg/world-map-rpg.js';
+import { drawDialogue, drawHub, drawQuestBoard, drawSaveSelect, drawWorldMap, hitTestSaveSlot } from './rpg/hud-rpg.js';
 
 export function launchRPGGame(options) {
   const animal = options.animal || { name: 'LEOPARD', color: '#e8a828' };
@@ -25,6 +29,13 @@ export function launchRPGGame(options) {
   let confirmDelete = false;
   let slotSummaries = listSaveSummaries(localStorage, animal.id || 'leopard');
   let activeSave = null;
+  let hubZone = null;
+  let hubNpcs = [];
+  let focusItems = [];
+  let selectedFocus = 0;
+  let selectedQuest = 0;
+  let selectedMapEntry = 0;
+  let dialogueNpc = null;
   let runtimeRenderer = null;
   let runtimeScene = null;
   let runtimeCamera = null;
@@ -51,14 +62,60 @@ export function launchRPGGame(options) {
     slotSummaries = listSaveSummaries(localStorage, animal.id || 'leopard');
   }
 
+  function refreshHubState() {
+    if (!activeSave) return;
+    hubZone = createHubZone(activeSave);
+    hubNpcs = createHubNpcs(activeSave);
+    focusItems = [
+      ...hubNpcs.map(npc => ({ type: 'npc', id: npc.id, label: npc.name, npc })),
+      ...hubZone.interactables.map(item => ({ type: item.kind, id: item.id, label: item.label, item })),
+    ];
+    selectedFocus = Math.min(selectedFocus, Math.max(0, focusItems.length - 1));
+    selectedQuest = Math.min(selectedQuest, Math.max(0, getAvailableQuests(activeSave).length - 1));
+    selectedMapEntry = Math.min(selectedMapEntry, Math.max(0, getWorldMapEntries(activeSave).length - 1));
+  }
+
+  function getViewModel() {
+    const activeQuest = activeSave ? getActiveQuestTracker(activeSave) : null;
+    const available = activeSave ? getAvailableQuests(activeSave) : [];
+    const entries = activeSave ? getWorldMapEntries(activeSave) : [];
+    const focusItem = focusItems[selectedFocus] || null;
+    return {
+      animal,
+      save: activeSave,
+      hub: {
+        zone: hubZone,
+        npcs: hubNpcs,
+        interactables: hubZone?.interactables || [],
+      },
+      focusItem,
+      activeQuest,
+      dialogue: dialogueNpc ? { name: dialogueNpc.name, lines: dialogueNpc.dialogue } : null,
+      questBoard: { available, selectedQuest },
+      worldMap: { entries, selectedMapEntry },
+    };
+  }
+
   function updateDebug() {
     if (typeof window === 'undefined') return;
+    const view = activeSave ? getViewModel() : null;
     window.__rpgDebug = {
       screen,
       animalId: animal.id || 'leopard',
       selectedSlot,
       slotSummaries,
       canvasCount: [canvas3d, hudCanvas].filter(Boolean).length,
+      hub: view ? {
+        enemies: hubZone.enemies.length,
+        damageSources: hubZone.damageSources.length,
+        interactables: hubZone.interactables.map(item => item.id),
+        npcs: hubNpcs.map(npc => ({ id: npc.id, name: npc.name, dialogueId: npc.dialogueId })),
+      } : null,
+      focusItem: view?.focusItem ? { id: view.focusItem.id, label: view.focusItem.label, type: view.focusItem.type } : null,
+      activeQuest: view?.activeQuest || null,
+      dialogue: view?.dialogue || null,
+      questBoard: view?.questBoard || null,
+      worldMap: view?.worldMap || null,
       activeSave: activeSave ? {
         animalId: activeSave.animalId,
         slot: activeSave.slot,
@@ -72,7 +129,12 @@ export function launchRPGGame(options) {
     if (screen === 'saveSelect') {
       drawSaveSelect(hudCtx, { animal, slotSummaries, selectedSlot, confirmDelete });
     } else if (activeSave) {
-      drawRuntimeShell(hudCtx, { animal, save: activeSave });
+      refreshHubState();
+      const view = getViewModel();
+      if (screen === 'hub') drawHub(hudCtx, view);
+      else if (screen === 'dialogue') drawDialogue(hudCtx, view);
+      else if (screen === 'questBoard') drawQuestBoard(hudCtx, view);
+      else if (screen === 'worldMap') drawWorldMap(hudCtx, view);
     }
     updateDebug();
   }
@@ -108,7 +170,7 @@ export function launchRPGGame(options) {
   }
 
   function renderRuntime(now = performance.now()) {
-    if (screen !== 'runtime' || returned) return;
+    if (!['hub', 'dialogue', 'questBoard', 'worldMap'].includes(screen) || returned) return;
     const dt = Math.min(0.1, (now - lastFrameTime) / 1000);
     lastFrameTime = now;
     if (activeSave) activeSave.playtimeSeconds += dt;
@@ -125,8 +187,13 @@ export function launchRPGGame(options) {
     if (result.empty || !result.valid) {
       activeSave = writeSaveSlot(localStorage, activeSave);
     }
-    screen = 'runtime';
+    screen = 'hub';
     confirmDelete = false;
+    selectedFocus = 0;
+    selectedQuest = 0;
+    selectedMapEntry = 0;
+    dialogueNpc = null;
+    refreshHubState();
     initRuntimeScene();
     lastFrameTime = performance.now();
     draw();
@@ -208,37 +275,146 @@ export function launchRPGGame(options) {
       if (confirmDelete) {
         confirmDelete = false;
         draw();
+      } else if (['dialogue', 'questBoard', 'worldMap'].includes(screen)) {
+        screen = 'hub';
+        dialogueNpc = null;
+        draw();
       } else {
         returnToTitle();
       }
       return;
     }
 
-    if (screen !== 'saveSelect') return;
-    if (e.code === 'ArrowLeft' || e.code === 'ArrowUp') {
-      e.preventDefault();
-      selectedSlot = (selectedSlot - 1 + slotSummaries.length) % slotSummaries.length;
-      confirmDelete = false;
-      draw();
+    if (screen === 'saveSelect') {
+      if (e.code === 'ArrowLeft' || e.code === 'ArrowUp') {
+        e.preventDefault();
+        selectedSlot = (selectedSlot - 1 + slotSummaries.length) % slotSummaries.length;
+        confirmDelete = false;
+        draw();
+        return;
+      }
+      if (e.code === 'ArrowRight' || e.code === 'ArrowDown') {
+        e.preventDefault();
+        selectedSlot = (selectedSlot + 1) % slotSummaries.length;
+        confirmDelete = false;
+        draw();
+        return;
+      }
+      if (e.code === 'Enter' || e.code === 'Space') {
+        e.preventDefault();
+        if (confirmDelete) handleDelete();
+        else startSelectedSlot();
+        return;
+      }
+      if (e.code === 'Backspace' || e.code === 'Delete') {
+        e.preventDefault();
+        if (!slotSummaries[selectedSlot]?.empty) handleDelete();
+      }
       return;
     }
-    if (e.code === 'ArrowRight' || e.code === 'ArrowDown') {
-      e.preventDefault();
-      selectedSlot = (selectedSlot + 1) % slotSummaries.length;
-      confirmDelete = false;
-      draw();
+
+    if (screen === 'hub') {
+      if (e.code === 'ArrowLeft' || e.code === 'ArrowUp') {
+        e.preventDefault();
+        selectedFocus = (selectedFocus - 1 + focusItems.length) % focusItems.length;
+        draw();
+        return;
+      }
+      if (e.code === 'ArrowRight' || e.code === 'ArrowDown') {
+        e.preventDefault();
+        selectedFocus = (selectedFocus + 1) % focusItems.length;
+        draw();
+        return;
+      }
+      if (e.code === 'KeyQ') {
+        e.preventDefault();
+        screen = 'questBoard';
+        draw();
+        return;
+      }
+      if (e.code === 'KeyM') {
+        e.preventDefault();
+        screen = 'worldMap';
+        draw();
+        return;
+      }
+      if (e.code === 'Enter' || e.code === 'Space') {
+        e.preventDefault();
+        activateFocusedHubItem();
+      }
       return;
     }
-    if (e.code === 'Enter' || e.code === 'Space') {
-      e.preventDefault();
-      if (confirmDelete) handleDelete();
-      else startSelectedSlot();
+
+    if (screen === 'dialogue') {
+      if (e.code === 'Enter' || e.code === 'Space') {
+        e.preventDefault();
+        screen = 'hub';
+        dialogueNpc = null;
+        draw();
+      }
       return;
     }
-    if (e.code === 'Backspace' || e.code === 'Delete') {
-      e.preventDefault();
-      if (!slotSummaries[selectedSlot]?.empty) handleDelete();
+
+    if (screen === 'questBoard') {
+      const available = getAvailableQuests(activeSave);
+      if (e.code === 'ArrowUp' || e.code === 'ArrowLeft') {
+        e.preventDefault();
+        selectedQuest = (selectedQuest - 1 + Math.max(1, available.length)) % Math.max(1, available.length);
+        draw();
+        return;
+      }
+      if (e.code === 'ArrowDown' || e.code === 'ArrowRight') {
+        e.preventDefault();
+        selectedQuest = (selectedQuest + 1) % Math.max(1, available.length);
+        draw();
+        return;
+      }
+      if ((e.code === 'Enter' || e.code === 'Space') && available[selectedQuest]) {
+        e.preventDefault();
+        activeSave = acceptQuest(activeSave, available[selectedQuest].id);
+        activeSave = writeSaveSlot(localStorage, activeSave);
+        screen = 'hub';
+        draw();
+      }
+      return;
     }
+
+    if (screen === 'worldMap') {
+      const entries = getWorldMapEntries(activeSave);
+      if (e.code === 'ArrowLeft' || e.code === 'ArrowUp') {
+        e.preventDefault();
+        selectedMapEntry = (selectedMapEntry - 1 + entries.length) % entries.length;
+        draw();
+        return;
+      }
+      if (e.code === 'ArrowRight' || e.code === 'ArrowDown') {
+        e.preventDefault();
+        selectedMapEntry = (selectedMapEntry + 1) % entries.length;
+        draw();
+        return;
+      }
+      if ((e.code === 'Enter' || e.code === 'Space') && entries[selectedMapEntry]?.unlocked) {
+        e.preventDefault();
+        activeSave.currentZone = entries[selectedMapEntry].id;
+        activeSave = writeSaveSlot(localStorage, activeSave);
+        screen = 'hub';
+        draw();
+      }
+    }
+  }
+
+  function activateFocusedHubItem() {
+    const focus = focusItems[selectedFocus];
+    if (!focus) return;
+    if (focus.type === 'npc') {
+      dialogueNpc = focus.npc;
+      screen = 'dialogue';
+    } else if (focus.type === 'questBoard') {
+      screen = 'questBoard';
+    } else if (focus.type === 'worldMap') {
+      screen = 'worldMap';
+    }
+    draw();
   }
 
   function getHudPoint(event) {

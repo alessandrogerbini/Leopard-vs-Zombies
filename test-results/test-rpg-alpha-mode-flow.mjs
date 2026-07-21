@@ -5,6 +5,7 @@ const TIMEOUT = 30000;
 const CASES = new Set([
   'rpg-save-select',
   'cleanup',
+  'hub-dialogue-world-map',
 ]);
 
 const requestedCase = getArgValue('--case');
@@ -190,9 +191,63 @@ async function testCleanup() {
   });
 }
 
+async function launchRpgToHub(page) {
+  await launchRpgToSaveSelect(page);
+  await tapKey(page, 'Enter');
+  await page.waitForFunction(() => window.__rpgDebug && window.__rpgDebug.screen === 'hub', { timeout: TIMEOUT });
+  await waitForHudNonBlank(page, 'hub');
+}
+
+async function testHubDialogueWorldMap() {
+  await withBrowser(async browser => {
+    const page = await newPage(browser);
+    await launchRpgToHub(page);
+    let debug = await page.evaluate(() => window.__rpgDebug);
+    assert(debug.hub.enemies === 0, 'hub has no enemies');
+    assert(debug.hub.damageSources === 0, 'hub has no damage sources');
+    assert(debug.hub.interactables.includes('questBoard'), 'hub exposes quest board prompt');
+    assert(debug.hub.interactables.includes('craftingBench'), 'hub exposes crafting bench prompt');
+    assert(debug.hub.interactables.includes('worldMap'), 'hub exposes world map prompt');
+    assert(debug.hub.interactables.includes('playerTent'), 'hub exposes tent prompt');
+    assert(debug.hub.interactables.includes('storageChest'), 'hub exposes storage chest prompt');
+    assert(debug.hub.npcs.length === 4, 'hub exposes four named NPC prompts');
+    assert(debug.hub.npcs[0].name === 'Granny Thistle', 'Granny Thistle is the first hub NPC');
+
+    await tapKey(page, 'Enter');
+    await page.waitForFunction(() => window.__rpgDebug && window.__rpgDebug.screen === 'dialogue', { timeout: TIMEOUT });
+    debug = await page.evaluate(() => window.__rpgDebug);
+    assert(debug.dialogue.name === 'Granny Thistle', 'Enter opens focused NPC dialogue');
+    assert(debug.dialogue.lines.length <= 2, 'dialogue page has no more than two lines');
+    assert(debug.dialogue.lines.every(line => line.length <= 54), 'dialogue lines are short enough for 960x540');
+    await tapKey(page, 'Escape');
+    await page.waitForFunction(() => window.__rpgDebug && window.__rpgDebug.screen === 'hub', { timeout: TIMEOUT });
+
+    await tapKey(page, 'KeyQ');
+    await page.waitForFunction(() => window.__rpgDebug && window.__rpgDebug.screen === 'questBoard', { timeout: TIMEOUT });
+    debug = await page.evaluate(() => window.__rpgDebug);
+    assert(debug.questBoard.available[0].id === 'heroSignup', 'quest board lists Hero Sign-Up Sheet');
+    assert(debug.questBoard.available[0].rewardPreview.includes('Wooden Club recipe'), 'quest board shows reward preview');
+    await tapKey(page, 'Enter');
+    await page.waitForFunction(() => window.__rpgDebug && window.__rpgDebug.screen === 'hub' && window.__rpgDebug.activeQuest, { timeout: TIMEOUT });
+    debug = await page.evaluate(() => window.__rpgDebug);
+    assert(debug.activeQuest.id === 'heroSignup', 'accepting quest returns hub with active quest tracker');
+    assert(debug.activeQuest.objective === 'Collect 5 Wood and bonk 3 tutorial zombies', 'active quest objective is visible');
+
+    await tapKey(page, 'KeyM');
+    await page.waitForFunction(() => window.__rpgDebug && window.__rpgDebug.screen === 'worldMap', { timeout: TIMEOUT });
+    debug = await page.evaluate(() => window.__rpgDebug);
+    assert(debug.worldMap.entries.length === 6, 'world map lists six alpha zones');
+    assert(debug.worldMap.entries.find(entry => entry.id === 'forestEdge').unlocked, 'Forest Edge is unlocked');
+    assert(!debug.worldMap.entries.find(entry => entry.id === 'rabbitVillage').unlocked, 'Rabbit Village is locked before first quest completion');
+    assert(debug.worldMap.entries.find(entry => entry.id === 'rabbitVillage').reason === 'Complete The Hero Sign-Up Sheet', 'Rabbit Village lock reason is short and specific');
+    page.__assertNoFailures();
+  });
+}
+
 const casesToRun = requestedCase ? [requestedCase] : Array.from(CASES);
 for (const caseName of casesToRun) {
   console.log(`\n=== ${caseName} ===`);
   if (caseName === 'rpg-save-select') await testRpgSaveSelect();
   if (caseName === 'cleanup') await testCleanup();
+  if (caseName === 'hub-dialogue-world-map') await testHubDialogueWorldMap();
 }

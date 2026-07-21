@@ -7,6 +7,7 @@ const PROJECT_ROOT = join(__dirname, '..');
 const CASES = new Set([
   'save-slots',
   'save-reload',
+  'hub-quest-board',
 ]);
 
 const requestedCase = getArgValue('--case');
@@ -38,6 +39,11 @@ function createMemoryStorage() {
 
 async function importSaveSystem() {
   const url = pathToFileURL(join(PROJECT_ROOT, 'js/rpg/save-system.js')).href;
+  return import(`${url}?t=${Date.now()}`);
+}
+
+async function importRpgModule(fileName) {
+  const url = pathToFileURL(join(PROJECT_ROOT, 'js/rpg', fileName)).href;
   return import(`${url}?t=${Date.now()}`);
 }
 
@@ -135,8 +141,59 @@ async function testSaveReload() {
   logPass('save-reload');
 }
 
+async function testHubQuestBoard() {
+  const saves = await importSaveSystem();
+  const zone = await importRpgModule('zone.js');
+  const npc = await importRpgModule('npc.js');
+  const quests = await importRpgModule('quest-system.js');
+  const worldMap = await importRpgModule('world-map-rpg.js');
+  const save = saves.createDefaultSave('leopard', 0);
+
+  const hub = zone.createHubZone(save);
+  equal(hub.id, 'hub', 'hub zone id is stable');
+  deepStrictEqual(hub.enemies, [], 'hub has no enemies');
+  deepStrictEqual(hub.damageSources, [], 'hub has no damage sources');
+  ok(hub.interactables.some(item => item.id === 'questBoard'), 'hub contains quest board visual');
+  ok(hub.interactables.some(item => item.id === 'craftingBench'), 'hub contains crafting bench visual');
+  ok(hub.interactables.some(item => item.id === 'worldMap'), 'hub contains world map exit visual');
+  ok(hub.interactables.some(item => item.id === 'playerTent'), 'hub contains player tent visual');
+  ok(hub.interactables.some(item => item.id === 'storageChest'), 'hub contains storage chest visual');
+
+  const hubNpcs = npc.createHubNpcs(save);
+  deepStrictEqual(hubNpcs.map(item => item.name), ['Granny Thistle', 'Scout Hazel', 'Momo Foreman', 'Shellbert']);
+  ok(hubNpcs.every(item => item.group === null), 'NPC metadata does not require live Three.js groups');
+  ok(hubNpcs.every(item => item.dialogue.length <= 2), 'NPC dialogue pages are capped to two lines');
+
+  const available = quests.getAvailableQuests(save);
+  equal(available.length, 1, 'new save has one available quest');
+  equal(available[0].id, 'heroSignup', 'Hero Sign-Up Sheet is available first');
+  equal(available[0].title, 'The Hero Sign-Up Sheet');
+  equal(available[0].destinationZone, 'forestEdge');
+  ok(available[0].rewardPreview.includes('Wooden Club recipe'), 'quest board exposes reward preview');
+
+  const accepted = quests.acceptQuest(save, 'heroSignup', 1234);
+  equal(accepted.quests.active, 'heroSignup', 'accepting quest sets active quest');
+  equal(accepted.quests.progress.heroSignup.acceptedAt, 1234, 'accepting quest records timestamp');
+  equal(quests.getAvailableQuests(accepted).length, 0, 'active quest is removed from available list');
+  equal(quests.getActiveQuestTracker(accepted).objective, 'Collect 5 Wood and bonk 3 tutorial zombies');
+  equal(quests.getActiveQuestTracker(accepted).destinationZone, 'forestEdge');
+
+  const entries = worldMap.getWorldMapEntries(save);
+  equal(entries.length, 6, 'world map lists all six alpha zones');
+  equal(entries.find(entry => entry.id === 'hub').unlocked, true, 'Hub is unlocked');
+  equal(entries.find(entry => entry.id === 'forestEdge').unlocked, true, 'Forest Edge is unlocked on new save');
+  equal(entries.find(entry => entry.id === 'rabbitVillage').unlocked, false, 'Rabbit Village starts locked');
+  equal(entries.find(entry => entry.id === 'rabbitVillage').reason, 'Complete The Hero Sign-Up Sheet');
+  equal(entries.find(entry => entry.id === 'monkeyJungle').reason, 'Rescue Rabbit Village');
+  equal(entries.find(entry => entry.id === 'sunnyMeadow').reason, 'Restore the banana stand');
+  equal(entries.find(entry => entry.id === 'sandyBeach').reason, 'Finish Turtle Express');
+
+  logPass('hub-quest-board');
+}
+
 const casesToRun = requestedCase ? [requestedCase] : Array.from(CASES);
 for (const caseName of casesToRun) {
   if (caseName === 'save-slots') await testSaveSlots();
   if (caseName === 'save-reload') await testSaveReload();
+  if (caseName === 'hub-quest-board') await testHubQuestBoard();
 }
