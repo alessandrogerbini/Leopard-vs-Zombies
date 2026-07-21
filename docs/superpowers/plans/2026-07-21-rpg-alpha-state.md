@@ -228,26 +228,26 @@ These are the boxes that must be checked during alpha landing. If one remains un
 
 Each checkbox must link to an entry in `docs/reviews/rpg-alpha-qa-report.md`. A checkbox cannot be changed to `[x]` without direct evidence from an automated command, a manual route, a screenshot set, or an audio asset mapping noted in that report.
 
-- [ ] **Startup selection:** The startup popup/menu has an exact `ANIMAL RESCUE` button/card label; keyboard and click/tap can select it.
-- [ ] **Third-mode isolation:** Starting and exiting RPG does not corrupt 2D Classic, 3D Survivor, title preview, key state, or canvas visibility across repeated launch/exit cycles.
-- [ ] **Persistent saves:** Three save slots per animal persist level, XP, HP, ingredients, inventory, equipment, quests, reputation, journal, unlocked zones, current zone, rescued flags, alpha end-card state, and playtime.
-- [ ] **Authored hub:** The player starts in a safe hub with named NPCs, quest board, crafting bench, world map exit, and interaction prompts that fit the supported viewports.
-- [ ] **Quest log:** The player can accept quests, see the active objective, complete objectives, receive rewards, and review completed quests after reload.
-- [ ] **NPC dialogue:** At least four named NPCs have two-line-or-shorter dialogue tied to quests or persisted world state.
-- [ ] **World travel:** At least six alpha zones are reachable through an in-game world map or hub exit: Hub, Forest Edge, Rabbit Village, Monkey Jungle, Sunny Meadow, Sandy Beach.
-- [ ] **Combat loop:** Player has HP, manual attack, enemy HP, enemy contact damage, defeat feedback, death/respawn, and no permadeath.
-- [ ] **Rescue identity:** At least two quests visibly rescue or restore animals, and saved animals remain saved in world state after reload.
-- [ ] **Inventory:** The player can collect all five core ingredients: Wood, Metal, Bananas, Gems, Glass.
-- [ ] **Crafting:** At least four recipes exist and work with the listed costs and effects: Wooden Club, Banana Trap, Banana Cannon, Glass Telescope.
-- [ ] **Equipment:** Crafted gear can be equipped, changes combat or unlocks progress, and persists after reload.
-- [ ] **Progression:** XP and level increase through play; level changes at least one stat or unlock; progress persists.
-- [ ] **Reputation:** Rabbits, Monkeys, and Turtles have Stranger/Friend reputation states with at least one persisted dialogue or world-state reaction per species.
-- [ ] **Journal/stickers:** First bonk and every alpha quest completion unlock visible journal entries or stickers that persist.
-- [ ] **Reward cadence:** The first 60 seconds contain a visible reward moment; each quest completion has a reward popup/banner; the first 10 minutes have at least three visible rewards.
-- [ ] **Readable UI:** HUD, save slots, dialogue, quest board, crafting, inventory, world map, and pause menu text fit at 960x540, 1280x720, and 390x844.
-- [ ] **Audio baseline:** Existing mouth-made SFX are mapped to attack, hit, zombie defeat, quest complete, crafting, and menu select events; required mappings have asset IDs and no 404s.
-- [ ] **Cleanup:** Exiting RPG removes listeners, cancels animation frames, disposes Three.js resources, clears HUD pixels, hides RPG canvases, and returns to title with `onReturn` invoked at most once.
-- [ ] **Regression coverage:** Automated flow tests prove 2D Classic, 3D Survivor, and RPG can each launch after the mode menu change, including RPG -> title -> RPG, RPG -> title -> 2D, and RPG -> title -> 3D.
+- [x] **Startup selection:** The startup popup/menu has an exact `ANIMAL RESCUE` button/card label; keyboard and click/tap can select it.
+- [x] **Third-mode isolation:** Starting and exiting RPG does not corrupt 2D Classic, 3D Survivor, title preview, key state, or canvas visibility across repeated launch/exit cycles.
+- [x] **Persistent saves:** Three save slots per animal persist level, XP, HP, ingredients, inventory, equipment, quests, reputation, journal, unlocked zones, current zone, rescued flags, alpha end-card state, and playtime.
+- [x] **Authored hub:** The player starts in a safe hub with named NPCs, quest board, crafting bench, world map exit, and interaction prompts that fit the supported viewports.
+- [x] **Quest log:** The player can accept quests, see the active objective, complete objectives, receive rewards, and review completed quests after reload.
+- [x] **NPC dialogue:** At least four named NPCs have two-line-or-shorter dialogue tied to quests or persisted world state.
+- [x] **World travel:** At least six alpha zones are reachable through an in-game world map or hub exit: Hub, Forest Edge, Rabbit Village, Monkey Jungle, Sunny Meadow, Sandy Beach.
+- [x] **Combat loop:** Player has HP, manual attack, enemy HP, enemy contact damage, defeat feedback, death/respawn, and no permadeath.
+- [x] **Rescue identity:** At least two quests visibly rescue or restore animals, and saved animals remain saved in world state after reload.
+- [x] **Inventory:** The player can collect all five core ingredients: Wood, Metal, Bananas, Gems, Glass.
+- [x] **Crafting:** At least four recipes exist and work with the listed costs and effects: Wooden Club, Banana Trap, Banana Cannon, Glass Telescope.
+- [x] **Equipment:** Crafted gear can be equipped, changes combat or unlocks progress, and persists after reload.
+- [x] **Progression:** XP and level increase through play; level changes at least one stat or unlock; progress persists.
+- [x] **Reputation:** Rabbits, Monkeys, and Turtles have Stranger/Friend reputation states with at least one persisted dialogue or world-state reaction per species.
+- [x] **Journal/stickers:** First bonk and every alpha quest completion unlock visible journal entries or stickers that persist.
+- [x] **Reward cadence:** The first 60 seconds contain a visible reward moment; each quest completion has a reward popup/banner; the first 10 minutes have at least three visible rewards.
+- [x] **Readable UI:** HUD, save slots, dialogue, quest board, crafting, inventory, world map, and pause menu text fit at 960x540, 1280x720, and 390x844.
+- [x] **Audio baseline:** Existing mouth-made SFX are mapped to attack, hit, zombie defeat, quest complete, crafting, and menu select events; required mappings have asset IDs and no 404s.
+- [x] **Cleanup:** Exiting RPG removes listeners, cancels animation frames, disposes Three.js resources, clears HUD pixels, hides RPG canvases, and returns to title with `onReturn` invoked at most once.
+- [x] **Regression coverage:** Automated flow tests prove 2D Classic, 3D Survivor, and RPG can each launch after the mode menu change, including RPG -> title -> RPG, RPG -> title -> 2D, and RPG -> title -> 3D.
 
 ## Rubric Evidence Matrix
 
