@@ -8,6 +8,9 @@ const CASES = new Set([
   'save-slots',
   'save-reload',
   'hub-quest-board',
+  'ingredients',
+  'recipes',
+  'equipment',
 ]);
 
 const requestedCase = getArgValue('--case');
@@ -191,9 +194,112 @@ async function testHubQuestBoard() {
   logPass('hub-quest-board');
 }
 
+async function testIngredients() {
+  const saves = await importSaveSystem();
+  const inventory = await importRpgModule('inventory.js');
+  let save = saves.createDefaultSave('leopard', 0);
+  save.unlockedZones.push('rabbitVillage', 'monkeyJungle', 'sunnyMeadow', 'sandyBeach');
+
+  const nodes = inventory.createGatheringNodes(save);
+  deepStrictEqual([...new Set(nodes.map(node => node.ingredient))].sort(), ['bananas', 'gems', 'glass', 'metal', 'wood']);
+  ok(nodes.every(node => node.id && node.zoneId && node.radius > 0), 'gathering nodes expose id, zone, and radius');
+
+  const woodNode = nodes.find(node => node.ingredient === 'wood');
+  let result = inventory.collectNode(save, woodNode);
+  save = result.save;
+  equal(result.collected, true, 'first gather collects node');
+  equal(save.ingredients.wood, woodNode.amount, 'wood amount increases');
+  ok(save.collectedNodes[woodNode.zoneId].includes(woodNode.id), 'collected node id persists by zone');
+
+  result = inventory.collectNode(save, woodNode);
+  save = result.save;
+  equal(result.collected, false, 'second gather of same node is ignored');
+  equal(save.ingredients.wood, woodNode.amount, 'duplicate node does not add ingredients');
+
+  for (const ingredient of ['metal', 'bananas', 'gems', 'glass']) {
+    const node = nodes.find(item => item.ingredient === ingredient);
+    result = inventory.collectNode(save, node);
+    save = result.save;
+    ok(save.ingredients[ingredient] >= node.amount, `${ingredient} can be gathered`);
+  }
+
+  logPass('ingredients');
+}
+
+async function testRecipes() {
+  const saves = await importSaveSystem();
+  const inventory = await importRpgModule('inventory.js');
+  const recipeIds = inventory.getRecipeIds();
+  deepStrictEqual(recipeIds, ['woodenClub', 'bananaTrap', 'bananaCannon', 'glassTelescope']);
+
+  let missing = saves.createDefaultSave('leopard', 0);
+  missing.unlockedRecipes.push('woodenClub');
+  const failed = inventory.craftItem(missing, 'woodenClub');
+  equal(failed.success, false, 'craft fails without ingredients');
+  ok(failed.reason.includes('Wood'), 'craft failure identifies missing ingredient');
+
+  let save = saves.createDefaultSave('leopard', 0);
+  save.unlockedRecipes.push(...recipeIds);
+  save.ingredients = { wood: 20, metal: 20, bananas: 20, gems: 20, glass: 20 };
+
+  let crafted = inventory.craftItem(save, 'woodenClub');
+  save = crafted.save;
+  equal(crafted.success, true, 'wooden club crafts');
+  equal(save.ingredients.wood, 15, 'wooden club consumes 5 wood');
+  ok(save.inventory.includes('woodenClub'), 'crafted wooden club enters inventory');
+  equal(save.equipped.weapon, 'woodenClub', 'wooden club auto-equips as weapon');
+
+  crafted = inventory.craftItem(save, 'bananaTrap');
+  save = crafted.save;
+  equal(crafted.success, true, 'banana trap crafts');
+  equal(save.equipped.gadget, 'bananaTrap', 'banana trap auto-equips as gadget');
+
+  crafted = inventory.craftItem(save, 'bananaCannon');
+  save = crafted.save;
+  equal(crafted.success, true, 'banana cannon crafts');
+  ok(save.inventory.includes('bananaCannon'), 'banana cannon enters inventory');
+
+  crafted = inventory.craftItem(save, 'glassTelescope');
+  save = crafted.save;
+  equal(crafted.success, true, 'glass telescope crafts');
+  equal(save.equipped.gadget, 'glassTelescope', 'glass telescope equips as gadget');
+
+  logPass('recipes');
+}
+
+async function testEquipment() {
+  const saves = await importSaveSystem();
+  const inventory = await importRpgModule('inventory.js');
+  const storage = createMemoryStorage();
+  let save = saves.createDefaultSave('gator', 0);
+  save.inventory.push('woodenClub', 'bananaTrap');
+
+  let equipped = inventory.equipItem(save, 'woodenClub');
+  save = equipped.save;
+  equal(equipped.success, true, 'wooden club equips');
+  equal(save.equipped.weapon, 'woodenClub');
+  equal(save.player.attack, 12, 'wooden club increases attack over empty paws');
+
+  equipped = inventory.equipItem(save, 'bananaTrap');
+  save = equipped.save;
+  equal(equipped.success, true, 'banana trap equips');
+  equal(save.equipped.gadget, 'bananaTrap');
+
+  saves.writeSaveSlot(storage, save, 777);
+  const loaded = saves.readSaveSlot(storage, 'gator', 0).save;
+  equal(loaded.equipped.weapon, 'woodenClub', 'weapon equipment persists after reload');
+  equal(loaded.equipped.gadget, 'bananaTrap', 'gadget equipment persists after reload');
+  equal(loaded.player.attack, 12, 'equipment stat change persists after reload');
+
+  logPass('equipment');
+}
+
 const casesToRun = requestedCase ? [requestedCase] : Array.from(CASES);
 for (const caseName of casesToRun) {
   if (caseName === 'save-slots') await testSaveSlots();
   if (caseName === 'save-reload') await testSaveReload();
   if (caseName === 'hub-quest-board') await testHubQuestBoard();
+  if (caseName === 'ingredients') await testIngredients();
+  if (caseName === 'recipes') await testRecipes();
+  if (caseName === 'equipment') await testEquipment();
 }

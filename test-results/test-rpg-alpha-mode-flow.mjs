@@ -6,6 +6,7 @@ const CASES = new Set([
   'rpg-save-select',
   'cleanup',
   'hub-dialogue-world-map',
+  'combat-death-respawn',
 ]);
 
 const requestedCase = getArgValue('--case');
@@ -244,10 +245,52 @@ async function testHubDialogueWorldMap() {
   });
 }
 
+async function acceptHeroQuestAndEnterForest(page) {
+  await launchRpgToHub(page);
+  await tapKey(page, 'KeyQ');
+  await page.waitForFunction(() => window.__rpgDebug && window.__rpgDebug.screen === 'questBoard', { timeout: TIMEOUT });
+  await tapKey(page, 'Enter');
+  await page.waitForFunction(() => window.__rpgDebug && window.__rpgDebug.screen === 'hub' && window.__rpgDebug.activeQuest, { timeout: TIMEOUT });
+  await tapKey(page, 'KeyF');
+  await page.waitForFunction(() => window.__rpgDebug && window.__rpgDebug.screen === 'zone', { timeout: TIMEOUT });
+  await waitForHudNonBlank(page, 'Forest Edge');
+}
+
+async function testCombatDeathRespawn() {
+  await withBrowser(async browser => {
+    const attackPage = await newPage(browser);
+    await acceptHeroQuestAndEnterForest(attackPage);
+    let debug = await attackPage.evaluate(() => window.__rpgDebug);
+    assert(debug.combat.zoneId === 'forestEdge', 'combat starts in Forest Edge');
+    assert(debug.combat.enemiesAlive === 3, 'Forest Edge starts with three tutorial zombies');
+    assert(debug.combat.playerHp === 100, 'player starts combat at full HP');
+
+    for (let expectedAlive = 2; expectedAlive >= 0; expectedAlive--) {
+      await tapKey(attackPage, 'Enter');
+      await attackPage.waitForFunction(alive => window.__rpgDebug.combat.enemiesAlive === alive, { timeout: TIMEOUT }, expectedAlive);
+    }
+    debug = await attackPage.evaluate(() => window.__rpgDebug);
+    assert(debug.combat.defeatedEnemies === 3, 'manual attacks defeat tutorial zombies');
+    assert(debug.activeQuest.progress.tutorialZombies === 3, 'combat defeat events update quest progress');
+    attackPage.__assertNoFailures();
+
+    const idlePage = await newPage(browser);
+    await acceptHeroQuestAndEnterForest(idlePage);
+    await idlePage.waitForFunction(() => window.__rpgDebug.combat.deaths >= 1, { timeout: TIMEOUT });
+    debug = await idlePage.evaluate(() => window.__rpgDebug);
+    assert(debug.combat.deaths === 1, 'idle player can die from contact damage');
+    assert(debug.combat.playerHp === debug.combat.playerMaxHp, 'death respawns player at full HP');
+    assert(debug.screen === 'zone', 'death respawns without leaving the zone');
+    assert(debug.activeSave.player.hp === debug.combat.playerMaxHp, 'respawn updates save HP');
+    idlePage.__assertNoFailures();
+  });
+}
+
 const casesToRun = requestedCase ? [requestedCase] : Array.from(CASES);
 for (const caseName of casesToRun) {
   console.log(`\n=== ${caseName} ===`);
   if (caseName === 'rpg-save-select') await testRpgSaveSelect();
   if (caseName === 'cleanup') await testCleanup();
   if (caseName === 'hub-dialogue-world-map') await testHubDialogueWorldMap();
+  if (caseName === 'combat-death-respawn') await testCombatDeathRespawn();
 }

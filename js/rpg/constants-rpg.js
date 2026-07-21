@@ -109,6 +109,59 @@ export const QUEST_DEFINITIONS = {
   },
 };
 
+export const GATHERING_NODE_DEFINITIONS = [
+  { id: 'forestEdge-stump-1', zoneId: 'forestEdge', ingredient: 'wood', amount: 3, x: -1.8, z: -1.1, radius: 1.1 },
+  { id: 'forestEdge-stump-2', zoneId: 'forestEdge', ingredient: 'wood', amount: 2, x: 1.6, z: -0.8, radius: 1.1 },
+  { id: 'rabbitVillage-window-1', zoneId: 'rabbitVillage', ingredient: 'glass', amount: 2, x: -2.1, z: 0.6, radius: 1.0 },
+  { id: 'rabbitVillage-crate-1', zoneId: 'rabbitVillage', ingredient: 'wood', amount: 2, x: 2.0, z: 0.9, radius: 1.0 },
+  { id: 'monkeyJungle-bunch-1', zoneId: 'monkeyJungle', ingredient: 'bananas', amount: 4, x: -1.4, z: 1.8, radius: 1.1 },
+  { id: 'monkeyJungle-bunch-2', zoneId: 'monkeyJungle', ingredient: 'bananas', amount: 4, x: 1.9, z: 1.4, radius: 1.1 },
+  { id: 'sunnyMeadow-scrap-1', zoneId: 'sunnyMeadow', ingredient: 'metal', amount: 2, x: -1.1, z: -2.0, radius: 1.0 },
+  { id: 'sunnyMeadow-rock-1', zoneId: 'sunnyMeadow', ingredient: 'gems', amount: 2, x: 2.2, z: -1.6, radius: 1.0 },
+  { id: 'sandyBeach-bottle-1', zoneId: 'sandyBeach', ingredient: 'glass', amount: 2, x: -2.0, z: 1.7, radius: 1.0 },
+  { id: 'sandyBeach-tidejunk-1', zoneId: 'sandyBeach', ingredient: 'metal', amount: 1, x: 0.9, z: 2.1, radius: 1.0 },
+  { id: 'sandyBeach-shell-1', zoneId: 'sandyBeach', ingredient: 'gems', amount: 1, x: 2.4, z: 0.8, radius: 1.0 },
+];
+
+export const RECIPE_DEFINITIONS = {
+  woodenClub: {
+    id: 'woodenClub',
+    label: 'Wooden Club',
+    cost: { wood: 5 },
+    equipsTo: 'weapon',
+    attackBonus: 4,
+    effect: 'Adds 4 attack',
+  },
+  bananaTrap: {
+    id: 'bananaTrap',
+    label: 'Banana Trap',
+    cost: { wood: 4, bananas: 4 },
+    equipsTo: 'gadget',
+    effect: 'Slows a small zombie group',
+  },
+  bananaCannon: {
+    id: 'bananaCannon',
+    label: 'Banana Cannon',
+    cost: { wood: 2, bananas: 8, metal: 1 },
+    equipsTo: 'weapon',
+    attackBonus: 2,
+    effect: 'Fires a banana-shot payoff',
+  },
+  glassTelescope: {
+    id: 'glassTelescope',
+    label: 'Glass Telescope',
+    cost: { glass: 2, metal: 2, gems: 2 },
+    equipsTo: 'gadget',
+    effect: 'Reveals the Sandy Beach signal',
+  },
+};
+
+export const TUTORIAL_ZOMBIES = [
+  { id: 'tutorialZombieA', name: 'Training Zombie', hp: 8, attack: 14, x: -1.2, z: -1.4, radius: 0.9 },
+  { id: 'tutorialZombieB', name: 'Training Zombie', hp: 8, attack: 14, x: 1.3, z: -1.0, radius: 0.9 },
+  { id: 'tutorialZombieC', name: 'Training Zombie', hp: 8, attack: 14, x: 0.1, z: 1.4, radius: 0.9 },
+];
+
 export const REPUTATION_DEFAULTS = {
   rabbits: 'stranger',
   monkeys: 'stranger',

@@ -7,11 +7,13 @@
  */
 
 import { deleteSaveSlot, listSaveSummaries, readSaveSlot, writeSaveSlot } from './rpg/save-system.js';
+import { createCombatState, getCombatSummary, performPlayerAttack, tickCombat } from './rpg/combat-rpg.js';
+import { collectNode, createGatheringNodes, craftItem, getRecipe, getRecipeIds } from './rpg/inventory.js';
 import { createHubNpcs } from './rpg/npc.js';
 import { acceptQuest, getActiveQuestTracker, getAvailableQuests } from './rpg/quest-system.js';
 import { createHubZone } from './rpg/zone.js';
 import { getWorldMapEntries } from './rpg/world-map-rpg.js';
-import { drawDialogue, drawHub, drawQuestBoard, drawSaveSelect, drawWorldMap, hitTestSaveSlot } from './rpg/hud-rpg.js';
+import { drawCrafting, drawDialogue, drawHub, drawInventory, drawQuestBoard, drawSaveSelect, drawWorldMap, drawZone, hitTestSaveSlot } from './rpg/hud-rpg.js';
 
 export function launchRPGGame(options) {
   const animal = options.animal || { name: 'LEOPARD', color: '#e8a828' };
@@ -35,7 +37,10 @@ export function launchRPGGame(options) {
   let selectedFocus = 0;
   let selectedQuest = 0;
   let selectedMapEntry = 0;
+  let selectedRecipe = 0;
   let dialogueNpc = null;
+  let combatState = null;
+  let craftingMessage = '';
   let runtimeRenderer = null;
   let runtimeScene = null;
   let runtimeCamera = null;
@@ -79,6 +84,7 @@ export function launchRPGGame(options) {
     const activeQuest = activeSave ? getActiveQuestTracker(activeSave) : null;
     const available = activeSave ? getAvailableQuests(activeSave) : [];
     const entries = activeSave ? getWorldMapEntries(activeSave) : [];
+    const recipes = getRecipeIds().map(id => getRecipe(id));
     const focusItem = focusItems[selectedFocus] || null;
     return {
       animal,
@@ -93,6 +99,9 @@ export function launchRPGGame(options) {
       dialogue: dialogueNpc ? { name: dialogueNpc.name, lines: dialogueNpc.dialogue } : null,
       questBoard: { available, selectedQuest },
       worldMap: { entries, selectedMapEntry },
+      combat: combatState ? getCombatSummary(combatState) : null,
+      gatheringNodes: activeSave ? createGatheringNodes(activeSave, activeSave.currentZone) : [],
+      crafting: { recipes, selectedRecipe, message: craftingMessage },
     };
   }
 
@@ -116,6 +125,9 @@ export function launchRPGGame(options) {
       dialogue: view?.dialogue || null,
       questBoard: view?.questBoard || null,
       worldMap: view?.worldMap || null,
+      combat: view?.combat || null,
+      gatheringNodes: view?.gatheringNodes || [],
+      crafting: view?.crafting || null,
       activeSave: activeSave ? {
         animalId: activeSave.animalId,
         slot: activeSave.slot,
@@ -135,6 +147,9 @@ export function launchRPGGame(options) {
       else if (screen === 'dialogue') drawDialogue(hudCtx, view);
       else if (screen === 'questBoard') drawQuestBoard(hudCtx, view);
       else if (screen === 'worldMap') drawWorldMap(hudCtx, view);
+      else if (screen === 'zone') drawZone(hudCtx, view);
+      else if (screen === 'inventory') drawInventory(hudCtx, view);
+      else if (screen === 'crafting') drawCrafting(hudCtx, view);
     }
     updateDebug();
   }
@@ -170,10 +185,19 @@ export function launchRPGGame(options) {
   }
 
   function renderRuntime(now = performance.now()) {
-    if (!['hub', 'dialogue', 'questBoard', 'worldMap'].includes(screen) || returned) return;
+    if (!['hub', 'dialogue', 'questBoard', 'worldMap', 'zone', 'inventory', 'crafting'].includes(screen) || returned) return;
     const dt = Math.min(0.1, (now - lastFrameTime) / 1000);
     lastFrameTime = now;
     if (activeSave) activeSave.playtimeSeconds += dt;
+    if (screen === 'zone' && combatState && activeSave) {
+      const result = tickCombat(combatState, activeSave, dt);
+      combatState = result.state;
+      activeSave = result.save;
+      if (result.events.length > 0) {
+        processCombatEvents(result.events);
+        activeSave = writeSaveSlot(localStorage, activeSave);
+      }
+    }
     if (runtimeCube) runtimeCube.rotation.y += dt;
     if (runtimeRenderer && runtimeScene && runtimeCamera) runtimeRenderer.render(runtimeScene, runtimeCamera);
     draw();
@@ -192,7 +216,10 @@ export function launchRPGGame(options) {
     selectedFocus = 0;
     selectedQuest = 0;
     selectedMapEntry = 0;
+    selectedRecipe = 0;
     dialogueNpc = null;
+    combatState = null;
+    craftingMessage = '';
     refreshHubState();
     initRuntimeScene();
     lastFrameTime = performance.now();
@@ -275,9 +302,10 @@ export function launchRPGGame(options) {
       if (confirmDelete) {
         confirmDelete = false;
         draw();
-      } else if (['dialogue', 'questBoard', 'worldMap'].includes(screen)) {
+      } else if (['dialogue', 'questBoard', 'worldMap', 'zone', 'inventory', 'crafting'].includes(screen)) {
         screen = 'hub';
         dialogueNpc = null;
+        craftingMessage = '';
         draw();
       } else {
         returnToTitle();
@@ -338,6 +366,23 @@ export function launchRPGGame(options) {
         draw();
         return;
       }
+      if (e.code === 'KeyF') {
+        e.preventDefault();
+        startZone('forestEdge');
+        return;
+      }
+      if (e.code === 'KeyI') {
+        e.preventDefault();
+        screen = 'inventory';
+        draw();
+        return;
+      }
+      if (e.code === 'KeyC') {
+        e.preventDefault();
+        screen = 'crafting';
+        draw();
+        return;
+      }
       if (e.code === 'Enter' || e.code === 'Space') {
         e.preventDefault();
         activateFocusedHubItem();
@@ -395,12 +440,95 @@ export function launchRPGGame(options) {
       }
       if ((e.code === 'Enter' || e.code === 'Space') && entries[selectedMapEntry]?.unlocked) {
         e.preventDefault();
-        activeSave.currentZone = entries[selectedMapEntry].id;
+        startZone(entries[selectedMapEntry].id);
+      }
+      return;
+    }
+
+    if (screen === 'zone') {
+      if (e.code === 'Enter' || e.code === 'Space') {
+        e.preventDefault();
+        const result = performPlayerAttack(combatState, activeSave);
+        combatState = result.state;
+        activeSave = result.save;
+        processCombatEvents(result.events);
         activeSave = writeSaveSlot(localStorage, activeSave);
-        screen = 'hub';
+        draw();
+        return;
+      }
+      if (e.code === 'KeyG') {
+        e.preventDefault();
+        const node = createGatheringNodes(activeSave, activeSave.currentZone).find(item => !item.collected);
+        if (node) {
+          const result = collectNode(activeSave, node);
+          activeSave = writeSaveSlot(localStorage, result.save);
+        }
+        draw();
+        return;
+      }
+      if (e.code === 'KeyI') {
+        e.preventDefault();
+        screen = 'inventory';
+        draw();
+        return;
+      }
+    }
+
+    if (screen === 'inventory') {
+      if (e.code === 'KeyC') {
+        e.preventDefault();
+        screen = 'crafting';
+        draw();
+      }
+      return;
+    }
+
+    if (screen === 'crafting') {
+      const recipeIds = getRecipeIds();
+      if (e.code === 'ArrowUp' || e.code === 'ArrowLeft') {
+        e.preventDefault();
+        selectedRecipe = (selectedRecipe - 1 + recipeIds.length) % recipeIds.length;
+        draw();
+        return;
+      }
+      if (e.code === 'ArrowDown' || e.code === 'ArrowRight') {
+        e.preventDefault();
+        selectedRecipe = (selectedRecipe + 1) % recipeIds.length;
+        draw();
+        return;
+      }
+      if (e.code === 'Enter' || e.code === 'Space') {
+        e.preventDefault();
+        const result = craftItem(activeSave, recipeIds[selectedRecipe]);
+        activeSave = result.success ? writeSaveSlot(localStorage, result.save) : result.save;
+        craftingMessage = result.success ? `Crafted ${result.label}` : result.reason;
         draw();
       }
     }
+  }
+
+  function startZone(zoneId) {
+    if (!activeSave?.unlockedZones?.includes(zoneId)) return;
+    activeSave.currentZone = zoneId;
+    activeSave.player.hp = activeSave.player.maxHp;
+    combatState = createCombatState(activeSave, zoneId);
+    activeSave = writeSaveSlot(localStorage, activeSave);
+    screen = 'zone';
+    draw();
+  }
+
+  function processCombatEvents(events) {
+    if (!activeSave?.quests?.active) return;
+    events.forEach(event => {
+      if (event.kind !== 'defeatZombie') return;
+      const questId = activeSave.quests.active;
+      activeSave.quests.progress = activeSave.quests.progress || {};
+      activeSave.quests.progress[questId] = activeSave.quests.progress[questId] || {};
+      activeSave.quests.progress[questId].tutorialZombies = Math.min(
+        3,
+        (activeSave.quests.progress[questId].tutorialZombies || 0) + 1
+      );
+    });
   }
 
   function activateFocusedHubItem() {

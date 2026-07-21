@@ -4,7 +4,8 @@
  *
  * Dependencies: save-system.js
  * Exports: drawSaveSelect, drawRuntimeShell, drawHub, drawDialogue,
- *   drawQuestBoard, drawWorldMap, getSaveSlotLayout, hitTestSaveSlot
+ *   drawQuestBoard, drawWorldMap, drawZone, drawInventory, drawCrafting,
+ *   getSaveSlotLayout, hitTestSaveSlot
  */
 
 import { SAVE_SLOT_COUNT } from './save-system.js';
@@ -403,5 +404,123 @@ export function drawWorldMap(ctx, view) {
     ctx.fillStyle = entry.unlocked ? '#b7e36a' : '#c9a7b4';
     ctx.font = '13px "Courier New", monospace';
     ctx.fillText(entry.unlocked ? 'Open' : entry.reason, x + 14, y + 62);
+  });
+}
+
+export function drawZone(ctx, view) {
+  const w = ctx.canvas.width;
+  const h = ctx.canvas.height;
+  const combat = view.combat;
+  const save = view.save;
+  const activeQuest = view.activeQuest;
+
+  ctx.clearRect(0, 0, w, h);
+  drawBackground(ctx, w, h);
+  drawTopBar(ctx, 'Forest Edge', activeQuest ? activeQuest.objective : 'Training path');
+
+  const arenaX = Math.max(34, w * 0.12);
+  const arenaY = Math.max(102, h * 0.22);
+  const arenaW = Math.min(720, w - arenaX * 2);
+  const arenaH = Math.min(282, h - arenaY - 118);
+  ctx.fillStyle = '#274f31';
+  roundedRect(ctx, arenaX, arenaY, arenaW, arenaH, 8);
+  ctx.fill();
+  ctx.strokeStyle = '#85b26e';
+  ctx.lineWidth = 3;
+  ctx.stroke();
+
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#f5d66b';
+  ctx.font = '18px "Courier New", monospace';
+  ctx.fillText(`${combat.enemiesAlive} tutorial zombies`, arenaX + arenaW / 2, arenaY + 36);
+
+  const spacing = arenaW / 4;
+  for (let i = 0; i < 3; i++) {
+    const defeated = i < combat.defeatedEnemies;
+    const x = arenaX + spacing * (i + 1);
+    const y = arenaY + arenaH * 0.52;
+    ctx.fillStyle = defeated ? '#536352' : '#5d7f49';
+    roundedRect(ctx, x - 32, y - 38, 64, 76, 8);
+    ctx.fill();
+    ctx.strokeStyle = defeated ? '#8fa08c' : '#cde3a4';
+    ctx.stroke();
+    ctx.fillStyle = defeated ? '#ccd2c4' : '#1b2419';
+    ctx.font = 'bold 22px "Courier New", monospace';
+    ctx.fillText(defeated ? 'OK' : 'Z', x, y + 8);
+  }
+
+  ctx.fillStyle = '#e8a828';
+  roundedRect(ctx, arenaX + arenaW / 2 - 34, arenaY + arenaH - 78, 68, 56, 8);
+  ctx.fill();
+  ctx.strokeStyle = '#fff1a6';
+  ctx.stroke();
+
+  const hpW = Math.min(420, w - 72);
+  const hpX = (w - hpW) / 2;
+  const hpY = h - 78;
+  ctx.fillStyle = 'rgba(9, 18, 16, 0.88)';
+  roundedRect(ctx, hpX, hpY, hpW, 42, 8);
+  ctx.fill();
+  ctx.fillStyle = '#41242a';
+  ctx.fillRect(hpX + 14, hpY + 15, hpW - 28, 12);
+  ctx.fillStyle = '#e95858';
+  ctx.fillRect(hpX + 14, hpY + 15, (hpW - 28) * (combat.playerHp / combat.playerMaxHp), 12);
+  ctx.strokeStyle = '#d8e4c5';
+  ctx.strokeRect(hpX + 14, hpY + 15, hpW - 28, 12);
+  ctx.fillStyle = '#eef6dc';
+  ctx.font = '13px "Courier New", monospace';
+  ctx.fillText(`HP ${combat.playerHp}/${combat.playerMaxHp}  ATK ${save.player.attack}`, w / 2, hpY + 36);
+}
+
+export function drawInventory(ctx, view) {
+  const w = ctx.canvas.width;
+  const h = ctx.canvas.height;
+  const save = view.save;
+  ctx.clearRect(0, 0, w, h);
+  drawBackground(ctx, w, h);
+  drawTopBar(ctx, 'Inventory', `Weapon: ${save.equipped.weapon || 'empty paws'}`);
+
+  const x = Math.max(30, w * 0.16);
+  const y = Math.max(110, h * 0.22);
+  ctx.fillStyle = 'rgba(8, 15, 14, 0.86)';
+  roundedRect(ctx, x, y, w - x * 2, Math.min(300, h - y - 58), 8);
+  ctx.fill();
+  ctx.textAlign = 'left';
+  ctx.fillStyle = '#eef6dc';
+  ctx.font = '17px "Courier New", monospace';
+  Object.entries(save.ingredients).forEach(([id, amount], index) => {
+    ctx.fillText(`${id}: ${amount}`, x + 26, y + 42 + index * 30);
+  });
+  ctx.fillStyle = '#f5d66b';
+  ctx.fillText(`Gear: ${save.inventory.join(', ') || 'none'}`, x + 250, y + 42);
+}
+
+export function drawCrafting(ctx, view) {
+  const w = ctx.canvas.width;
+  const h = ctx.canvas.height;
+  const recipes = view.crafting.recipes;
+  const selected = view.crafting.selectedRecipe || 0;
+  ctx.clearRect(0, 0, w, h);
+  drawBackground(ctx, w, h);
+  drawTopBar(ctx, 'Crafting Bench', view.crafting.message || 'Four alpha recipes');
+
+  const x = Math.max(28, w * 0.12);
+  const y = Math.max(102, h * 0.2);
+  const rowH = 68;
+  ctx.textAlign = 'left';
+  recipes.forEach((recipe, index) => {
+    const rowY = y + index * (rowH + 10);
+    ctx.fillStyle = index === selected ? '#243a22' : '#16251d';
+    roundedRect(ctx, x, rowY, w - x * 2, rowH, 8);
+    ctx.fill();
+    ctx.strokeStyle = index === selected ? '#f5d66b' : 'rgba(216, 228, 197, 0.25)';
+    ctx.stroke();
+    ctx.fillStyle = index === selected ? '#fff1a6' : '#eef6dc';
+    fitText(ctx, recipe.label, w - x * 2 - 34, 18, 13);
+    ctx.fillText(recipe.label, x + 18, rowY + 28);
+    ctx.fillStyle = '#cbd9bb';
+    ctx.font = '13px "Courier New", monospace';
+    const cost = Object.entries(recipe.cost).map(([id, amount]) => `${id} ${amount}`).join(', ');
+    ctx.fillText(cost, x + 18, rowY + 50);
   });
 }
