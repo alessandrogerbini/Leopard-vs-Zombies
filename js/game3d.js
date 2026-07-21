@@ -259,16 +259,16 @@ export function launch3DGame(options) {
   const animalId = animalData.id;
   const palette = ANIMAL_PALETTES[animalId] || ANIMAL_PALETTES.leopard;
 
-  const canvas3d = document.getElementById('game3d');
-  const hudCanvas = document.getElementById('hud3d');
+  const canvas3d = options.canvases?.game3d || document.getElementById('game3d');
+  const hudCanvas = options.canvases?.hud3d || document.getElementById('hud3d');
   const hudCtx = hudCanvas.getContext('2d');
 
   canvas3d.style.display = 'block';
   hudCanvas.style.display = 'block';
 
   // Fullscreen: expand container and canvases to fill browser window
-  const container = document.getElementById('game-container');
-  const canvas2d = document.getElementById('game');
+  const container = options.canvases?.container || document.getElementById('game-container');
+  const canvas2d = options.canvases?.game2d || document.getElementById('game');
   container.style.width = '100vw';
   container.style.height = '100vh';
   canvas2d.style.display = 'none';

@@ -3,6 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="icon" href="data:,">
 <link href="https://fonts.googleapis.com/css2?family=Fredoka+One&display=swap" rel="stylesheet">
 <title>Animals vs Zombies</title>
 <style>
@@ -40,10 +41,10 @@ canvas#hud3d {
 </style>
 </head>
 <body>
-<!-- Three-canvas setup:
+<!-- Shared canvas setup:
      #game   — 2D Classic mode (Canvas 2D). Visible on title screen and during 2D gameplay.
-     #game3d — 3D Survivor mode (Three.js WebGLRenderer). Hidden by default, shown when 3D mode launches.
-     #hud3d  — Transparent HUD overlay for 3D mode (Canvas 2D, pointer-events:none). Stacked on top of #game3d. -->
+     #game3d — Shared 3D mode canvas. Hidden by default, shown by 3D Survivor and Animal Rescue.
+     #hud3d  — Shared transparent HUD overlay for 3D-backed modes (Canvas 2D, pointer-events:none). -->
 <div id="game-container">
   <canvas id="game" width="960" height="540"></canvas>
   <canvas id="game3d" width="960" height="540"></canvas>
@@ -51,7 +52,7 @@ canvas#hud3d {
 </div>
 <!-- Three.js r128 — loaded globally as the THREE namespace. Required by game3d.js for 3D rendering. -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-<!-- Entry point: game.js bootstraps the 2D game loop and launches 3D mode via launch3DGame(). -->
-<script type="module" src="js/game.js?v=14"></script>
+<!-- Entry point: game.js bootstraps the 2D game loop and launches external modes. -->
+<script type="module" src="js/game.js?v=15"></script>
 </body>
 </html>

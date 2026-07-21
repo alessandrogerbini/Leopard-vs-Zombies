@@ -18,8 +18,8 @@
 
 /**
  * @typedef {Object} GameState
- * @property {'title'|'modeSelect'|'difficulty'|'select'|'playing'|'bossIntro'|'bossFight'|'levelComplete'|'gameWin'|'gameOver'} gameState - Current game phase / screen.
- * @property {number} selectedMode - Index of highlighted mode on the mode-select screen.
+ * @property {'title'|'modeSelect'|'difficulty'|'select'|'playing'|'bossIntro'|'bossFight'|'levelComplete'|'gameWin'|'gameOver'|'externalMode'} gameState - Current game phase / screen.
+ * @property {number} selectedMode - UI index of highlighted mode in GAME_MODES.
  * @property {'easy'|'medium'|'hard'} difficulty - Active difficulty key.
  * @property {number} selectedDifficulty - Index of highlighted difficulty on the difficulty screen.
  * @property {number} selectedAnimal - Index of highlighted animal on the select screen.
@@ -163,7 +163,7 @@ export const ANIMAL_TYPES = [
  * @type {GameState}
  */
 export const state = {
-  gameState: 'title', // title, modeSelect, difficulty, select, playing, bossIntro, bossFight, levelComplete, gameWin, gameOver
+  gameState: 'title', // title, modeSelect, difficulty, select, playing, bossIntro, bossFight, levelComplete, gameWin, gameOver, externalMode
   selectedMode: 0,
   difficulty: 'easy',
   selectedDifficulty: 0,

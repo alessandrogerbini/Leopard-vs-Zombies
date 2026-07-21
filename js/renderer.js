@@ -8,7 +8,7 @@
  *
  * Dependencies: state.js (GROUND_Y, DRAW_SCALE, state, player, camera,
  *   ARMOR_TYPES, GLASSES_TYPE, SNEAKERS_TYPE, CLEATS_TYPE, HORSE_TYPE,
- *   ANIMAL_TYPES, DIFFICULTY_SETTINGS)
+ *   ANIMAL_TYPES, DIFFICULTY_SETTINGS), mode-catalog.js
  * Exports: 35 functions (2 setup + 33 draw functions)
  *
  * Key concepts:
@@ -33,6 +33,7 @@
 
 // All drawing functions
 import { GROUND_Y, DRAW_SCALE, state, player, camera, ARMOR_TYPES, GLASSES_TYPE, SNEAKERS_TYPE, CLEATS_TYPE, HORSE_TYPE, ANIMAL_TYPES, DIFFICULTY_SETTINGS } from './state.js';
+import { GAME_MODES, getModeCardLayout } from './mode-catalog.js';
 
 /** @type {HTMLCanvasElement} Module-level canvas reference, set by initRenderer(). */
 let canvas;
@@ -2954,7 +2955,7 @@ export function drawGameOver() {
   ctx.textAlign = 'left';
 }
 
-/** Draw the mode selection screen with "2D CLASSIC" and "3D SURVIVOR" cards, icons, descriptions, and arrow navigation. */
+/** Draw the mode selection screen from the shared mode catalog. */
 export function drawModeSelectScreen() {
   const W = canvas.width, H = canvas.height;
   ctx.fillStyle = '#0a0a0a'; ctx.fillRect(0, 0, W, H);
@@ -2969,60 +2970,92 @@ export function drawModeSelectScreen() {
   ctx.fillStyle = '#ffcc00'; ctx.font = 'bold 36px "Courier New"';
   ctx.fillText('SELECT MODE', W / 2, 80);
 
-  const modes = [
-    { label: '2D CLASSIC', color: '#44ff88', lines: ['Side-scrolling action', '3 levels + boss fights', 'Multiple animals & items'] },
-    { label: '3D SURVIVOR', color: '#ff6644', lines: ['Top-down arena combat', 'Endless zombie waves', 'Level up & survive!'] },
-  ];
-  const cardW = 280, cardH = 260, gap = 60;
-  const totalW = modes.length * cardW + (modes.length - 1) * gap;
-  const startX = (W - totalW) / 2;
-  const cardY = 120;
-  const sel = state.selectedMode;
+  const layout = getModeCardLayout(W, H);
+  const sel = ((state.selectedMode % GAME_MODES.length) + GAME_MODES.length) % GAME_MODES.length;
   const t = Date.now() * 0.003;
 
-  for (let i = 0; i < modes.length; i++) {
-    const m = modes[i];
-    const cx = startX + i * (cardW + gap);
-    const isSelected = i === sel;
+  function fittedText(text, x, y, maxWidth, maxSize, minSize, weight = 'bold') {
+    let size = maxSize;
+    do {
+      ctx.font = `${weight} ${size}px "Courier New"`;
+      if (ctx.measureText(text).width <= maxWidth || size <= minSize) break;
+      size -= 1;
+    } while (size > minSize);
+    ctx.fillText(text, x, y);
+  }
+
+  for (const card of layout.cards) {
+    const m = card.mode;
+    const palette = m.card.palette;
+    const cx = card.x;
+    const cardY = card.y;
+    const cardW = card.w;
+    const cardH = card.h;
+    const isSelected = card.index === sel;
 
     if (isSelected) {
-      ctx.fillStyle = m.color;
+      ctx.fillStyle = palette.border;
       ctx.fillRect(cx - 3, cardY - 3, cardW + 6, cardH + 6);
     }
-    ctx.fillStyle = isSelected ? '#1a1a2a' : '#111118';
+    ctx.fillStyle = isSelected ? palette.fill : '#111118';
     ctx.fillRect(cx, cardY, cardW, cardH);
+    ctx.strokeStyle = palette.border;
+    ctx.lineWidth = isSelected ? 3 : 1;
+    ctx.strokeRect(cx + 1, cardY + 1, cardW - 2, cardH - 2);
 
-    ctx.fillStyle = m.color; ctx.font = 'bold 28px "Courier New"';
-    ctx.fillText(m.label, cx + cardW / 2, cardY + 60);
+    ctx.fillStyle = palette.accent;
+    fittedText(m.label, cx + cardW / 2, cardY + 52, cardW - 24, layout.horizontal ? 23 : 20, 16);
 
-    ctx.fillStyle = '#cccccc'; ctx.font = '16px "Courier New"';
-    for (let j = 0; j < m.lines.length; j++) {
-      ctx.fillText(m.lines[j], cx + cardW / 2, cardY + 110 + j * 30);
+    ctx.fillStyle = '#d7dfd1';
+    ctx.font = `${layout.horizontal ? 14 : 13}px "Courier New"`;
+    for (let j = 0; j < m.card.lines.length; j++) {
+      fittedText(m.card.lines[j], cx + cardW / 2, cardY + (layout.horizontal ? 92 : 78) + j * (layout.horizontal ? 26 : 20), cardW - 28, layout.horizontal ? 14 : 13, 11, 'normal');
     }
 
     // Icon area
-    if (i === 0) {
+    if (m.id === 'classic2d') {
       // 2D icon: small side-scrolling scene
-      ctx.fillStyle = '#44ff88';
-      ctx.fillRect(cx + cardW / 2 - 30, cardY + 200, 20, 20); // player box
+      const iy = cardY + cardH - (layout.horizontal ? 58 : 28);
+      ctx.fillStyle = palette.accent;
+      ctx.fillRect(cx + cardW / 2 - 30, iy - 18, 20, 20); // player box
       ctx.fillStyle = '#4a6a4a';
-      ctx.fillRect(cx + cardW / 2 + 10, cardY + 205, 15, 15); // zombie box
-      ctx.fillRect(cx + cardW / 2 + 30, cardY + 208, 12, 12);
+      ctx.fillRect(cx + cardW / 2 + 10, iy - 13, 15, 15); // zombie box
+      ctx.fillRect(cx + cardW / 2 + 30, iy - 10, 12, 12);
       ctx.fillStyle = '#333';
-      ctx.fillRect(cx + 20, cardY + 225, cardW - 40, 4); // ground line
-    } else {
+      ctx.fillRect(cx + 20, iy + 8, cardW - 40, 4); // ground line
+    } else if (m.id === 'survivor3d') {
       // 3D icon: top-down arena hint
-      ctx.strokeStyle = '#ff6644'; ctx.lineWidth = 2;
+      const iy = cardY + cardH - (layout.horizontal ? 48 : 24);
+      ctx.strokeStyle = palette.accent; ctx.lineWidth = 2;
       ctx.beginPath();
-      ctx.arc(cx + cardW / 2, cardY + 210, 25, 0, Math.PI * 2);
+      ctx.arc(cx + cardW / 2, iy - 8, 25, 0, Math.PI * 2);
       ctx.stroke();
-      ctx.fillStyle = '#ff6644';
-      ctx.fillRect(cx + cardW / 2 - 5, cardY + 205, 10, 10); // center player
+      ctx.fillStyle = palette.accent;
+      ctx.fillRect(cx + cardW / 2 - 5, iy - 13, 10, 10); // center player
       // zombie dots around
       for (let d = 0; d < 5; d++) {
         const angle = (d / 5) * Math.PI * 2 + t;
         ctx.fillStyle = '#4a6a4a';
-        ctx.fillRect(cx + cardW / 2 + Math.cos(angle) * 20 - 3, cardY + 210 + Math.sin(angle) * 20 - 3, 6, 6);
+        ctx.fillRect(cx + cardW / 2 + Math.cos(angle) * 20 - 3, iy - 8 + Math.sin(angle) * 20 - 3, 6, 6);
+      }
+    } else {
+      // RPG icon: quest marker, paw, and map trail
+      const iy = cardY + cardH - (layout.horizontal ? 54 : 28);
+      ctx.strokeStyle = '#7ca36a';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(cx + cardW / 2 - 48, iy + 2);
+      ctx.quadraticCurveTo(cx + cardW / 2 - 12, iy - 30, cx + cardW / 2 + 46, iy - 10);
+      ctx.stroke();
+      ctx.fillStyle = palette.accent;
+      ctx.beginPath();
+      ctx.arc(cx + cardW / 2, iy - 16, 12, 0, Math.PI * 2);
+      ctx.fill();
+      for (let p = 0; p < 4; p++) {
+        const angle = -Math.PI * 0.75 + p * Math.PI * 0.5;
+        ctx.beginPath();
+        ctx.arc(cx + cardW / 2 + Math.cos(angle) * 14, iy - 30 + Math.sin(angle) * 8, 4, 0, Math.PI * 2);
+        ctx.fill();
       }
     }
 
@@ -3038,11 +3071,13 @@ export function drawModeSelectScreen() {
   }
 
   ctx.fillStyle = '#666666'; ctx.font = '14px "Courier New"';
-  ctx.fillText('<  ARROW KEYS  >', W / 2, cardY + cardH + 30);
+  const lastCard = layout.cards[layout.cards.length - 1];
+  const footerY = Math.min(H - 34, lastCard.y + lastCard.h + 28);
+  ctx.fillText('<  ARROW KEYS  >', W / 2, footerY);
 
   if (Math.sin(Date.now() * 0.005) > 0) {
     ctx.fillStyle = '#ffcc00'; ctx.font = 'bold 20px "Courier New"';
-    ctx.fillText('PRESS ENTER TO CONTINUE', W / 2, cardY + cardH + 60);
+    ctx.fillText('PRESS ENTER TO CONTINUE', W / 2, Math.min(H - 10, footerY + 30));
   }
 
   ctx.textAlign = 'left';

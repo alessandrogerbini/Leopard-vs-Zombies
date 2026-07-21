@@ -3,9 +3,10 @@
  * @description Application entry point for Animals vs Zombies. Owns the main game loop,
  * state machine transitions, player input handling, physics, combat logic, and
  * rendering orchestration for the 2D Classic mode. Also acts as the launcher for
- * the 3D Survivor mode via launch3DGame.
+ * external 3D-backed modes.
  *
- * Dependencies: state.js, levels.js, utils.js, enemies.js, items.js, renderer.js, game3d.js
+ * Dependencies: state.js, levels.js, utils.js, enemies.js, items.js, renderer.js,
+ *   mode-catalog.js, game3d.js, game-rpg.js
  * Exports: none (side-effect module -- bootstraps the game on import)
  *
  * Key concepts:
@@ -23,14 +24,14 @@
  *  STATE MACHINE TRANSITION DIAGRAM
  * ============================================================
  *
- *   title ──[Enter]──> modeSelect ──[Enter, mode=0]──> difficulty ──[Enter]──> select
- *     ^                   |  ^                           |  ^                   |
- *     |                  [Esc]                          [Esc]                  [Esc]
- *     |                   v  |                           v  |                   |
- *     |                 title                         modeSelect           difficulty (2D)
- *     |                                                                   modeSelect (3D)
+ *   title ──[Enter]──> modeSelect ──[Enter, 2D]──> difficulty ──[Enter]──> select
+ *     ^                   |  ^                         |  ^                   |
+ *     |                  [Esc]                        [Esc]                  [Esc]
+ *     |                   v  |                         v  |                   |
+ *     |                 title                       modeSelect           difficulty (2D)
+ *     |                                                               modeSelect (external)
  *     |
- *     |   modeSelect ──[Enter, mode=1]──> select (skip difficulty)
+ *     |   modeSelect ──[Enter, external mode]──> select (skip difficulty)
  *     |
  *     |          ┌──── select ──[Enter on mode=0 (2D)]──────────────────┐
  *     |          |                                                      |
@@ -57,7 +58,7 @@
  *     |                                                                               |
  *     └───────────────────────────────────────────────────────────────────────────────┘
  *
- *   select ──[Enter on mode=1 (3D)]──> (stops 2D loop, launches 3D) ──[onReturn]──> title
+ *   select ──[Enter on external mode]──> (stops 2D loop, launches mode) ──[onReturn]──> title
  *
  * ============================================================
  */
@@ -69,11 +70,140 @@ import { rectCollide, getAttackBox, spawnParticles, spawnFloatingText, getPlayer
 import { spawnZombies, spawnBoss, updateZombieAI, updateBossAI, updateAllyAI, spawnAlly } from './enemies.js';
 import { spawnHealthPickups, spawnPowerupCrates, spawnArmorCrates, spawnGlassesCrates, spawnSneakersCrates, spawnCleatsCrates, spawnHorseCrates, updateHealthPickups, updateDiamond, updatePortal, updateArmorPickups, updateGlassesPickups, updateSneakersPickups, updateCleatsPickups, updateHorsePickups } from './items.js';
 import { initRenderer, getCtx, drawLeopard, drawZombie, drawBoss, drawBackground, drawHealthPickups, drawPowerupCrates, drawArmorCrates, drawArmorPickups, drawGlassesCrates, drawGlassesPickups, drawSneakersCrates, drawSneakersPickups, drawCleatsCrates, drawCleatsPickups, drawHorseCrates, drawHorsePickups, drawPortal, drawDiamond, drawParticles, drawFloatingTexts, drawHUD, drawBossIntro, drawDying, drawTitleScreen, drawLevelComplete, drawGameWin, drawGameOver, drawProjectiles, drawPaused, drawSelectScreen, drawDifficultyScreen, drawModeSelectScreen, drawAlly } from './renderer.js';
-import { launch3DGame } from './game3d.js?v=14';
+import { GAME_MODES, getModeByIndex, hitTestModeCard } from './mode-catalog.js';
+import { launch3DGame } from './game3d.js?v=15';
+import { launchRPGGame } from './game-rpg.js';
 
 /** @type {HTMLCanvasElement} The main game canvas element. */
 const canvas = document.getElementById('game');
 initRenderer(canvas);
+
+const canvas3d = document.getElementById('game3d');
+const hudCanvas3d = document.getElementById('hud3d');
+const gameContainer = document.getElementById('game-container');
+
+let activeExternalRuntime = null;
+
+function clampSelectedMode() {
+  const index = Number.isFinite(state.selectedMode) ? Math.trunc(state.selectedMode) : 0;
+  state.selectedMode = Math.max(0, Math.min(GAME_MODES.length - 1, index));
+}
+
+function getSelectedMode() {
+  clampSelectedMode();
+  return getModeByIndex(state.selectedMode);
+}
+
+function clearKeys() {
+  Object.keys(keys).forEach(k => { keys[k] = false; });
+  state._enterHeld = false;
+  state._modeConfirmHeld = false;
+  state._selectLeftHeld = false;
+  state._selectRightHeld = false;
+  state._escHeld = false;
+}
+
+function resetTransientWorldState() {
+  state.particles = [];
+  state.floatingTexts = [];
+  state.zombies = [];
+  state.healthPickups = [];
+  state.powerupCrates = [];
+  state.projectiles = [];
+  state.allies = [];
+}
+
+function getShared3DCanvases() {
+  return {
+    game2d: canvas,
+    game3d: canvas3d,
+    hud3d: hudCanvas3d,
+    container: gameContainer,
+  };
+}
+
+function enterModeSelect() {
+  clampSelectedMode();
+  state._modeConfirmHeld = true;
+  state.gameState = 'modeSelect';
+}
+
+function continueFromModeSelect() {
+  const mode = getSelectedMode();
+  if (mode.id === 'classic2d') {
+    state.selectedDifficulty = 0;
+    state.gameState = 'difficulty';
+  } else {
+    state.difficulty = 'easy';
+    state.leaderboard = loadLeaderboard(state.difficulty);
+    state.selectedAnimal = 0;
+    state.gameState = 'select';
+  }
+}
+
+function handleModeCardPointer(event) {
+  if (state.gameState !== 'modeSelect') return;
+  const point = getCanvasPoint(event);
+  if (!point) return;
+  const hit = hitTestModeCard(canvas.width, canvas.height, point.x, point.y);
+  if (!hit) return;
+
+  event.preventDefault();
+  if (state.selectedMode === hit.index) {
+    continueFromModeSelect();
+  } else {
+    state.selectedMode = hit.index;
+  }
+}
+
+function getCanvasPoint(event) {
+  const source = event.touches && event.touches.length > 0 ? event.touches[0] : event;
+  if (source.clientX === undefined || source.clientY === undefined) return null;
+  const rect = canvas.getBoundingClientRect();
+  return {
+    x: (source.clientX - rect.left) * (canvas.width / rect.width),
+    y: (source.clientY - rect.top) * (canvas.height / rect.height),
+  };
+}
+
+function launchExternalRuntime(launcher, options) {
+  if (activeExternalRuntime) return;
+
+  state.gameState = 'externalMode';
+  stopGameLoop();
+  canvas.style.display = 'none';
+
+  let hasReturned = false;
+  const finishReturn = () => {
+    if (hasReturned) return;
+    hasReturned = true;
+    activeExternalRuntime = null;
+    canvas.style.display = '';
+    clearKeys();
+    resetTransientWorldState();
+    state.gameState = 'title';
+    startGameLoop();
+  };
+
+  try {
+    const runtime = launcher({
+      ...options,
+      canvases: getShared3DCanvases(),
+      onReturn: finishReturn,
+    });
+    const cleanup = typeof runtime === 'function'
+      ? runtime
+      : runtime && typeof runtime.cleanup === 'function'
+        ? runtime.cleanup.bind(runtime)
+        : null;
+    activeExternalRuntime = { cleanup, finishReturn };
+  } catch (err) {
+    canvas.style.display = '';
+    state.gameState = 'title';
+    startGameLoop();
+    throw err;
+  }
+}
 
 // --- Input System ---
 // Two keydown listeners are registered:
@@ -84,6 +214,9 @@ initRenderer(canvas);
 // scrolling and other default behavior while the game canvas is focused.
 window.addEventListener('keydown', e => { keys[e.code] = true; e.preventDefault(); });
 window.addEventListener('keyup', e => { keys[e.code] = false; e.preventDefault(); });
+canvas.addEventListener('pointerdown', handleModeCardPointer);
+canvas.addEventListener('mousedown', e => { if (!window.PointerEvent) handleModeCardPointer(e); });
+canvas.addEventListener('touchstart', e => { if (!window.PointerEvent) handleModeCardPointer(e); }, { passive: false });
 
 // Name entry input (captures actual key characters for text entry).
 // Active only when state.nameEntryActive is true (game-over / game-win screens).
@@ -248,14 +381,15 @@ function initLevel(level) {
  * 16. Particle and floating text decay, screen shake/flash cooldown
  */
 function update() {
-  // ── Guard: do absolutely nothing while 3D mode is active ─────────
+  // ── Guard: do absolutely nothing while an external mode is active ─
   // The 2D game loop may still be running (RAF race condition) when 3D
-  // mode launches. This guard prevents ANY 2D state transitions or key
-  // processing until the 3D mode returns and resets gameState.
-  if (state.gameState === '3dMode') return;
+  // backed modes launch. This guard prevents ANY 2D state transitions or key
+  // processing until the external runtime returns and resets gameState.
+  if (state.gameState === 'externalMode') return;
 
   // ── Section 1: Pause Toggle ──────────────────────────────────────
-  if (keys['Escape'] && !state._escHeld) {
+  const pauseManagedState = state.gameState === 'paused' || state.gameState === 'playing' || state.gameState === 'bossFight';
+  if (pauseManagedState && keys['Escape'] && !state._escHeld) {
     state._escHeld = true;
     if (state.gameState === 'paused') {
       state.gameState = state._prevState;
@@ -272,38 +406,30 @@ function update() {
   // to the gameplay subsections below.
   if (state.gameState === 'title') {
     // Enter goes to mode select
-    if (keys['Enter'] && !state._enterHeld) { state._enterHeld = true; state.selectedMode = 1; state.gameState = 'modeSelect'; }
+    if (keys['Enter'] && !state._enterHeld) { state._enterHeld = true; enterModeSelect(); }
     if (!keys['Enter']) state._enterHeld = false;
     return;
   }
 
-  // Mode select: choose between 2D Classic and 3D Survivor.
+  // Mode select: choose from the startup mode catalog.
   if (state.gameState === 'modeSelect') {
+    clampSelectedMode();
     if (keys['ArrowLeft'] && !state._selectLeftHeld) {
       state._selectLeftHeld = true;
-      state.selectedMode = (state.selectedMode - 1 + 2) % 2;
+      state.selectedMode = (state.selectedMode - 1 + GAME_MODES.length) % GAME_MODES.length;
     }
     if (!keys['ArrowLeft']) state._selectLeftHeld = false;
     if (keys['ArrowRight'] && !state._selectRightHeld) {
       state._selectRightHeld = true;
-      state.selectedMode = (state.selectedMode + 1) % 2;
+      state.selectedMode = (state.selectedMode + 1) % GAME_MODES.length;
     }
     if (!keys['ArrowRight']) state._selectRightHeld = false;
-    if (keys['Enter'] && !state._enterHeld) {
-      state._enterHeld = true;
-      if (state.selectedMode === 0) {
-        // 2D Classic: go through difficulty select
-        state.selectedDifficulty = 0;
-        state.gameState = 'difficulty';
-      } else {
-        // BD-191: 3D Survivor skips difficulty — survivor roguelike handles its own ramp
-        state.difficulty = 'easy';
-        state.leaderboard = loadLeaderboard(state.difficulty);
-        state.selectedAnimal = 0;
-        state.gameState = 'select';
-      }
+    const confirmPressed = keys['Enter'] || keys['Space'];
+    if (confirmPressed && !state._modeConfirmHeld) {
+      state._modeConfirmHeld = true;
+      continueFromModeSelect();
     }
-    if (!keys['Enter']) state._enterHeld = false;
+    if (!confirmPressed) state._modeConfirmHeld = false;
     if (keys['Escape'] && !state._escHeld) {
       state._escHeld = true;
       state.gameState = 'title';
@@ -352,7 +478,8 @@ function update() {
     if (keys['Enter'] && !state._enterHeld) {
       state._enterHeld = true;
       const animal = ANIMAL_TYPES[state.selectedAnimal];
-      if (state.selectedMode === 1) {
+      const mode = getSelectedMode();
+      if (mode.id === 'survivor3d') {
         // BD-179: Apply selected difficulty settings to 3D mode
         const diff = DIFFICULTY_SETTINGS[state.difficulty];
         // ── 3D Mode Launch Integration ──────────────────────────────
@@ -363,29 +490,13 @@ function update() {
         //    settings, and an onReturn callback.
         // 4. The onReturn callback re-shows the 2D canvas, clears ghost
         //    key inputs, resets to the title state, and restarts the 2D loop.
-        state.gameState = '3dMode'; // prevent 2D update from processing any keys
-        stopGameLoop();
-        canvas.style.display = 'none';
-        launch3DGame({
+        launchExternalRuntime(launch3DGame, {
           animal,
           difficulty: diff,
           difficultyKey: state.difficulty,
-          onReturn: () => {
-            canvas.style.display = '';
-            // Clear all 2D keys to prevent ghost inputs
-            Object.keys(keys).forEach(k => { keys[k] = false; });
-            state.gameState = 'title';
-            // Reset stale 2D game state
-            state.particles = [];
-            state.floatingTexts = [];
-            state.zombies = [];
-            state.healthPickups = [];
-            state.powerupCrates = [];
-            state.projectiles = [];
-            state.allies = [];
-            startGameLoop();
-          }
         });
+      } else if (mode.id === 'animalRescueRpg') {
+        launchExternalRuntime(launchRPGGame, { animal });
       } else {
         // 2D Classic mode
         const diff = DIFFICULTY_SETTINGS[state.difficulty];
@@ -409,8 +520,9 @@ function update() {
     if (!keys['Enter']) state._enterHeld = false;
     if (keys['Escape'] && !state._escHeld) {
       state._escHeld = true;
-      // BD-191: 3D goes back to mode select (no difficulty screen)
-      state.gameState = state.selectedMode === 0 ? 'difficulty' : 'modeSelect';
+      const mode = getSelectedMode();
+      // BD-191: external modes go back to mode select (no difficulty screen)
+      state.gameState = mode.id === 'classic2d' ? 'difficulty' : 'modeSelect';
     }
     return;
   }
@@ -1162,7 +1274,7 @@ function update() {
  * Screen shake is applied via ctx.translate before the gameplay layers.
  */
 function draw() {
-  if (state.gameState === '3dMode') return;
+  if (state.gameState === 'externalMode') return;
   const ctx = getCtx();
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
