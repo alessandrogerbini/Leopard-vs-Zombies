@@ -4,7 +4,8 @@
  *
  * Dependencies: save-system.js
  * Exports: drawSaveSelect, drawRuntimeShell, drawHub, drawDialogue,
- *   drawQuestBoard, drawWorldMap, drawZone, drawInventory, drawCrafting, drawRewardBanner,
+ *   drawQuestBoard, drawWorldMap, drawZone, drawInventory, drawCrafting,
+ *   drawAlphaEndCard, drawRewardBanner,
  *   getSaveSlotLayout, hitTestSaveSlot
  */
 
@@ -548,4 +549,29 @@ export function drawRewardBanner(ctx, banner) {
   banner.lines.slice(0, 3).forEach((line, index) => {
     ctx.fillText(line, x + panelW / 2, y + 60 + index * 20);
   });
+}
+
+export function drawAlphaEndCard(ctx, view) {
+  const w = ctx.canvas.width;
+  const h = ctx.canvas.height;
+  ctx.clearRect(0, 0, w, h);
+  drawBackground(ctx, w, h);
+
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#f5d66b';
+  fitText(ctx, 'SPACESHIP SPOTTED', Math.min(720, w - 40), 36, 24);
+  ctx.fillText('SPACESHIP SPOTTED', w / 2, h * 0.24);
+
+  ctx.fillStyle = '#eef6dc';
+  fitText(ctx, 'Animal Rescue alpha complete', Math.min(620, w - 44), 24, 16);
+  ctx.fillText('Animal Rescue alpha complete', w / 2, h * 0.38);
+
+  ctx.font = '17px "Courier New", monospace';
+  ctx.fillStyle = '#cbd9bb';
+  ctx.fillText('The hub saved your rescue notes.', w / 2, h * 0.5);
+  ctx.fillText(`${view.save.quests.completed.length} quests complete`, w / 2, h * 0.58);
+
+  ctx.fillStyle = '#f5d66b';
+  ctx.font = '15px "Courier New", monospace';
+  ctx.fillText('Enter returns to the hub', w / 2, h * 0.72);
 }

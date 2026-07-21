@@ -8,6 +8,7 @@ const CASES = new Set([
   'hub-dialogue-world-map',
   'combat-death-respawn',
   'reward-cadence',
+  'alpha-end-card-reload',
 ]);
 
 const requestedCase = getArgValue('--case');
@@ -128,10 +129,10 @@ async function moveModeSelection(page, modeIndex) {
   }
 }
 
-async function launchRpgToSaveSelect(page) {
+async function launchRpgToSaveSelect(page, { clearStorage = true } = {}) {
   await page.goto(BASE_URL, { waitUntil: 'networkidle2', timeout: TIMEOUT });
   await sleep(600);
-  await page.evaluate(() => localStorage.clear());
+  if (clearStorage) await page.evaluate(() => localStorage.clear());
   await tapKey(page, 'Enter');
   await page.waitForFunction(() => window.__lvzTestState.gameState === 'modeSelect', { timeout: TIMEOUT });
   await moveModeSelection(page, 2);
@@ -315,6 +316,55 @@ async function testRewardCadence() {
   });
 }
 
+async function acceptAndAssistActiveQuest(page) {
+  await tapKey(page, 'KeyQ');
+  await page.waitForFunction(() => window.__rpgDebug && window.__rpgDebug.screen === 'questBoard', { timeout: TIMEOUT });
+  await tapKey(page, 'Enter');
+  await page.waitForFunction(() => window.__rpgDebug && window.__rpgDebug.screen === 'hub' && window.__rpgDebug.activeQuest, { timeout: TIMEOUT });
+  await tapKey(page, 'KeyT');
+  await page.waitForFunction(() => window.__rpgDebug && window.__rpgDebug.screen === 'zone', { timeout: TIMEOUT });
+  await tapKey(page, 'KeyE');
+  await page.waitForFunction(() => window.__rpgDebug && window.__rpgDebug.rewardBanner && !window.__rpgDebug.activeQuest, { timeout: TIMEOUT });
+}
+
+async function testAlphaEndCardReload() {
+  await withBrowser(async browser => {
+    const page = await newPage(browser);
+    await launchRpgToHub(page);
+    for (let i = 0; i < 5; i++) {
+      await acceptAndAssistActiveQuest(page);
+      if (i < 4) {
+        await page.waitForFunction(() => window.__rpgDebug.screen === 'hub', { timeout: TIMEOUT });
+      }
+    }
+    await page.waitForFunction(() => window.__rpgDebug.screen === 'alphaEndCard', { timeout: TIMEOUT });
+    let debug = await page.evaluate(() => window.__rpgDebug);
+    assert(debug.activeSave.flags.spaceshipWitness === true, 'spaceship reveal flag is saved');
+    assert(debug.activeSave.quests.completed.length === 5, 'all five alpha quests are completed');
+    assert(debug.activeSave.rescued.rabbitVillage && debug.activeSave.rescued.bananaStand && debug.activeSave.rescued.shellbert, 'rescued/restored flags are saved');
+
+    await tapKey(page, 'Enter');
+    await page.waitForFunction(() => window.__rpgDebug.screen === 'hub', { timeout: TIMEOUT });
+    await tapKey(page, 'Escape');
+    await waitForTitle(page);
+
+    await tapKey(page, 'Enter');
+    await page.waitForFunction(() => window.__lvzTestState.gameState === 'modeSelect', { timeout: TIMEOUT });
+    await moveModeSelection(page, 2);
+    await tapKey(page, 'Enter');
+    await page.waitForFunction(() => window.__lvzTestState.gameState === 'select', { timeout: TIMEOUT });
+    await tapKey(page, 'Enter');
+    await page.waitForFunction(() => window.__rpgDebug && window.__rpgDebug.screen === 'saveSelect', { timeout: TIMEOUT });
+    await tapKey(page, 'Enter');
+    await page.waitForFunction(() => window.__rpgDebug && window.__rpgDebug.screen === 'hub', { timeout: TIMEOUT });
+    debug = await page.evaluate(() => window.__rpgDebug);
+    assert(debug.activeSave.flags.spaceshipWitness === true, 'reload keeps spaceship reveal flag');
+    assert(debug.activeSave.flags.alphaEndCardSeen === true, 'reload keeps end-card dismissal flag');
+    assert(debug.activeSave.quests.completed.includes('statueReveal'), 'reload keeps final quest completion');
+    page.__assertNoFailures();
+  });
+}
+
 const casesToRun = requestedCase ? [requestedCase] : Array.from(CASES);
 for (const caseName of casesToRun) {
   console.log(`\n=== ${caseName} ===`);
@@ -323,4 +373,5 @@ for (const caseName of casesToRun) {
   if (caseName === 'hub-dialogue-world-map') await testHubDialogueWorldMap();
   if (caseName === 'combat-death-respawn') await testCombatDeathRespawn();
   if (caseName === 'reward-cadence') await testRewardCadence();
+  if (caseName === 'alpha-end-card-reload') await testAlphaEndCardReload();
 }

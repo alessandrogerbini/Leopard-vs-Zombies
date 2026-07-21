@@ -14,6 +14,9 @@ const CASES = new Set([
   'progression',
   'reputation',
   'journal',
+  'world-unlocks',
+  'rescued-flags',
+  'alpha-quest-chain',
 ]);
 
 const requestedCase = getArgValue('--case');
@@ -386,6 +389,107 @@ async function testJournal() {
   logPass('journal');
 }
 
+async function applyQuestRewardForTest(save, reward, questId) {
+  const progression = await importRpgModule('progression-rpg.js');
+  const journal = await importRpgModule('journal-rpg.js');
+  let next = save;
+  if (reward.xp) next = progression.grantXp(next, reward.xp).save;
+  Object.entries(reward.ingredients || {}).forEach(([id, amount]) => { next.ingredients[id] += amount; });
+  Object.entries(reward.reputation || {}).forEach(([species, rank]) => { next = progression.setReputation(next, species, rank).save; });
+  (reward.recipes || []).forEach(id => { if (!next.unlockedRecipes.includes(id)) next.unlockedRecipes.push(id); });
+  (reward.unlockedZones || []).forEach(id => { if (!next.unlockedZones.includes(id)) next.unlockedZones.push(id); });
+  Object.entries(reward.rescued || {}).forEach(([id, value]) => { next.rescued[id] = value; });
+  Object.entries(reward.flags || {}).forEach(([id, value]) => { next.flags[id] = value; });
+  (reward.stickers || []).forEach(id => { next = journal.unlockSticker(next, id).save; });
+  if (reward.journalEntry) next = journal.addJournalEntry(next, reward.journalEntry.id, reward.journalEntry.text).save;
+  if (questId === 'statueReveal') next.flags.alphaEndCardUnlocked = true;
+  return next;
+}
+
+async function completeQuestForTest(save, questId) {
+  const quests = await importRpgModule('quest-system.js');
+  let next = save;
+  if (!next.quests.active) next = quests.acceptQuest(next, questId, 6000);
+  const quest = quests.getQuestDefinition(questId);
+  next.quests.progress[questId] = { ...next.quests.progress[questId], ...quest.completion };
+  const completed = quests.completeQuest(next, questId);
+  if (!completed.completed) throw new Error(`Quest did not complete in test: ${questId}`);
+  next = await applyQuestRewardForTest(completed.save, completed.reward, questId);
+  return next;
+}
+
+async function testWorldUnlocks() {
+  const saves = await importSaveSystem();
+  const quests = await importRpgModule('quest-system.js');
+  const worldMap = await importRpgModule('world-map-rpg.js');
+  let save = saves.createDefaultSave('leopard', 0);
+  const expected = [
+    ['heroSignup', 'rabbitVillage'],
+    ['bunnyRescue', 'monkeyJungle'],
+    ['bananaEmergency', 'sunnyMeadow'],
+    ['turtleExpress', 'sandyBeach'],
+  ];
+
+  deepStrictEqual(quests.getAvailableQuests(save).map(quest => quest.id), ['heroSignup']);
+  for (const [questId, unlockedZone] of expected) {
+    save = await completeQuestForTest(save, questId);
+    ok(save.unlockedZones.includes(unlockedZone), `${questId} unlocks ${unlockedZone}`);
+    equal(worldMap.getWorldMapEntries(save).find(entry => entry.id === unlockedZone).unlocked, true, `${unlockedZone} is open on world map`);
+  }
+
+  deepStrictEqual(save.quests.completed, ['heroSignup', 'bunnyRescue', 'bananaEmergency', 'turtleExpress']);
+  deepStrictEqual(quests.getAvailableQuests(save).map(quest => quest.id), ['statueReveal']);
+  logPass('world-unlocks');
+}
+
+async function testRescuedFlags() {
+  const saves = await importSaveSystem();
+  const storage = createMemoryStorage();
+  let save = saves.createDefaultSave('leopard', 0);
+  for (const questId of ['heroSignup', 'bunnyRescue', 'bananaEmergency', 'turtleExpress']) {
+    save = await completeQuestForTest(save, questId);
+  }
+  equal(save.rescued.rabbitVillage, true, 'Rabbit Village rescue flag is set');
+  equal(save.rescued.bananaStand, true, 'banana stand restoration flag is set');
+  equal(save.rescued.shellbert, true, 'Shellbert rescue flag is set');
+  equal(save.reputation.rabbits, 'friend', 'rabbit reputation persists from rescue');
+  equal(save.reputation.monkeys, 'friend', 'monkey reputation persists from restoration');
+  equal(save.reputation.turtles, 'friend', 'turtle reputation persists from escort');
+
+  saves.writeSaveSlot(storage, save, 7000);
+  const loaded = saves.readSaveSlot(storage, 'leopard', 0).save;
+  equal(loaded.rescued.rabbitVillage, true, 'Rabbit Village flag survives reload');
+  equal(loaded.rescued.bananaStand, true, 'banana stand flag survives reload');
+  equal(loaded.rescued.shellbert, true, 'Shellbert flag survives reload');
+
+  logPass('rescued-flags');
+}
+
+async function testAlphaQuestChain() {
+  const saves = await importSaveSystem();
+  const storage = createMemoryStorage();
+  let save = saves.createDefaultSave('leopard', 0);
+  for (const questId of ['heroSignup', 'bunnyRescue', 'bananaEmergency', 'turtleExpress', 'statueReveal']) {
+    save = await completeQuestForTest(save, questId);
+  }
+
+  deepStrictEqual(save.quests.completed, ['heroSignup', 'bunnyRescue', 'bananaEmergency', 'turtleExpress', 'statueReveal']);
+  ok(save.unlockedRecipes.includes('woodenClub'), 'Hero Sign-Up unlocks Wooden Club recipe');
+  ok(save.unlockedRecipes.includes('bananaCannon'), 'Banana Emergency unlocks Banana Cannon recipe');
+  ok(save.unlockedRecipes.includes('glassTelescope'), 'Turtle Express unlocks Glass Telescope recipe');
+  equal(save.flags.bananaCannonPayoff, true, 'Banana Cannon payoff flag is set');
+  equal(save.flags.spaceshipWitness, true, 'spaceship witness flag is set');
+  equal(save.flags.alphaEndCardUnlocked, true, 'alpha end-card flag is set');
+  ok(save.journal.stickers.includes('spaceshipWitness'), 'spaceship witness sticker persists');
+
+  saves.writeSaveSlot(storage, save, 8000);
+  const loaded = saves.readSaveSlot(storage, 'leopard', 0).save;
+  equal(loaded.flags.spaceshipWitness, true, 'spaceship reveal survives reload');
+  deepStrictEqual(loaded.quests.completed, save.quests.completed, 'completed quest order survives reload');
+
+  logPass('alpha-quest-chain');
+}
+
 const casesToRun = requestedCase ? [requestedCase] : Array.from(CASES);
 for (const caseName of casesToRun) {
   if (caseName === 'save-slots') await testSaveSlots();
@@ -397,4 +501,7 @@ for (const caseName of casesToRun) {
   if (caseName === 'progression') await testProgression();
   if (caseName === 'reputation') await testReputation();
   if (caseName === 'journal') await testJournal();
+  if (caseName === 'world-unlocks') await testWorldUnlocks();
+  if (caseName === 'rescued-flags') await testRescuedFlags();
+  if (caseName === 'alpha-quest-chain') await testAlphaQuestChain();
 }

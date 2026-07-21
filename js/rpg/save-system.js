@@ -77,7 +77,12 @@ export function createDefaultSave(animalId = 'leopard', slot = 0, now = 0) {
     currentZone: 'hub',
     collectedNodes: {},
     rescued: { ...RESCUE_DEFAULTS },
-    flags: { spaceshipWitness: false, alphaEndCardSeen: false },
+    flags: {
+      spaceshipWitness: false,
+      alphaEndCardSeen: false,
+      alphaEndCardUnlocked: false,
+      bananaCannonPayoff: false,
+    },
     playtimeSeconds: 0,
   };
 }
@@ -161,6 +166,8 @@ export function normalizeSave(raw, animalId = raw?.animalId || 'leopard', slot =
   save.flags = {
     spaceshipWitness: Boolean(flags.spaceshipWitness),
     alphaEndCardSeen: Boolean(flags.alphaEndCardSeen),
+    alphaEndCardUnlocked: Boolean(flags.alphaEndCardUnlocked),
+    bananaCannonPayoff: Boolean(flags.bananaCannonPayoff),
   };
   save.playtimeSeconds = toInt(raw.playtimeSeconds, defaultSave.playtimeSeconds);
 
@@ -271,4 +278,3 @@ export function summarizeSaveSlot(storage, animalId, slot) {
 export function listSaveSummaries(storage, animalId) {
   return Array.from({ length: SAVE_SLOT_COUNT }, (_, slot) => summarizeSaveSlot(storage, animalId, slot));
 }
-

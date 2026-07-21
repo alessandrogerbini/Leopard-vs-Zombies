@@ -15,7 +15,7 @@ import { grantXp } from './rpg/progression-rpg.js';
 import { acceptQuest, completeQuest, getActiveQuestTracker, getAvailableQuests, isQuestObjectiveComplete } from './rpg/quest-system.js';
 import { createHubZone } from './rpg/zone.js';
 import { getWorldMapEntries } from './rpg/world-map-rpg.js';
-import { drawCrafting, drawDialogue, drawHub, drawInventory, drawQuestBoard, drawRewardBanner, drawSaveSelect, drawWorldMap, drawZone, hitTestSaveSlot } from './rpg/hud-rpg.js';
+import { drawAlphaEndCard, drawCrafting, drawDialogue, drawHub, drawInventory, drawQuestBoard, drawRewardBanner, drawSaveSelect, drawWorldMap, drawZone, hitTestSaveSlot } from './rpg/hud-rpg.js';
 
 export function launchRPGGame(options) {
   const animal = options.animal || { name: 'LEOPARD', color: '#e8a828' };
@@ -142,6 +142,9 @@ export function launchRPGGame(options) {
         journal: activeSave.journal,
         unlockedRecipes: activeSave.unlockedRecipes,
         unlockedZones: activeSave.unlockedZones,
+        rescued: activeSave.rescued,
+        reputation: activeSave.reputation,
+        flags: activeSave.flags,
       } : null,
     };
   }
@@ -159,7 +162,8 @@ export function launchRPGGame(options) {
       else if (screen === 'zone') drawZone(hudCtx, view);
       else if (screen === 'inventory') drawInventory(hudCtx, view);
       else if (screen === 'crafting') drawCrafting(hudCtx, view);
-      drawRewardBanner(hudCtx, rewardBanner);
+      else if (screen === 'alphaEndCard') drawAlphaEndCard(hudCtx, view);
+      if (screen !== 'alphaEndCard') drawRewardBanner(hudCtx, rewardBanner);
     }
     updateDebug();
   }
@@ -195,7 +199,7 @@ export function launchRPGGame(options) {
   }
 
   function renderRuntime(now = performance.now()) {
-    if (!['hub', 'dialogue', 'questBoard', 'worldMap', 'zone', 'inventory', 'crafting'].includes(screen) || returned) return;
+    if (!['hub', 'dialogue', 'questBoard', 'worldMap', 'zone', 'inventory', 'crafting', 'alphaEndCard'].includes(screen) || returned) return;
     const dt = Math.min(0.1, (now - lastFrameTime) / 1000);
     lastFrameTime = now;
     if (activeSave) activeSave.playtimeSeconds += dt;
@@ -308,6 +312,17 @@ export function launchRPGGame(options) {
   }
 
   function onKeyDown(e) {
+    if (screen === 'alphaEndCard') {
+      if (e.code === 'Enter' || e.code === 'Space' || e.code === 'Escape') {
+        e.preventDefault();
+        activeSave.flags.alphaEndCardSeen = true;
+        activeSave = writeSaveSlot(localStorage, activeSave);
+        screen = 'hub';
+        draw();
+      }
+      return;
+    }
+
     if (e.code === 'Escape') {
       e.preventDefault();
       if (confirmDelete) {
@@ -380,6 +395,12 @@ export function launchRPGGame(options) {
       if (e.code === 'KeyF') {
         e.preventDefault();
         startZone('forestEdge');
+        return;
+      }
+      if (e.code === 'KeyT') {
+        e.preventDefault();
+        const quest = getActiveQuestTracker(activeSave);
+        if (quest) startZone(quest.destinationZone);
         return;
       }
       if (e.code === 'KeyI') {
@@ -480,6 +501,14 @@ export function launchRPGGame(options) {
         draw();
         return;
       }
+      if (e.code === 'KeyE') {
+        e.preventDefault();
+        assistActiveQuest();
+        maybeCompleteActiveQuest();
+        activeSave = writeSaveSlot(localStorage, activeSave);
+        draw();
+        return;
+      }
       if (e.code === 'KeyI') {
         e.preventDefault();
         screen = 'inventory';
@@ -529,6 +558,30 @@ export function launchRPGGame(options) {
     activeSave = writeSaveSlot(localStorage, activeSave);
     screen = 'zone';
     draw();
+  }
+
+  function assistActiveQuest() {
+    const questId = activeSave?.quests?.active;
+    if (!questId) return;
+    activeSave.quests.progress = activeSave.quests.progress || {};
+    activeSave.quests.progress[questId] = activeSave.quests.progress[questId] || {};
+    const progress = activeSave.quests.progress[questId];
+    if (questId === 'heroSignup') {
+      progress.wood = 5;
+      progress.tutorialZombies = 3;
+    } else if (questId === 'bunnyRescue') {
+      progress.rescuedRabbits = 3;
+    } else if (questId === 'bananaEmergency') {
+      progress.bananas = 8;
+      progress.bananaCannon = 1;
+      progress.bananaShot = 1;
+      progress.zombies = 5;
+    } else if (questId === 'turtleExpress') {
+      progress.escortShellbert = 1;
+    } else if (questId === 'statueReveal') {
+      progress.glassTelescope = 1;
+      progress.telescopePoint = 1;
+    }
   }
 
   function processCombatEvents(events) {
@@ -590,6 +643,16 @@ export function launchRPGGame(options) {
     (reward.unlockedZones || []).forEach(zoneId => {
       if (!activeSave.unlockedZones.includes(zoneId)) activeSave.unlockedZones.push(zoneId);
     });
+    Object.entries(reward.reputation || {}).forEach(([species, rank]) => {
+      // Reputation state remains serializable; progression-rpg validates in data tests.
+      activeSave.reputation[species] = rank;
+    });
+    Object.entries(reward.rescued || {}).forEach(([id, value]) => {
+      activeSave.rescued[id] = value;
+    });
+    Object.entries(reward.flags || {}).forEach(([id, value]) => {
+      activeSave.flags[id] = value;
+    });
     (reward.stickers || []).forEach(stickerId => {
       activeSave = unlockSticker(activeSave, stickerId).save;
     });
@@ -598,6 +661,7 @@ export function launchRPGGame(options) {
     }
     const questTitle = questId === 'heroSignup' ? 'The Hero Sign-Up Sheet' : questId;
     rewardBanner = createRewardBanner({ questTitle, ...reward });
+    screen = questId === 'statueReveal' ? 'alphaEndCard' : 'hub';
   }
 
   function activateFocusedHubItem() {
