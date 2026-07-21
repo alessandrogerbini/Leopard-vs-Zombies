@@ -9,11 +9,13 @@
 import { deleteSaveSlot, listSaveSummaries, readSaveSlot, writeSaveSlot } from './rpg/save-system.js';
 import { createCombatState, getCombatSummary, performPlayerAttack, tickCombat } from './rpg/combat-rpg.js';
 import { collectNode, createGatheringNodes, craftItem, getRecipe, getRecipeIds } from './rpg/inventory.js';
+import { addJournalEntry, createRewardBanner, unlockSticker } from './rpg/journal-rpg.js';
 import { createHubNpcs } from './rpg/npc.js';
-import { acceptQuest, getActiveQuestTracker, getAvailableQuests } from './rpg/quest-system.js';
+import { grantXp } from './rpg/progression-rpg.js';
+import { acceptQuest, completeQuest, getActiveQuestTracker, getAvailableQuests, isQuestObjectiveComplete } from './rpg/quest-system.js';
 import { createHubZone } from './rpg/zone.js';
 import { getWorldMapEntries } from './rpg/world-map-rpg.js';
-import { drawCrafting, drawDialogue, drawHub, drawInventory, drawQuestBoard, drawSaveSelect, drawWorldMap, drawZone, hitTestSaveSlot } from './rpg/hud-rpg.js';
+import { drawCrafting, drawDialogue, drawHub, drawInventory, drawQuestBoard, drawRewardBanner, drawSaveSelect, drawWorldMap, drawZone, hitTestSaveSlot } from './rpg/hud-rpg.js';
 
 export function launchRPGGame(options) {
   const animal = options.animal || { name: 'LEOPARD', color: '#e8a828' };
@@ -41,6 +43,7 @@ export function launchRPGGame(options) {
   let dialogueNpc = null;
   let combatState = null;
   let craftingMessage = '';
+  let rewardBanner = null;
   let runtimeRenderer = null;
   let runtimeScene = null;
   let runtimeCamera = null;
@@ -102,6 +105,7 @@ export function launchRPGGame(options) {
       combat: combatState ? getCombatSummary(combatState) : null,
       gatheringNodes: activeSave ? createGatheringNodes(activeSave, activeSave.currentZone) : [],
       crafting: { recipes, selectedRecipe, message: craftingMessage },
+      rewardBanner,
     };
   }
 
@@ -128,11 +132,16 @@ export function launchRPGGame(options) {
       combat: view?.combat || null,
       gatheringNodes: view?.gatheringNodes || [],
       crafting: view?.crafting || null,
+      rewardBanner,
       activeSave: activeSave ? {
         animalId: activeSave.animalId,
         slot: activeSave.slot,
         currentZone: activeSave.currentZone,
         player: activeSave.player,
+        quests: activeSave.quests,
+        journal: activeSave.journal,
+        unlockedRecipes: activeSave.unlockedRecipes,
+        unlockedZones: activeSave.unlockedZones,
       } : null,
     };
   }
@@ -150,6 +159,7 @@ export function launchRPGGame(options) {
       else if (screen === 'zone') drawZone(hudCtx, view);
       else if (screen === 'inventory') drawInventory(hudCtx, view);
       else if (screen === 'crafting') drawCrafting(hudCtx, view);
+      drawRewardBanner(hudCtx, rewardBanner);
     }
     updateDebug();
   }
@@ -220,6 +230,7 @@ export function launchRPGGame(options) {
     dialogueNpc = null;
     combatState = null;
     craftingMessage = '';
+    rewardBanner = null;
     refreshHubState();
     initRuntimeScene();
     lastFrameTime = performance.now();
@@ -461,7 +472,10 @@ export function launchRPGGame(options) {
         const node = createGatheringNodes(activeSave, activeSave.currentZone).find(item => !item.collected);
         if (node) {
           const result = collectNode(activeSave, node);
-          activeSave = writeSaveSlot(localStorage, result.save);
+          activeSave = result.save;
+          processGatherEvent(result.event);
+          maybeCompleteActiveQuest();
+          activeSave = writeSaveSlot(localStorage, activeSave);
         }
         draw();
         return;
@@ -518,9 +532,10 @@ export function launchRPGGame(options) {
   }
 
   function processCombatEvents(events) {
-    if (!activeSave?.quests?.active) return;
     events.forEach(event => {
       if (event.kind !== 'defeatZombie') return;
+      unlockFirstBonkSticker();
+      if (!activeSave?.quests?.active) return;
       const questId = activeSave.quests.active;
       activeSave.quests.progress = activeSave.quests.progress || {};
       activeSave.quests.progress[questId] = activeSave.quests.progress[questId] || {};
@@ -529,6 +544,60 @@ export function launchRPGGame(options) {
         (activeSave.quests.progress[questId].tutorialZombies || 0) + 1
       );
     });
+    maybeCompleteActiveQuest();
+  }
+
+  function processGatherEvent(event) {
+    if (!event || !activeSave?.quests?.active) return;
+    if (event.kind !== 'ingredientCollected') return;
+    const questId = activeSave.quests.active;
+    activeSave.quests.progress = activeSave.quests.progress || {};
+    activeSave.quests.progress[questId] = activeSave.quests.progress[questId] || {};
+    if (event.ingredient === 'wood') {
+      activeSave.quests.progress[questId].wood = Math.min(
+        5,
+        (activeSave.quests.progress[questId].wood || 0) + event.amount
+      );
+    }
+  }
+
+  function unlockFirstBonkSticker() {
+    if (activeSave?.journal?.stickers?.includes('myFirstBonk')) return;
+    const result = unlockSticker(activeSave, 'myFirstBonk');
+    activeSave = result.save;
+    if (result.unlocked) {
+      rewardBanner = createRewardBanner({ title: 'MY FIRST BONK', stickers: ['myFirstBonk'] });
+    }
+  }
+
+  function maybeCompleteActiveQuest() {
+    const questId = activeSave?.quests?.active;
+    if (!questId || !isQuestObjectiveComplete(activeSave, questId)) return;
+    const result = completeQuest(activeSave, questId);
+    if (!result.completed) return;
+    activeSave = result.save;
+    applyQuestReward(questId, result.reward);
+  }
+
+  function applyQuestReward(questId, reward) {
+    if (reward.xp) activeSave = grantXp(activeSave, reward.xp).save;
+    Object.entries(reward.ingredients || {}).forEach(([id, amount]) => {
+      activeSave.ingredients[id] = (activeSave.ingredients[id] || 0) + amount;
+    });
+    (reward.recipes || []).forEach(recipeId => {
+      if (!activeSave.unlockedRecipes.includes(recipeId)) activeSave.unlockedRecipes.push(recipeId);
+    });
+    (reward.unlockedZones || []).forEach(zoneId => {
+      if (!activeSave.unlockedZones.includes(zoneId)) activeSave.unlockedZones.push(zoneId);
+    });
+    (reward.stickers || []).forEach(stickerId => {
+      activeSave = unlockSticker(activeSave, stickerId).save;
+    });
+    if (reward.journalEntry) {
+      activeSave = addJournalEntry(activeSave, reward.journalEntry.id, reward.journalEntry.text).save;
+    }
+    const questTitle = questId === 'heroSignup' ? 'The Hero Sign-Up Sheet' : questId;
+    rewardBanner = createRewardBanner({ questTitle, ...reward });
   }
 
   function activateFocusedHubItem() {

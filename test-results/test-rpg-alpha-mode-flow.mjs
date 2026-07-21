@@ -7,6 +7,7 @@ const CASES = new Set([
   'cleanup',
   'hub-dialogue-world-map',
   'combat-death-respawn',
+  'reward-cadence',
 ]);
 
 const requestedCase = getArgValue('--case');
@@ -286,6 +287,34 @@ async function testCombatDeathRespawn() {
   });
 }
 
+async function testRewardCadence() {
+  await withBrowser(async browser => {
+    const page = await newPage(browser);
+    await acceptHeroQuestAndEnterForest(page);
+    await tapKey(page, 'Enter');
+    await page.waitForFunction(() => window.__rpgDebug.rewardBanner && window.__rpgDebug.rewardBanner.stickers.includes('myFirstBonk'), { timeout: TIMEOUT });
+    let debug = await page.evaluate(() => window.__rpgDebug);
+    assert(debug.rewardBanner.title === 'MY FIRST BONK', 'first zombie defeat shows first-bonk reward banner');
+    assert(debug.activeSave.journal.stickers.includes('myFirstBonk'), 'first-bonk sticker persists to save');
+
+    await tapKey(page, 'KeyG');
+    await tapKey(page, 'KeyG');
+    for (let expectedAlive = 1; expectedAlive >= 0; expectedAlive--) {
+      await tapKey(page, 'Enter');
+      await page.waitForFunction(alive => window.__rpgDebug.combat.enemiesAlive === alive, { timeout: TIMEOUT }, expectedAlive);
+    }
+    await page.waitForFunction(() => window.__rpgDebug.rewardBanner && window.__rpgDebug.rewardBanner.questTitle === 'The Hero Sign-Up Sheet', { timeout: TIMEOUT });
+    debug = await page.evaluate(() => window.__rpgDebug);
+    assert(debug.rewardBanner.lines.some(line => line.includes('10 XP')), 'quest-complete banner includes XP');
+    assert(debug.rewardBanner.lines.some(line => line.includes('woodenClub')), 'quest-complete banner includes recipe unlock');
+    assert(debug.activeQuest === null, 'quest completion clears active quest');
+    assert(debug.activeSave.quests.completed.includes('heroSignup'), 'completed quest persists to save');
+    assert(debug.activeSave.unlockedRecipes.includes('woodenClub'), 'quest reward unlocks Wooden Club recipe');
+    assert(debug.activeSave.unlockedZones.includes('rabbitVillage'), 'quest reward unlocks Rabbit Village');
+    page.__assertNoFailures();
+  });
+}
+
 const casesToRun = requestedCase ? [requestedCase] : Array.from(CASES);
 for (const caseName of casesToRun) {
   console.log(`\n=== ${caseName} ===`);
@@ -293,4 +322,5 @@ for (const caseName of casesToRun) {
   if (caseName === 'cleanup') await testCleanup();
   if (caseName === 'hub-dialogue-world-map') await testHubDialogueWorldMap();
   if (caseName === 'combat-death-respawn') await testCombatDeathRespawn();
+  if (caseName === 'reward-cadence') await testRewardCadence();
 }

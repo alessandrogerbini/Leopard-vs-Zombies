@@ -11,6 +11,9 @@ const CASES = new Set([
   'ingredients',
   'recipes',
   'equipment',
+  'progression',
+  'reputation',
+  'journal',
 ]);
 
 const requestedCase = getArgValue('--case');
@@ -294,6 +297,95 @@ async function testEquipment() {
   logPass('equipment');
 }
 
+async function testProgression() {
+  const saves = await importSaveSystem();
+  const progression = await importRpgModule('progression-rpg.js');
+  const storage = createMemoryStorage();
+  let save = saves.createDefaultSave('leopard', 0);
+
+  let result = progression.grantXp(save, 19);
+  save = result.save;
+  equal(save.player.level, 1, '19 XP does not level up');
+  equal(save.player.xp, 19);
+
+  result = progression.grantXp(save, 1);
+  save = result.save;
+  equal(save.player.level, 2, '20 XP reaches level 2');
+  equal(save.player.maxHp, 110, 'level 2 increases max HP by 10');
+  equal(save.player.hp, 110, 'level up heals to new max HP');
+  equal(save.player.attack, 9, 'level 2 increases attack by 1');
+  deepStrictEqual(result.levelUps, [2], 'grantXp reports level-up list');
+
+  result = progression.grantXp(save, 45);
+  save = result.save;
+  equal(save.player.level, 3, '45 more XP reaches level 3');
+
+  saves.writeSaveSlot(storage, save, 3000);
+  const loaded = saves.readSaveSlot(storage, 'leopard', 0).save;
+  equal(loaded.player.level, 3, 'level persists after reload');
+  equal(loaded.player.xp, 65, 'total XP persists after reload');
+
+  logPass('progression');
+}
+
+async function testReputation() {
+  const saves = await importSaveSystem();
+  const progression = await importRpgModule('progression-rpg.js');
+  const storage = createMemoryStorage();
+  let save = saves.createDefaultSave('leopard', 0);
+
+  for (const species of ['rabbits', 'monkeys', 'turtles']) {
+    const updated = progression.setReputation(save, species, 'friend');
+    save = updated.save;
+    equal(save.reputation[species], 'friend', `${species} can reach friend`);
+    ok(progression.getReputationReaction(save, species).includes('friend'), `${species} reaction changes at friend rank`);
+  }
+
+  saves.writeSaveSlot(storage, save, 4000);
+  const loaded = saves.readSaveSlot(storage, 'leopard', 0).save;
+  deepStrictEqual(loaded.reputation, { rabbits: 'friend', monkeys: 'friend', turtles: 'friend' });
+
+  logPass('reputation');
+}
+
+async function testJournal() {
+  const saves = await importSaveSystem();
+  const journal = await importRpgModule('journal-rpg.js');
+  const storage = createMemoryStorage();
+  let save = saves.createDefaultSave('leopard', 0);
+
+  let updated = journal.unlockSticker(save, 'myFirstBonk');
+  save = updated.save;
+  equal(updated.unlocked, true, 'first bonk sticker unlocks');
+  updated = journal.unlockSticker(save, 'myFirstBonk');
+  save = updated.save;
+  equal(updated.unlocked, false, 'duplicate sticker unlock is ignored');
+  deepStrictEqual(save.journal.stickers, ['myFirstBonk']);
+
+  save = journal.addJournalEntry(save, 'heroSignupComplete', 'The Hero Sign-Up Sheet complete').save;
+  ok(save.journal.entries.includes('heroSignupComplete'), 'journal entry id persists');
+
+  const banner = journal.createRewardBanner({
+    questTitle: 'The Hero Sign-Up Sheet',
+    xp: 10,
+    ingredients: { wood: 5 },
+    recipes: ['woodenClub'],
+    stickers: ['myFirstBonk'],
+  });
+  equal(banner.questTitle, 'The Hero Sign-Up Sheet');
+  ok(banner.lines.some(line => line.includes('10 XP')), 'reward banner includes XP');
+  ok(banner.lines.some(line => line.includes('Wood 5')), 'reward banner includes ingredients');
+  ok(banner.lines.some(line => line.includes('woodenClub')), 'reward banner includes recipes');
+  ok(banner.lines.some(line => line.includes('myFirstBonk')), 'reward banner includes stickers');
+
+  saves.writeSaveSlot(storage, save, 5000);
+  const loaded = saves.readSaveSlot(storage, 'leopard', 0).save;
+  deepStrictEqual(loaded.journal.stickers, ['myFirstBonk'], 'stickers persist after reload');
+  deepStrictEqual(loaded.journal.entries, ['heroSignupComplete'], 'journal entries persist after reload');
+
+  logPass('journal');
+}
+
 const casesToRun = requestedCase ? [requestedCase] : Array.from(CASES);
 for (const caseName of casesToRun) {
   if (caseName === 'save-slots') await testSaveSlots();
@@ -302,4 +394,7 @@ for (const caseName of casesToRun) {
   if (caseName === 'ingredients') await testIngredients();
   if (caseName === 'recipes') await testRecipes();
   if (caseName === 'equipment') await testEquipment();
+  if (caseName === 'progression') await testProgression();
+  if (caseName === 'reputation') await testReputation();
+  if (caseName === 'journal') await testJournal();
 }

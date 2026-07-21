@@ -4,7 +4,7 @@
  *
  * Dependencies: save-system.js
  * Exports: drawSaveSelect, drawRuntimeShell, drawHub, drawDialogue,
- *   drawQuestBoard, drawWorldMap, drawZone, drawInventory, drawCrafting,
+ *   drawQuestBoard, drawWorldMap, drawZone, drawInventory, drawCrafting, drawRewardBanner,
  *   getSaveSlotLayout, hitTestSaveSlot
  */
 
@@ -522,5 +522,30 @@ export function drawCrafting(ctx, view) {
     ctx.font = '13px "Courier New", monospace';
     const cost = Object.entries(recipe.cost).map(([id, amount]) => `${id} ${amount}`).join(', ');
     ctx.fillText(cost, x + 18, rowY + 50);
+  });
+}
+
+export function drawRewardBanner(ctx, banner) {
+  if (!banner) return;
+  const w = ctx.canvas.width;
+  const x = Math.max(24, w * 0.18);
+  const y = 86;
+  const panelW = Math.min(620, w - x * 2);
+  const panelH = 76 + Math.min(3, banner.lines.length) * 20;
+  ctx.fillStyle = 'rgba(6, 12, 10, 0.92)';
+  roundedRect(ctx, x, y, panelW, panelH, 8);
+  ctx.fill();
+  ctx.strokeStyle = '#f5d66b';
+  ctx.lineWidth = 3;
+  ctx.stroke();
+
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#f5d66b';
+  fitText(ctx, banner.questTitle || banner.title, panelW - 36, 22, 15);
+  ctx.fillText(banner.questTitle || banner.title, x + panelW / 2, y + 34);
+  ctx.fillStyle = '#eef6dc';
+  ctx.font = '14px "Courier New", monospace';
+  banner.lines.slice(0, 3).forEach((line, index) => {
+    ctx.fillText(line, x + panelW / 2, y + 60 + index * 20);
   });
 }

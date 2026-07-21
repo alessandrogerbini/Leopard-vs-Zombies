@@ -106,7 +106,51 @@ export const QUEST_DEFINITIONS = {
     rewardPreview: 'Wooden Club recipe, Rabbit Village route',
     prerequisites: [],
     progressDefaults: { wood: 0, tutorialZombies: 0 },
+    completion: { wood: 5, tutorialZombies: 3 },
+    reward: {
+      xp: 10,
+      ingredients: {},
+      recipes: ['woodenClub'],
+      unlockedZones: ['rabbitVillage'],
+      stickers: ['myFirstBonk'],
+      journalEntry: { id: 'heroSignupComplete', text: 'The Hero Sign-Up Sheet complete' },
+    },
   },
+};
+
+export const LEVEL_XP_THRESHOLDS = {
+  2: 20,
+  3: 65,
+  4: 145,
+};
+
+export const LEVEL_REWARDS = {
+  2: { maxHp: 10, attack: 1 },
+  3: { maxHp: 10, attack: 1 },
+  4: { maxHp: 15, attack: 2 },
+};
+
+export const REPUTATION_REACTIONS = {
+  rabbits: {
+    stranger: 'The rabbits watch carefully from the cabbage fence.',
+    friend: 'Your rabbit friends wave from the rescued garden.',
+  },
+  monkeys: {
+    stranger: 'The monkeys are still guarding their banana crates.',
+    friend: 'Your monkey friends cheer beside the banana stand.',
+  },
+  turtles: {
+    stranger: 'The turtles nod politely and keep their helmets ready.',
+    friend: 'Your turtle friends save a sunny path for you.',
+  },
+};
+
+export const STICKER_DEFINITIONS = {
+  myFirstBonk: { id: 'myFirstBonk', label: 'MY FIRST BONK' },
+  rabbitRescuer: { id: 'rabbitRescuer', label: 'RABBIT RESCUER' },
+  bananaHero: { id: 'bananaHero', label: 'BANANA HERO' },
+  turtleHelper: { id: 'turtleHelper', label: 'TURTLE HELPER' },
+  spaceshipWitness: { id: 'spaceshipWitness', label: 'SPACESHIP WITNESS' },
 };
 
 export const GATHERING_NODE_DEFINITIONS = [
