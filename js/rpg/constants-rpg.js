@@ -232,6 +232,45 @@ export const STICKER_DEFINITIONS = {
   spaceshipWitness: { id: 'spaceshipWitness', label: 'SPACESHIP WITNESS' },
 };
 
+export const RPG_AUDIO_EVENTS = {
+  menuSelect: {
+    soundId: 'rpg_menu_select',
+    files: ['litterbox-1.ogg'],
+  },
+  questAccept: {
+    soundId: 'rpg_quest_accept',
+    files: ['rawr-1.ogg'],
+  },
+  attack: {
+    soundId: 'rpg_attack',
+    files: ['bite-2.ogg', 'bite-3.ogg', 'bite-4.ogg'],
+  },
+  hit: {
+    soundId: 'rpg_hit',
+    files: ['bite-1.mp3', 'bite-2.ogg'],
+  },
+  zombieDefeat: {
+    soundId: 'rpg_zombie_defeat',
+    files: ['zombie-7.ogg'],
+  },
+  ingredientPickup: {
+    soundId: 'rpg_ingredient_pickup',
+    files: ['litterbox-1.ogg'],
+  },
+  craftSuccess: {
+    soundId: 'rpg_craft_success',
+    files: ['rawr-1.ogg'],
+  },
+  questComplete: {
+    soundId: 'rpg_quest_complete',
+    files: ['rawr-2.ogg'],
+  },
+  playerDeath: {
+    soundId: 'rpg_player_death',
+    files: ['falling-scream-1.ogg'],
+  },
+};
+
 export const GATHERING_NODE_DEFINITIONS = [
   { id: 'forestEdge-stump-1', zoneId: 'forestEdge', ingredient: 'wood', amount: 3, x: -1.8, z: -1.1, radius: 1.1 },
   { id: 'forestEdge-stump-2', zoneId: 'forestEdge', ingredient: 'wood', amount: 2, x: 1.6, z: -0.8, radius: 1.1 },

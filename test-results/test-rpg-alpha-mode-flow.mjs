@@ -9,6 +9,7 @@ const CASES = new Set([
   'combat-death-respawn',
   'reward-cadence',
   'alpha-end-card-reload',
+  'readability',
 ]);
 
 const requestedCase = getArgValue('--case');
@@ -365,6 +366,31 @@ async function testAlphaEndCardReload() {
   });
 }
 
+async function testReadability() {
+  await withBrowser(async browser => {
+    const viewports = [
+      { width: 960, height: 540, label: '960x540' },
+      { width: 1280, height: 720, label: '1280x720' },
+      { width: 390, height: 844, label: '390x844' },
+    ];
+
+    for (const viewport of viewports) {
+      const page = await newPage(browser);
+      await page.setViewport({ width: viewport.width, height: viewport.height, deviceScaleFactor: 1 });
+      await launchRpgToHub(page);
+      const stats = await canvasStats(page, '#hud3d');
+      assert(stats.colored > 500, `readability HUD is nonblank at ${viewport.label}`);
+      const debug = await page.evaluate(() => window.__rpgDebug);
+      assert(debug.screen === 'hub', `readability route reaches hub at ${viewport.label}`);
+      assert(debug.hub.npcs.length === 4, `NPC prompts remain available at ${viewport.label}`);
+      assert(debug.hub.interactables.includes('questBoard'), `quest board remains available at ${viewport.label}`);
+      await page.screenshot({ path: `test-results/rpg-readability-${viewport.label}.png` });
+      page.__assertNoFailures();
+      await page.close();
+    }
+  });
+}
+
 const casesToRun = requestedCase ? [requestedCase] : Array.from(CASES);
 for (const caseName of casesToRun) {
   console.log(`\n=== ${caseName} ===`);
@@ -374,4 +400,5 @@ for (const caseName of casesToRun) {
   if (caseName === 'combat-death-respawn') await testCombatDeathRespawn();
   if (caseName === 'reward-cadence') await testRewardCadence();
   if (caseName === 'alpha-end-card-reload') await testAlphaEndCardReload();
+  if (caseName === 'readability') await testReadability();
 }

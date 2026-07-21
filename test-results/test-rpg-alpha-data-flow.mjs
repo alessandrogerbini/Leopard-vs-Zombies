@@ -1,6 +1,7 @@
 import { deepStrictEqual, equal, ok } from 'assert/strict';
 import { fileURLToPath, pathToFileURL } from 'url';
 import { dirname, join } from 'path';
+import { existsSync } from 'fs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = join(__dirname, '..');
@@ -17,6 +18,7 @@ const CASES = new Set([
   'world-unlocks',
   'rescued-flags',
   'alpha-quest-chain',
+  'audio-manifest',
 ]);
 
 const requestedCase = getArgValue('--case');
@@ -490,6 +492,33 @@ async function testAlphaQuestChain() {
   logPass('alpha-quest-chain');
 }
 
+async function testAudioManifest() {
+  const constants = await importRpgModule('constants-rpg.js');
+  const requiredEvents = [
+    'menuSelect',
+    'questAccept',
+    'attack',
+    'hit',
+    'zombieDefeat',
+    'ingredientPickup',
+    'craftSuccess',
+    'questComplete',
+    'playerDeath',
+  ];
+  const manifest = constants.RPG_AUDIO_EVENTS;
+  ok(manifest, 'RPG audio event manifest exists');
+  for (const eventId of requiredEvents) {
+    const entry = manifest[eventId];
+    ok(entry, `${eventId} has an audio mapping`);
+    ok(entry.soundId && Array.isArray(entry.files), `${eventId} has soundId and files`);
+    for (const fileName of entry.files) {
+      ok(existsSync(join(PROJECT_ROOT, 'sound-pack-alpha', fileName)), `${eventId} asset exists: ${fileName}`);
+    }
+  }
+
+  logPass('audio-manifest');
+}
+
 const casesToRun = requestedCase ? [requestedCase] : Array.from(CASES);
 for (const caseName of casesToRun) {
   if (caseName === 'save-slots') await testSaveSlots();
@@ -504,4 +533,5 @@ for (const caseName of casesToRun) {
   if (caseName === 'world-unlocks') await testWorldUnlocks();
   if (caseName === 'rescued-flags') await testRescuedFlags();
   if (caseName === 'alpha-quest-chain') await testAlphaQuestChain();
+  if (caseName === 'audio-manifest') await testAudioManifest();
 }
