@@ -55,9 +55,9 @@ async function moveToHudRect(page, rect) {
   await sleep(120);
 }
 
-async function clickHudRect(page, rect) {
+async function clickHudRect(page, rect, options = {}) {
   const point = await hudClientPoint(page, rect);
-  await page.mouse.click(point.x, point.y);
+  await page.mouse.click(point.x, point.y, options);
   await sleep(180);
 }
 
@@ -282,6 +282,13 @@ async function testGuidedHubPointer() {
     let debug = await page.evaluate(() => window.__rpgDebug);
     assert(debug.focusItem.id === 'questBoard', 'guided fresh save focuses Quest Board');
     assert(debug.guide.step === 'open-quest-board', 'guided fresh save points to Quest Board');
+
+    const freshQuestBoardRect = debug.hub.layout.landmarks.find(item => item.id === 'questBoard').hitRect;
+    await clickHudRect(page, freshQuestBoardRect, { button: 'right' });
+    debug = await page.evaluate(() => window.__rpgDebug);
+    assert(debug.screen === 'hub', 'right-click does not activate the Quest Board');
+    assert(debug.activeQuest === null, 'right-click does not accept or persist a quest');
+    assert(debug.guide.step === 'open-quest-board', 'right-click leaves first-quest guidance unchanged');
 
     const grannyRect = debug.hub.layout.landmarks.find(item => item.id === 'grannyThistle').hitRect;
     await moveToHudRect(page, grannyRect);

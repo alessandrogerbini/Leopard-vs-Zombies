@@ -876,6 +876,7 @@ export function launchRPGGame(options) {
   }
 
   function onPointerDown(event) {
+    if (typeof event.button === 'number' && event.button !== 0) return;
     const point = getHudPoint(event);
     if (!point) return;
 
