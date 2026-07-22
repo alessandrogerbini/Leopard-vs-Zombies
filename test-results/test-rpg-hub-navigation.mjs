@@ -164,7 +164,7 @@ async function testLayout() {
       equal(intersects(item.hitRect, layout.objectiveRect), false, `${item.id} clears objective beacon`);
       equal(intersects(item.hitRect, layout.promptRect), false, `${item.id} clears bottom prompt`);
       const hit = hitTestHubMap(layout, item.hitRect.x + item.hitRect.w / 2, item.hitRect.y + item.hitRect.h / 2);
-      equal(hit.id, item.id, `${item.id} center hit resolves correctly`);
+      deepStrictEqual(hit, { type: 'landmark', id: item.id }, `${item.id} center hit resolves correctly`);
     });
     assertNoPairOverlap(layout.landmarks.map(item => item.hitRect), `${width}x${height} hit targets do not overlap`);
     assertNoPairOverlap(layout.landmarks.filter(item => item.showLabel).map(item => item.labelRect), `${width}x${height} visible labels do not overlap`);
@@ -177,6 +177,7 @@ async function testLayout() {
     focusId: 'questBoard',
     guideTargetId: 'questBoard',
   });
+  equal(layout.landmarks.every(item => item.showLabel), true, 'landscape shows every label');
   equal(getDirectionalNeighbor(layout, 'questBoard', 'right'), 'grannyThistle');
   equal(getDirectionalNeighbor(layout, 'questBoard', 'down'), 'playerTent');
   equal(getDirectionalNeighbor(layout, 'questBoard', 'left'), null);
@@ -185,6 +186,90 @@ async function testLayout() {
     hitTestHubMap(layout, layout.dismissRect.x + 2, layout.dismissRect.y + 2),
     { type: 'dismiss', id: 'firstQuestGuide' },
   );
+
+  const portraitLayout = getHubMapLayout({
+    width: 390,
+    height: 844,
+    landmarks: LANDMARKS,
+    focusId: 'questBoard',
+    guideTargetId: 'worldMap',
+  });
+  deepStrictEqual(
+    portraitLayout.landmarks.filter(item => item.showLabel).map(item => item.id),
+    ['questBoard', 'worldMap'],
+    'portrait shows only the focused and guided landmark labels',
+  );
+
+  const landmarksWithFallback = [
+    ...LANDMARKS,
+    { id: 'newLandmark', label: 'New Landmark' },
+  ];
+  for (const [width, height] of [[960, 540], [390, 844]]) {
+    const fallbackLayout = getHubMapLayout({
+      width,
+      height,
+      landmarks: landmarksWithFallback,
+      focusId: 'questBoard',
+      guideTargetId: 'questBoard',
+    });
+    assertNoPairOverlap(
+      fallbackLayout.landmarks.map(item => item.hitRect),
+      `${width}x${height} fallback hit targets do not overlap`,
+    );
+    const fallback = fallbackLayout.landmarks.find(item => item.id === 'newLandmark');
+    deepStrictEqual(
+      hitTestHubMap(
+        fallbackLayout,
+        fallback.hitRect.x + fallback.hitRect.w / 2,
+        fallback.hitRect.y + fallback.hitRect.h / 2,
+      ),
+      { type: 'landmark', id: 'newLandmark' },
+      `${width}x${height} fallback center hit resolves exactly`,
+    );
+  }
+
+  const overlappingDismissLayout = {
+    dismissRect: { x: 10, y: 10, w: 30, h: 30 },
+    landmarks: [{ id: 'underDismiss', hitRect: { x: 10, y: 10, w: 30, h: 30 } }],
+  };
+  deepStrictEqual(
+    hitTestHubMap(overlappingDismissLayout, 20, 20),
+    { type: 'dismiss', id: 'firstQuestGuide' },
+    'dismiss hit takes precedence over an overlapping landmark',
+  );
+
+  const perpendicularLayout = {
+    landmarks: [
+      { id: 'origin', hitRect: { x: 0, y: 0, w: 10, h: 10 } },
+      { id: 'aligned', hitRect: { x: 30, y: 0, w: 10, h: 10 } },
+      { id: 'offAxis', hitRect: { x: 10, y: 15, w: 10, h: 10 } },
+    ],
+  };
+  equal(
+    getDirectionalNeighbor(perpendicularLayout, 'origin', 'right'),
+    'aligned',
+    'perpendicular penalty favors the visually aligned candidate',
+  );
+
+  const tiedLayout = {
+    landmarks: [
+      { id: 'origin', hitRect: { x: 0, y: 0, w: 10, h: 10 } },
+      { id: 'zeta', hitRect: { x: 20, y: -10, w: 10, h: 10 } },
+      { id: 'alpha', hitRect: { x: 20, y: 10, w: 10, h: 10 } },
+    ],
+  };
+  equal(
+    getDirectionalNeighbor(tiedLayout, 'origin', 'right'),
+    'alpha',
+    'equal directional scores break by landmark ID',
+  );
+
+  const boundaryLayout = {
+    dismissRect: null,
+    landmarks: [{ id: 'boundary', hitRect: { x: 10, y: 20, w: 30, h: 40 } }],
+  };
+  equal(hitTestHubMap(boundaryLayout, 40, 30), null, 'right edge is outside the hit rectangle');
+  equal(hitTestHubMap(boundaryLayout, 20, 60), null, 'bottom edge is outside the hit rectangle');
 
   console.log('PASS: layout');
 }

@@ -39,13 +39,48 @@ function rect(x, y, w, h) {
 function contains(rectangle, x, y) {
   return Boolean(rectangle)
     && x >= rectangle.x
-    && x <= rectangle.x + rectangle.w
+    && x < rectangle.x + rectangle.w
     && y >= rectangle.y
-    && y <= rectangle.y + rectangle.h;
+    && y < rectangle.y + rectangle.h;
 }
 
 function center(rectangle) {
   return { x: rectangle.x + rectangle.w / 2, y: rectangle.y + rectangle.h / 2 };
+}
+
+function intersects(a, b) {
+  return a.x < b.x + b.w
+    && a.x + a.w > b.x
+    && a.y < b.y + b.h
+    && a.y + a.h > b.y;
+}
+
+function isInside(inner, outer) {
+  return inner.x >= outer.x
+    && inner.y >= outer.y
+    && inner.x + inner.w <= outer.x + outer.w
+    && inner.y + inner.h <= outer.y + outer.h;
+}
+
+function getFallbackCandidates(mapRect, orientation, hitW, hitH) {
+  const columns = orientation === 'landscape' ? 4 : 3;
+  const rows = orientation === 'landscape' ? 3 : 4;
+  const minX = mapRect.x + hitW / 2;
+  const maxX = mapRect.x + mapRect.w - hitW / 2;
+  const minY = mapRect.y + 30;
+  const maxY = mapRect.y + mapRect.h - (hitH - 30);
+  const candidates = [];
+
+  for (let row = 0; row < rows; row++) {
+    for (let column = 0; column < columns; column++) {
+      candidates.push({
+        x: minX + (maxX - minX) * column / (columns - 1),
+        y: minY + (maxY - minY) * row / (rows - 1),
+      });
+    }
+  }
+
+  return candidates;
 }
 
 export function getGuideOverlayLayout(width, height) {
@@ -80,38 +115,64 @@ export function getHubMapLayout({ width, height, landmarks, focusId, guideTarget
     promptRect.y - mapTop - 10,
   );
   const anchorSet = ANCHORS[orientation];
-  const fallbackColumns = orientation === 'landscape' ? 4 : 3;
   const sourceLandmarks = Array.isArray(landmarks) ? landmarks : [];
+  const hitW = orientation === 'landscape' ? 136 : 100;
+  const hitH = orientation === 'landscape' ? 74 : 80;
+  const labelW = orientation === 'landscape' ? 128 : 96;
+  const labelH = 26;
 
-  const placed = sourceLandmarks.map((landmark, index) => {
-    const fallback = [
-      ((index % fallbackColumns) + 0.5) / fallbackColumns,
-      (Math.floor(index / fallbackColumns) + 0.5)
-        / Math.ceil(Math.max(1, sourceLandmarks.length) / fallbackColumns),
-    ];
-    const [nx, ny] = anchorSet[landmark.id] || fallback;
-    const point = {
-      x: mapRect.x + mapRect.w * nx,
-      y: mapRect.y + mapRect.h * ny,
-    };
-    const hitW = orientation === 'landscape' ? 136 : 100;
-    const hitH = orientation === 'landscape' ? 74 : 80;
-    const labelW = orientation === 'landscape' ? 128 : 96;
-    const labelH = 26;
-    return {
-      ...landmark,
-      point,
-      iconRect: rect(point.x - 22, point.y - 26, 44, 44),
-      labelRect: rect(point.x - labelW / 2, point.y + 18, labelW, labelH),
-      hitRect: rect(point.x - hitW / 2, point.y - 30, hitW, hitH),
-      showLabel: orientation === 'landscape' || landmark.id === focusId || landmark.id === guideTargetId,
-    };
+  const placeLandmark = (landmark, point) => ({
+    ...landmark,
+    point,
+    iconRect: rect(point.x - 22, point.y - 26, 44, 44),
+    labelRect: rect(point.x - labelW / 2, point.y + 18, labelW, labelH),
+    hitRect: rect(point.x - hitW / 2, point.y - 30, hitW, hitH),
+    showLabel: orientation === 'landscape' || landmark.id === focusId || landmark.id === guideTargetId,
   });
+
+  const placedByIndex = new Array(sourceLandmarks.length);
+  const occupiedRects = [];
+  const fallbackLandmarks = [];
+
+  sourceLandmarks.forEach((landmark, index) => {
+    const anchor = anchorSet[landmark.id];
+    if (!anchor) {
+      fallbackLandmarks.push({ landmark, index });
+      return;
+    }
+
+    const point = {
+      x: mapRect.x + mapRect.w * anchor[0],
+      y: mapRect.y + mapRect.h * anchor[1],
+    };
+    const placed = placeLandmark(landmark, point);
+    placedByIndex[index] = placed;
+    occupiedRects.push(placed.hitRect);
+  });
+
+  const fallbackCandidates = getFallbackCandidates(mapRect, orientation, hitW, hitH);
+  fallbackLandmarks
+    .sort((a, b) => String(a.landmark.id).localeCompare(String(b.landmark.id)) || a.index - b.index)
+    .forEach(({ landmark, index }) => {
+      const point = fallbackCandidates.find(candidate => {
+        const prospective = rect(candidate.x - hitW / 2, candidate.y - 30, hitW, hitH);
+        return isInside(prospective, mapRect)
+          && occupiedRects.every(occupied => !intersects(prospective, occupied));
+      });
+
+      if (!point) {
+        throw new Error(`Unable to place hub landmark "${landmark.id}" without overlap`);
+      }
+
+      const placed = placeLandmark(landmark, point);
+      placedByIndex[index] = placed;
+      occupiedRects.push(placed.hitRect);
+    });
 
   return {
     orientation,
     mapRect,
-    landmarks: placed,
+    landmarks: placedByIndex,
     objectiveRect: overlay?.objectiveRect || null,
     dismissRect: overlay?.dismissRect || null,
     promptRect,
