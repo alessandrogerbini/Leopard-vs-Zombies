@@ -12,7 +12,7 @@
 
 No actionable P0, P1, or P2 findings remain.
 
-The first combined comparison found a P1 interaction-to-imagery mismatch in the landscape state: the dynamic Scout Hazel, Momo Foreman, and Storage Chest targets followed the reference's 4-4-1 grid while the corrected production illustration uses a 3-4-2 grid. That made several labels and click regions point at the wrong illustrated destinations.
+The first combined comparison found a P1 interaction-to-imagery mismatch in the landscape state: the pre-fix code anchors used a 4-4-1 grid, while the selected reference visibly uses a 4-3-2 composition and the final production landscape uses a 3-4-2 composition. The pre-fix code grid matched neither visual and made several labels and click regions point at the wrong illustrated destinations.
 
 The landscape anchors were aligned to the production illustration. The post-fix combined comparison shows each of the nine targets over its corresponding landmark, with the Quest Board as the only guided gold target. The top objective beacon and bottom prompt remain outside the landmark labels and hit regions.
 
