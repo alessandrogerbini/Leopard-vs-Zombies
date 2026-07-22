@@ -15,7 +15,31 @@ import { grantXp } from './rpg/progression-rpg.js';
 import { acceptQuest, completeQuest, getActiveQuestTracker, getAvailableQuests, isQuestObjectiveComplete } from './rpg/quest-system.js';
 import { createHubZone } from './rpg/zone.js';
 import { getWorldMapEntries } from './rpg/world-map-rpg.js';
-import { drawAlphaEndCard, drawCrafting, drawDialogue, drawHub, drawInventory, drawQuestBoard, drawRewardBanner, drawSaveSelect, drawWorldMap, drawZone, hitTestSaveSlot } from './rpg/hud-rpg.js';
+import { deriveFirstQuestGuide } from './rpg/guidance-rpg.js';
+import {
+  getDirectionalNeighbor,
+  getGuideOverlayLayout,
+  getHubMapLayout,
+  hitTestGuideDismiss,
+  hitTestHubMap,
+} from './rpg/hub-map-layout.js';
+import {
+  drawAlphaEndCard,
+  drawCrafting,
+  drawDialogue,
+  drawHub,
+  drawInventory,
+  drawQuestBoard,
+  drawRewardBanner,
+  drawSaveSelect,
+  drawWorldMap,
+  drawZone,
+  getQuestBoardLayout,
+  getWorldMapLayout,
+  hitTestQuestBoard,
+  hitTestSaveSlot,
+  hitTestWorldMap,
+} from './rpg/hud-rpg.js';
 
 export function launchRPGGame(options) {
   const animal = options.animal || { name: 'LEOPARD', color: '#e8a828' };
@@ -26,6 +50,19 @@ export function launchRPGGame(options) {
   const container = canvases.container || document.getElementById('game-container');
   const canvas2d = canvases.game2d || document.getElementById('game');
   const hudCtx = hudCanvas.getContext('2d');
+  const previousHudPointerEvents = hudCanvas.style.pointerEvents;
+  const hubMapAssets = {
+    landscape: {
+      status: 'loading',
+      url: new URL('../assets/rpg/rescue-hub-map-landscape.png', import.meta.url).href,
+      image: null,
+    },
+    portrait: {
+      status: 'loading',
+      url: new URL('../assets/rpg/rescue-hub-map-portrait.png', import.meta.url).href,
+      image: null,
+    },
+  };
 
   let returned = false;
   let screen = 'saveSelect';
@@ -36,7 +73,7 @@ export function launchRPGGame(options) {
   let hubZone = null;
   let hubNpcs = [];
   let focusItems = [];
-  let selectedFocus = 0;
+  let selectedFocus = null;
   let selectedQuest = 0;
   let selectedMapEntry = 0;
   let selectedRecipe = 0;
@@ -50,6 +87,23 @@ export function launchRPGGame(options) {
   let runtimeCube = null;
   let frameId = 0;
   let lastFrameTime = performance.now();
+
+  function preloadHubMapAssets() {
+    Object.values(hubMapAssets).forEach(asset => {
+      const image = new Image();
+      asset.image = image;
+      image.onload = () => {
+        asset.status = 'ready';
+        if (!returned) draw();
+      };
+      image.onerror = () => {
+        asset.status = 'failed';
+        asset.image = null;
+        if (!returned) draw();
+      };
+      image.src = asset.url;
+    });
+  }
 
   function resize() {
     const w = Math.max(1, Math.floor(window.innerWidth || 960));
@@ -75,10 +129,29 @@ export function launchRPGGame(options) {
     hubZone = createHubZone(activeSave);
     hubNpcs = createHubNpcs(activeSave);
     focusItems = [
-      ...hubNpcs.map(npc => ({ type: 'npc', id: npc.id, label: npc.name, npc })),
-      ...hubZone.interactables.map(item => ({ type: item.kind, id: item.id, label: item.label, item })),
+      ...hubNpcs.map(npc => ({
+        type: 'npc',
+        id: npc.id,
+        label: npc.name,
+        x: npc.x,
+        z: npc.z,
+        npc,
+      })),
+      ...hubZone.interactables.map(item => ({
+        type: item.kind,
+        id: item.id,
+        label: item.label,
+        x: item.x,
+        z: item.z,
+        item,
+      })),
     ];
-    selectedFocus = Math.min(selectedFocus, Math.max(0, focusItems.length - 1));
+    if (!focusItems.some(item => item.id === selectedFocus)) {
+      const guide = deriveFirstQuestGuide({ save: activeSave, screen });
+      selectedFocus = focusItems.some(item => item.id === guide.targetId)
+        ? guide.targetId
+        : focusItems[0]?.id || null;
+    }
     selectedQuest = Math.min(selectedQuest, Math.max(0, getAvailableQuests(activeSave).length - 1));
     selectedMapEntry = Math.min(selectedMapEntry, Math.max(0, getWorldMapEntries(activeSave).length - 1));
   }
@@ -88,7 +161,37 @@ export function launchRPGGame(options) {
     const available = activeSave ? getAvailableQuests(activeSave) : [];
     const entries = activeSave ? getWorldMapEntries(activeSave) : [];
     const recipes = getRecipeIds().map(id => getRecipe(id));
-    const focusItem = focusItems[selectedFocus] || null;
+    const focusItem = focusItems.find(item => item.id === selectedFocus) || null;
+    const guide = deriveFirstQuestGuide({ save: activeSave, screen });
+    const hubGuideTarget = guide.active && focusItems.some(item => item.id === guide.targetId)
+      ? guide.targetId
+      : null;
+    const hubLayout = getHubMapLayout({
+      width: hudCanvas.width,
+      height: hudCanvas.height,
+      landmarks: focusItems.map(({ id, label, type, x, z }) => ({ id, label, type, x, z })),
+      focusId: selectedFocus,
+      guideTargetId: hubGuideTarget,
+    });
+    const questGuideActive = guide.active
+      && available.some(quest => guide.targetId === `quest:${quest.id}`);
+    const worldGuideActive = guide.active
+      && entries.some(entry => guide.targetId === `zone:${entry.id}`);
+    const questBoardLayout = getQuestBoardLayout(
+      hudCanvas.width,
+      hudCanvas.height,
+      available.length,
+      questGuideActive,
+    );
+    const worldMapLayout = getWorldMapLayout(
+      hudCanvas.width,
+      hudCanvas.height,
+      entries.length,
+      worldGuideActive,
+    );
+    const zoneGuideLayout = guide.active && guide.step === 'forest-edge-objectives'
+      ? getGuideOverlayLayout(hudCanvas.width, hudCanvas.height)
+      : null;
     return {
       animal,
       save: activeSave,
@@ -96,12 +199,16 @@ export function launchRPGGame(options) {
         zone: hubZone,
         npcs: hubNpcs,
         interactables: hubZone?.interactables || [],
+        layout: hubLayout,
+        mapAsset: hubMapAssets[hubLayout.orientation],
       },
       focusItem,
       activeQuest,
+      guide,
       dialogue: dialogueNpc ? { name: dialogueNpc.name, lines: dialogueNpc.dialogue } : null,
-      questBoard: { available, selectedQuest },
-      worldMap: { entries, selectedMapEntry },
+      questBoard: { available, selectedQuest, layout: questBoardLayout },
+      worldMap: { entries, selectedMapEntry, layout: worldMapLayout },
+      zoneGuideLayout,
       combat: combatState ? getCombatSummary(combatState) : null,
       gatheringNodes: activeSave ? createGatheringNodes(activeSave, activeSave.currentZone) : [],
       crafting: { recipes, selectedRecipe, message: craftingMessage },
@@ -123,9 +230,12 @@ export function launchRPGGame(options) {
         damageSources: hubZone.damageSources.length,
         interactables: hubZone.interactables.map(item => item.id),
         npcs: hubNpcs.map(npc => ({ id: npc.id, name: npc.name, dialogueId: npc.dialogueId })),
+        layout: view.hub.layout,
+        mapAssetStatus: view.hub.mapAsset.status,
       } : null,
       focusItem: view?.focusItem ? { id: view.focusItem.id, label: view.focusItem.label, type: view.focusItem.type } : null,
       activeQuest: view?.activeQuest || null,
+      guide: view?.guide || null,
       dialogue: view?.dialogue || null,
       questBoard: view?.questBoard || null,
       worldMap: view?.worldMap || null,
@@ -227,7 +337,7 @@ export function launchRPGGame(options) {
     }
     screen = 'hub';
     confirmDelete = false;
-    selectedFocus = 0;
+    selectedFocus = null;
     selectedQuest = 0;
     selectedMapEntry = 0;
     selectedRecipe = 0;
@@ -260,9 +370,11 @@ export function launchRPGGame(options) {
     if (frameId) cancelAnimationFrame(frameId);
     window.removeEventListener('keydown', onKeyDown);
     window.removeEventListener('resize', resize);
+    hudCanvas.removeEventListener('pointermove', onPointerMove);
+    hudCanvas.removeEventListener('pointerleave', onPointerLeave);
     hudCanvas.removeEventListener('pointerdown', onPointerDown);
-    hudCanvas.removeEventListener('mousedown', onPointerDown);
-    hudCanvas.removeEventListener('touchstart', onPointerDown);
+    hudCanvas.style.cursor = 'default';
+    hudCanvas.style.pointerEvents = previousHudPointerEvents;
     if (activeSave) {
       activeSave.playtimeSeconds = Math.floor(activeSave.playtimeSeconds || 0);
       writeSaveSlot(localStorage, activeSave);
@@ -368,28 +480,27 @@ export function launchRPGGame(options) {
     }
 
     if (screen === 'hub') {
-      if (e.code === 'ArrowLeft' || e.code === 'ArrowUp') {
+      const direction = {
+        ArrowLeft: 'left',
+        ArrowRight: 'right',
+        ArrowUp: 'up',
+        ArrowDown: 'down',
+      }[e.code];
+      if (direction) {
         e.preventDefault();
-        selectedFocus = (selectedFocus - 1 + focusItems.length) % focusItems.length;
-        draw();
-        return;
-      }
-      if (e.code === 'ArrowRight' || e.code === 'ArrowDown') {
-        e.preventDefault();
-        selectedFocus = (selectedFocus + 1) % focusItems.length;
+        const nextFocus = getDirectionalNeighbor(getViewModel().hub.layout, selectedFocus, direction);
+        if (nextFocus) selectedFocus = nextFocus;
         draw();
         return;
       }
       if (e.code === 'KeyQ') {
         e.preventDefault();
-        screen = 'questBoard';
-        draw();
+        activateFocusedHubItem('questBoard');
         return;
       }
       if (e.code === 'KeyM') {
         e.preventDefault();
-        screen = 'worldMap';
-        draw();
+        activateFocusedHubItem('worldMap');
         return;
       }
       if (e.code === 'KeyF') {
@@ -450,6 +561,7 @@ export function launchRPGGame(options) {
         e.preventDefault();
         activeSave = acceptQuest(activeSave, available[selectedQuest].id);
         activeSave = writeSaveSlot(localStorage, activeSave);
+        selectedFocus = 'worldMap';
         screen = 'hub';
         draw();
       }
@@ -664,9 +776,10 @@ export function launchRPGGame(options) {
     screen = questId === 'statueReveal' ? 'alphaEndCard' : 'hub';
   }
 
-  function activateFocusedHubItem() {
-    const focus = focusItems[selectedFocus];
+  function activateFocusedHubItem(focusId = selectedFocus) {
+    const focus = focusItems.find(item => item.id === focusId);
     if (!focus) return;
+    selectedFocus = focus.id;
     if (focus.type === 'npc') {
       dialogueNpc = focus.npc;
       screen = 'dialogue';
@@ -674,32 +787,141 @@ export function launchRPGGame(options) {
       screen = 'questBoard';
     } else if (focus.type === 'worldMap') {
       screen = 'worldMap';
+      const guide = deriveFirstQuestGuide({ save: activeSave, screen });
+      const guideZoneId = guide.targetId?.startsWith('zone:')
+        ? guide.targetId.slice('zone:'.length)
+        : null;
+      const guideZoneIndex = getWorldMapEntries(activeSave).findIndex(entry => entry.id === guideZoneId);
+      if (guideZoneIndex >= 0) selectedMapEntry = guideZoneIndex;
+    } else if (focus.type === 'craftingBench') {
+      screen = 'crafting';
+    } else if (focus.type === 'storage') {
+      screen = 'inventory';
+    } else if (focus.type === 'rest') {
+      activeSave.player.hp = activeSave.player.maxHp;
+      activeSave = writeSaveSlot(localStorage, activeSave);
     }
     draw();
   }
 
+  function dismissFirstQuestGuide() {
+    if (!activeSave) return;
+    activeSave.flags.firstQuestGuideDismissed = true;
+    activeSave = writeSaveSlot(localStorage, activeSave);
+    draw();
+  }
+
   function getHudPoint(event) {
-    const source = event.touches && event.touches.length > 0 ? event.touches[0] : event;
-    if (source.clientX === undefined || source.clientY === undefined) return null;
+    if (event.clientX === undefined || event.clientY === undefined) return null;
     const rect = hudCanvas.getBoundingClientRect();
     return {
-      x: (source.clientX - rect.left) * (hudCanvas.width / rect.width),
-      y: (source.clientY - rect.top) * (hudCanvas.height / rect.height),
+      x: (event.clientX - rect.left) * (hudCanvas.width / rect.width),
+      y: (event.clientY - rect.top) * (hudCanvas.height / rect.height),
     };
   }
 
-  function onPointerDown(event) {
-    if (screen !== 'saveSelect') return;
+  function getPointerHit(view, point) {
+    const guideLayout = screen === 'hub'
+      ? view.hub.layout
+      : screen === 'questBoard'
+        ? view.questBoard.layout
+        : screen === 'worldMap'
+          ? view.worldMap.layout
+          : screen === 'zone'
+            ? view.zoneGuideLayout
+            : null;
+    const dismiss = hitTestGuideDismiss(guideLayout, point.x, point.y);
+    if (dismiss) return dismiss;
+
+    if (screen === 'hub') return hitTestHubMap(view.hub.layout, point.x, point.y);
+    if (screen === 'questBoard') return hitTestQuestBoard(view.questBoard.layout, point.x, point.y);
+    if (screen === 'worldMap') return hitTestWorldMap(view.worldMap.layout, point.x, point.y);
+    return null;
+  }
+
+  function onPointerMove(event) {
     const point = getHudPoint(event);
     if (!point) return;
-    const hit = hitTestSaveSlot(hudCanvas.width, hudCanvas.height, point.x, point.y);
+
+    if (screen === 'saveSelect') {
+      hudCanvas.style.cursor = hitTestSaveSlot(hudCanvas.width, hudCanvas.height, point.x, point.y)
+        ? 'pointer'
+        : 'default';
+      return;
+    }
+
+    if (!activeSave || !['hub', 'questBoard', 'worldMap', 'zone'].includes(screen)) {
+      hudCanvas.style.cursor = 'default';
+      return;
+    }
+
+    const view = getViewModel();
+    const hit = getPointerHit(view, point);
+    hudCanvas.style.cursor = hit ? 'pointer' : 'default';
+
+    if (screen === 'hub' && hit?.type === 'landmark' && selectedFocus !== hit.id) {
+      selectedFocus = hit.id;
+      draw();
+    } else if (screen === 'questBoard' && hit?.type === 'quest' && selectedQuest !== hit.index) {
+      selectedQuest = hit.index;
+      draw();
+    } else if (screen === 'worldMap' && hit?.type === 'zone' && selectedMapEntry !== hit.index) {
+      selectedMapEntry = hit.index;
+      draw();
+    }
+  }
+
+  function onPointerLeave() {
+    hudCanvas.style.cursor = 'default';
+  }
+
+  function onPointerDown(event) {
+    const point = getHudPoint(event);
+    if (!point) return;
+
+    if (screen === 'saveSelect') {
+      const hit = hitTestSaveSlot(hudCanvas.width, hudCanvas.height, point.x, point.y);
+      if (!hit) return;
+      event.preventDefault();
+      if (selectedSlot === hit.slot) startSelectedSlot();
+      else {
+        selectedSlot = hit.slot;
+        confirmDelete = false;
+        draw();
+      }
+      return;
+    }
+
+    if (!activeSave || !['hub', 'questBoard', 'worldMap', 'zone'].includes(screen)) return;
+    const view = getViewModel();
+    const hit = getPointerHit(view, point);
     if (!hit) return;
     event.preventDefault();
-    if (selectedSlot === hit.slot) startSelectedSlot();
-    else {
-      selectedSlot = hit.slot;
-      confirmDelete = false;
+
+    if (hit.type === 'dismiss') {
+      dismissFirstQuestGuide();
+      return;
+    }
+    if (screen === 'hub' && hit.type === 'landmark') {
+      activateFocusedHubItem(hit.id);
+      return;
+    }
+    if (screen === 'questBoard' && hit.type === 'quest') {
+      const quest = view.questBoard.available[hit.index];
+      if (!quest) return;
+      selectedQuest = hit.index;
+      activeSave = acceptQuest(activeSave, quest.id);
+      activeSave = writeSaveSlot(localStorage, activeSave);
+      selectedFocus = 'worldMap';
+      screen = 'hub';
       draw();
+      return;
+    }
+    if (screen === 'worldMap' && hit.type === 'zone') {
+      const entry = view.worldMap.entries[hit.index];
+      if (!entry?.unlocked) return;
+      selectedMapEntry = hit.index;
+      startZone(entry.id);
     }
   }
 
@@ -712,12 +934,14 @@ export function launchRPGGame(options) {
   canvas3d.style.height = '100%';
   hudCanvas.style.width = '100%';
   hudCanvas.style.height = '100%';
+  hudCanvas.style.pointerEvents = 'auto';
 
   window.addEventListener('keydown', onKeyDown);
   window.addEventListener('resize', resize);
+  hudCanvas.addEventListener('pointermove', onPointerMove);
+  hudCanvas.addEventListener('pointerleave', onPointerLeave);
   hudCanvas.addEventListener('pointerdown', onPointerDown);
-  hudCanvas.addEventListener('mousedown', onPointerDown);
-  hudCanvas.addEventListener('touchstart', onPointerDown, { passive: false });
+  preloadHubMapAssets();
   resize();
 
   return { cleanup: returnToTitle };

@@ -6,6 +6,7 @@ const CASES = new Set([
   'rpg-save-select',
   'cleanup',
   'hub-dialogue-world-map',
+  'guided-hub-pointer',
   'combat-death-respawn',
   'reward-cadence',
   'alpha-end-card-reload',
@@ -36,6 +37,28 @@ async function tapKey(page, key, holdMs = 60) {
   await sleep(holdMs);
   await page.keyboard.up(key);
   await sleep(120);
+}
+
+async function hudClientPoint(page, rect) {
+  return page.$eval('#hud3d', (canvas, canvasRect) => {
+    const bounds = canvas.getBoundingClientRect();
+    return {
+      x: bounds.left + (canvasRect.x + canvasRect.w / 2) * (bounds.width / canvas.width),
+      y: bounds.top + (canvasRect.y + canvasRect.h / 2) * (bounds.height / canvas.height),
+    };
+  }, rect);
+}
+
+async function moveToHudRect(page, rect) {
+  const point = await hudClientPoint(page, rect);
+  await page.mouse.move(point.x, point.y);
+  await sleep(120);
+}
+
+async function clickHudRect(page, rect) {
+  const point = await hudClientPoint(page, rect);
+  await page.mouse.click(point.x, point.y);
+  await sleep(180);
 }
 
 async function withBrowser(fn) {
@@ -216,7 +239,10 @@ async function testHubDialogueWorldMap() {
     assert(debug.hub.interactables.includes('storageChest'), 'hub exposes storage chest prompt');
     assert(debug.hub.npcs.length === 4, 'hub exposes four named NPC prompts');
     assert(debug.hub.npcs[0].name === 'Granny Thistle', 'Granny Thistle is the first hub NPC');
+    assert(debug.focusItem.id === 'questBoard', 'fresh hub focus starts on Quest Board');
 
+    await tapKey(page, 'ArrowRight');
+    await page.waitForFunction(() => window.__rpgDebug.focusItem?.id === 'grannyThistle', { timeout: TIMEOUT });
     await tapKey(page, 'Enter');
     await page.waitForFunction(() => window.__rpgDebug && window.__rpgDebug.screen === 'dialogue', { timeout: TIMEOUT });
     debug = await page.evaluate(() => window.__rpgDebug);
@@ -244,6 +270,76 @@ async function testHubDialogueWorldMap() {
     assert(debug.worldMap.entries.find(entry => entry.id === 'forestEdge').unlocked, 'Forest Edge is unlocked');
     assert(!debug.worldMap.entries.find(entry => entry.id === 'rabbitVillage').unlocked, 'Rabbit Village is locked before first quest completion');
     assert(debug.worldMap.entries.find(entry => entry.id === 'rabbitVillage').reason === 'Complete The Hero Sign-Up Sheet', 'Rabbit Village lock reason is short and specific');
+    page.__assertNoFailures();
+  });
+}
+
+async function testGuidedHubPointer() {
+  await withBrowser(async browser => {
+    const page = await newPage(browser);
+    await launchRpgToHub(page);
+
+    let debug = await page.evaluate(() => window.__rpgDebug);
+    assert(debug.focusItem.id === 'questBoard', 'guided fresh save focuses Quest Board');
+    assert(debug.guide.step === 'open-quest-board', 'guided fresh save points to Quest Board');
+
+    const grannyRect = debug.hub.layout.landmarks.find(item => item.id === 'grannyThistle').hitRect;
+    await moveToHudRect(page, grannyRect);
+    await page.waitForFunction(() => window.__rpgDebug.focusItem?.id === 'grannyThistle', { timeout: TIMEOUT });
+    assert(true, 'hovering Granny Thistle shares keyboard focus');
+
+    debug = await page.evaluate(() => window.__rpgDebug);
+    const questBoardRect = debug.hub.layout.landmarks.find(item => item.id === 'questBoard').hitRect;
+    await clickHudRect(page, questBoardRect);
+    await page.waitForFunction(() => window.__rpgDebug.screen === 'questBoard', { timeout: TIMEOUT });
+    debug = await page.evaluate(() => window.__rpgDebug);
+    assert(debug.activeQuest === null, 'opening Quest Board does not also accept a quest');
+    assert(debug.guide.step === 'accept-hero-signup', 'Quest Board guide points to Hero Sign-Up');
+
+    const firstQuestRect = debug.questBoard.layout.rows[0].rect;
+    await clickHudRect(page, firstQuestRect);
+    await page.waitForFunction(() => (
+      window.__rpgDebug.screen === 'hub'
+      && window.__rpgDebug.activeQuest?.id === 'heroSignup'
+    ), { timeout: TIMEOUT });
+    debug = await page.evaluate(() => window.__rpgDebug);
+    assert(debug.guide.step === 'travel-to-forest-edge', 'accepted quest guides travel to Forest Edge');
+
+    const worldMapRect = debug.hub.layout.landmarks.find(item => item.id === 'worldMap').hitRect;
+    await clickHudRect(page, worldMapRect);
+    await page.waitForFunction(() => window.__rpgDebug.screen === 'worldMap', { timeout: TIMEOUT });
+    debug = await page.evaluate(() => window.__rpgDebug);
+    const forestEdgeIndex = debug.worldMap.entries.findIndex(entry => entry.id === 'forestEdge');
+    assert(forestEdgeIndex >= 0, 'World Map includes Forest Edge');
+    await clickHudRect(page, debug.worldMap.layout.cards[forestEdgeIndex].rect);
+    await page.waitForFunction(() => window.__rpgDebug.screen === 'zone', { timeout: TIMEOUT });
+
+    debug = await page.evaluate(() => window.__rpgDebug);
+    assert(debug.guide.progress.wood.current === 0 && debug.guide.progress.wood.required === 5, 'Forest guide starts at Wood 0/5');
+    assert(debug.guide.progress.tutorialZombies.current === 0 && debug.guide.progress.tutorialZombies.required === 3, 'Forest guide starts at Zombies 0/3');
+
+    await tapKey(page, 'KeyG');
+    debug = await page.evaluate(() => window.__rpgDebug);
+    assert(debug.guide.progress.wood.current === 3, 'first gather updates guide to Wood 3/5');
+    await tapKey(page, 'KeyG');
+    debug = await page.evaluate(() => window.__rpgDebug);
+    assert(debug.guide.progress.wood.current === 5, 'second gather updates guide to Wood 5/5');
+
+    await tapKey(page, 'Enter');
+    debug = await page.evaluate(() => window.__rpgDebug);
+    assert(debug.guide.progress.tutorialZombies.current === 1, 'first attack updates guide to Zombies 1/3');
+    await tapKey(page, 'Enter');
+    await page.waitForFunction(() => window.__rpgDebug.guide.progress.tutorialZombies.current === 2, { timeout: TIMEOUT });
+    await tapKey(page, 'Enter');
+    await page.waitForFunction(() => (
+      window.__rpgDebug.screen === 'hub'
+      && window.__rpgDebug.activeQuest === null
+      && window.__rpgDebug.rewardBanner?.questTitle === 'The Hero Sign-Up Sheet'
+    ), { timeout: TIMEOUT });
+
+    debug = await page.evaluate(() => window.__rpgDebug);
+    assert(debug.guide.active === false, 'first-quest guide stops after Hero Sign-Up completion');
+    assert(debug.rewardBanner.questTitle === 'The Hero Sign-Up Sheet', 'completion returns to hub with Hero Sign-Up reward');
     page.__assertNoFailures();
   });
 }
@@ -397,6 +493,7 @@ for (const caseName of casesToRun) {
   if (caseName === 'rpg-save-select') await testRpgSaveSelect();
   if (caseName === 'cleanup') await testCleanup();
   if (caseName === 'hub-dialogue-world-map') await testHubDialogueWorldMap();
+  if (caseName === 'guided-hub-pointer') await testGuidedHubPointer();
   if (caseName === 'combat-death-respawn') await testCombatDeathRespawn();
   if (caseName === 'reward-cadence') await testRewardCadence();
   if (caseName === 'alpha-end-card-reload') await testAlphaEndCardReload();
