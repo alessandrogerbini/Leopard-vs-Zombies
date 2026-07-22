@@ -274,5 +274,51 @@ async function testLayout() {
   console.log('PASS: layout');
 }
 
+async function testScreenLayouts() {
+  const {
+    getQuestBoardLayout,
+    getWorldMapLayout,
+    hitTestQuestBoard,
+    hitTestWorldMap,
+  } = await importRpgModule('hud-rpg.js');
+
+  for (const [width, height] of [[960, 540], [1280, 720], [390, 844]]) {
+    const questBoardLayout = getQuestBoardLayout(width, height, 1, true);
+    equal(questBoardLayout.rows.length, 1, `${width}x${height} quest board has one row`);
+    assertInside(questBoardLayout.objectiveRect, width, height, `${width}x${height} quest objective inside viewport`);
+    assertInside(questBoardLayout.dismissRect, width, height, `${width}x${height} quest dismiss inside viewport`);
+    assertInside(questBoardLayout.rows[0].rect, width, height, `${width}x${height} quest row inside viewport`);
+    deepStrictEqual(
+      hitTestQuestBoard(
+        questBoardLayout,
+        questBoardLayout.rows[0].rect.x + 2,
+        questBoardLayout.rows[0].rect.y + 2,
+      ),
+      { type: 'quest', index: 0 },
+      `${width}x${height} quest row hit resolves exactly`,
+    );
+
+    const worldMapLayout = getWorldMapLayout(width, height, 6, true);
+    equal(worldMapLayout.cards.length, 6, `${width}x${height} world map has six cards`);
+    assertInside(worldMapLayout.objectiveRect, width, height, `${width}x${height} map objective inside viewport`);
+    assertInside(worldMapLayout.dismissRect, width, height, `${width}x${height} map dismiss inside viewport`);
+    worldMapLayout.cards.forEach((card, index) => {
+      assertInside(card.rect, width, height, `${width}x${height} map card ${index} inside viewport`);
+    });
+    deepStrictEqual(
+      hitTestWorldMap(
+        worldMapLayout,
+        worldMapLayout.cards[1].rect.x + 2,
+        worldMapLayout.cards[1].rect.y + 2,
+      ),
+      { type: 'zone', index: 1 },
+      `${width}x${height} map card hit resolves exactly`,
+    );
+  }
+
+  console.log('PASS: screen-layouts');
+}
+
 await testGuidance();
 await testLayout();
+await testScreenLayouts();
