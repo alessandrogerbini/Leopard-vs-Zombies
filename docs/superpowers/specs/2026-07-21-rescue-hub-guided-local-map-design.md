@@ -6,7 +6,7 @@
 
 **Branch:** `rpg-alpha-startup-mode`
 
-**Status:** Approved design; pending written-spec review
+**Status:** Approved for implementation
 
 **Selected visual:** `docs/art/rpg-rescue-hub-local-map-selected.png`
 
