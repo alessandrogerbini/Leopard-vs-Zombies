@@ -9,14 +9,14 @@
 
 const ANCHORS = {
   landscape: {
-    questBoard: [0.125, 0.16],
-    grannyThistle: [0.375, 0.16],
-    craftingBench: [0.625, 0.16],
-    scoutHazel: [0.875, 0.16],
-    playerTent: [0.125, 0.5],
-    momoForeman: [0.375, 0.5],
-    shellbert: [0.625, 0.5],
-    storageChest: [0.875, 0.5],
+    questBoard: [0.15, 0.16],
+    grannyThistle: [0.47, 0.16],
+    craftingBench: [0.8, 0.16],
+    scoutHazel: [0.47, 0.5],
+    playerTent: [0.15, 0.5],
+    momoForeman: [0.82, 0.5],
+    shellbert: [0.64, 0.5],
+    storageChest: [0.84, 0.84],
     worldMap: [0.5, 0.84],
   },
   portrait: {

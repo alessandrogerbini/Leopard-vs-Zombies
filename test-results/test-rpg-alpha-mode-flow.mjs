@@ -7,6 +7,8 @@ const CASES = new Set([
   'cleanup',
   'hub-dialogue-world-map',
   'guided-hub-pointer',
+  'guide-dismissal',
+  'hub-map-fallback',
   'combat-death-respawn',
   'reward-cadence',
   'alpha-end-card-reload',
@@ -30,6 +32,13 @@ function assert(condition, message) {
 
 function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+function rectsOverlap(a, b) {
+  return a.x < b.x + b.w
+    && a.x + a.w > b.x
+    && a.y < b.y + b.h
+    && a.y + a.h > b.y;
 }
 
 async function tapKey(page, key, holdMs = 60) {
@@ -70,15 +79,19 @@ async function withBrowser(fn) {
   }
 }
 
-async function newPage(browser) {
+async function newPage(browser, { failHubMapImages = false } = {}) {
   const page = await browser.newPage();
   await page.setViewport({ width: 960, height: 540, deviceScaleFactor: 1 });
   const failures = [];
+  const deliberateMapFailures = new Set();
 
   await page.setRequestInterception(true);
   page.on('request', async req => {
     const url = new URL(req.url());
-    if (url.pathname.endsWith('/js/game.js')) {
+    if (failHubMapImages && url.pathname.includes('/assets/rpg/rescue-hub-map-')) {
+      deliberateMapFailures.add(req.url());
+      await req.abort('failed');
+    } else if (url.pathname.endsWith('/js/game.js')) {
       const response = await fetch(req.url());
       let body = await response.text();
       const marker = 'initRenderer(canvas);';
@@ -96,9 +109,14 @@ async function newPage(browser) {
 
   page.on('pageerror', err => failures.push(`pageerror: ${err.message}`));
   page.on('console', msg => {
-    if (msg.type() === 'error') failures.push(`console error: ${msg.text()}`);
+    if (msg.type() === 'error') {
+      const location = msg.location();
+      if (failHubMapImages && deliberateMapFailures.has(location.url)) return;
+      failures.push(`console error: ${msg.text()}`);
+    }
   });
   page.on('requestfailed', req => {
+    if (deliberateMapFailures.has(req.url())) return;
     const type = req.resourceType();
     if (['document', 'script', 'stylesheet', 'image', 'media', 'xhr', 'fetch'].includes(type)) {
       const failure = req.failure();
@@ -351,6 +369,57 @@ async function testGuidedHubPointer() {
   });
 }
 
+async function testGuideDismissal() {
+  await withBrowser(async browser => {
+    const page = await newPage(browser);
+    await launchRpgToHub(page);
+    await tapKey(page, 'KeyQ');
+    await page.waitForFunction(() => window.__rpgDebug?.screen === 'questBoard', { timeout: TIMEOUT });
+    await tapKey(page, 'Enter');
+    await page.waitForFunction(() => (
+      window.__rpgDebug?.screen === 'hub'
+      && window.__rpgDebug.activeQuest?.id === 'heroSignup'
+    ), { timeout: TIMEOUT });
+
+    let debug = await page.evaluate(() => window.__rpgDebug);
+    assert(debug.hub.layout.dismissRect, 'active first quest exposes the guide dismiss control');
+    await clickHudRect(page, debug.hub.layout.dismissRect);
+    await page.waitForFunction(() => window.__rpgDebug?.guide?.active === false, { timeout: TIMEOUT });
+    debug = await page.evaluate(() => window.__rpgDebug);
+    assert(debug.activeQuest.objective === 'Collect 5 Wood and bonk 3 tutorial zombies', 'dismissing guidance preserves the normal active quest objective');
+    assert(debug.activeSave.flags.firstQuestGuideDismissed === true, 'dismissing guidance persists its save flag');
+
+    await tapKey(page, 'Escape');
+    await waitForTitle(page);
+    await tapKey(page, 'Enter');
+    await page.waitForFunction(() => window.__lvzTestState.gameState === 'modeSelect', { timeout: TIMEOUT });
+    await moveModeSelection(page, 2);
+    await tapKey(page, 'Enter');
+    await page.waitForFunction(() => window.__lvzTestState.gameState === 'select', { timeout: TIMEOUT });
+    await tapKey(page, 'Enter');
+    await page.waitForFunction(() => window.__rpgDebug?.screen === 'saveSelect', { timeout: TIMEOUT });
+    await tapKey(page, 'Enter');
+    await page.waitForFunction(() => window.__rpgDebug?.screen === 'hub', { timeout: TIMEOUT });
+    debug = await page.evaluate(() => window.__rpgDebug);
+    assert(debug.guide.active === false, 'reloaded save keeps first-quest guidance dismissed');
+    assert(debug.activeQuest.id === 'heroSignup', 'reloaded save keeps Hero Sign-Up active');
+    page.__assertNoFailures();
+  });
+}
+
+async function testHubMapFallback() {
+  await withBrowser(async browser => {
+    const page = await newPage(browser, { failHubMapImages: true });
+    await launchRpgToHub(page);
+    await page.waitForFunction(() => window.__rpgDebug?.hub?.mapAssetStatus === 'failed', { timeout: TIMEOUT });
+    const debug = await page.evaluate(() => window.__rpgDebug);
+    assert(debug.hub.layout.landmarks.length === 9, 'fallback hub keeps nine landmark targets');
+    assert(debug.focusItem.id === 'questBoard', 'fallback hub keeps Quest Board focused');
+    await page.screenshot({ path: 'test-results/rpg-hub-fallback-960x540.png' });
+    page.__assertNoFailures();
+  });
+}
+
 async function acceptHeroQuestAndEnterForest(page) {
   await launchRpgToHub(page);
   await tapKey(page, 'KeyQ');
@@ -481,12 +550,33 @@ async function testReadability() {
       const page = await newPage(browser);
       await page.setViewport({ width: viewport.width, height: viewport.height, deviceScaleFactor: 1 });
       await launchRpgToHub(page);
+      await page.waitForFunction(() => window.__rpgDebug?.hub?.mapAssetStatus === 'ready', { timeout: TIMEOUT });
       const stats = await canvasStats(page, '#hud3d');
       assert(stats.colored > 500, `readability HUD is nonblank at ${viewport.label}`);
       const debug = await page.evaluate(() => window.__rpgDebug);
       assert(debug.screen === 'hub', `readability route reaches hub at ${viewport.label}`);
       assert(debug.hub.npcs.length === 4, `NPC prompts remain available at ${viewport.label}`);
       assert(debug.hub.interactables.includes('questBoard'), `quest board remains available at ${viewport.label}`);
+      assert(debug.hub.layout.landmarks.length === 9, `all nine hub destinations remain present at ${viewport.label}`);
+      if (debug.hub.layout.orientation === 'landscape') {
+        const byId = Object.fromEntries(debug.hub.layout.landmarks.map(item => [item.id, item]));
+        assert(
+          byId.scoutHazel.point.y === byId.momoForeman.point.y
+            && byId.scoutHazel.point.y === byId.shellbert.point.y,
+          `landscape character targets follow the illustrated middle row at ${viewport.label}`,
+        );
+        assert(
+          byId.storageChest.point.y === byId.worldMap.point.y,
+          `landscape lower targets follow the illustrated map and chest row at ${viewport.label}`,
+        );
+      }
+      for (let i = 0; i < debug.hub.layout.landmarks.length; i++) {
+        for (let j = i + 1; j < debug.hub.layout.landmarks.length; j++) {
+          const a = debug.hub.layout.landmarks[i];
+          const b = debug.hub.layout.landmarks[j];
+          assert(!rectsOverlap(a.hitRect, b.hitRect), `${a.id} and ${b.id} hit regions remain separated at ${viewport.label}`);
+        }
+      }
       await page.screenshot({ path: `test-results/rpg-readability-${viewport.label}.png` });
       page.__assertNoFailures();
       await page.close();
@@ -501,6 +591,8 @@ for (const caseName of casesToRun) {
   if (caseName === 'cleanup') await testCleanup();
   if (caseName === 'hub-dialogue-world-map') await testHubDialogueWorldMap();
   if (caseName === 'guided-hub-pointer') await testGuidedHubPointer();
+  if (caseName === 'guide-dismissal') await testGuideDismissal();
+  if (caseName === 'hub-map-fallback') await testHubMapFallback();
   if (caseName === 'combat-death-respawn') await testCombatDeathRespawn();
   if (caseName === 'reward-cadence') await testRewardCadence();
   if (caseName === 'alpha-end-card-reload') await testAlphaEndCardReload();
