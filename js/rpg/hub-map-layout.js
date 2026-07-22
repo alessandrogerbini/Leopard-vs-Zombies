@@ -213,10 +213,19 @@ export function getDirectionalNeighbor(layout, currentId, direction) {
       const dy = target.y - origin.y;
       const primary = dx * vector[0] + dy * vector[1];
       const perpendicular = Math.abs(dx * vector[1] - dy * vector[0]);
-      return { id: item.id, primary, score: primary + perpendicular * 1.75 };
+      return { id: item.id, dx, dy, primary, perpendicular };
     })
     .filter(item => item.primary > 0.5)
-    .sort((a, b) => a.score - b.score || a.id.localeCompare(b.id));
+    .map(item => ({
+      ...item,
+      deviation: item.perpendicular / item.primary,
+      distance: Math.hypot(item.dx, item.dy),
+    }))
+    .sort((a, b) => (
+      a.deviation - b.deviation
+      || a.distance - b.distance
+      || a.id.localeCompare(b.id)
+    ));
 
   return candidates[0]?.id || null;
 }

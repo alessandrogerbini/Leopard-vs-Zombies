@@ -187,6 +187,26 @@ async function testLayout() {
     { type: 'dismiss', id: 'firstQuestGuide' },
   );
 
+  for (const [width, height] of [[960, 540], [1280, 720]]) {
+    const landscapeLayout = getHubMapLayout({
+      width,
+      height,
+      landmarks: LANDMARKS,
+      focusId: 'questBoard',
+      guideTargetId: 'questBoard',
+    });
+    equal(
+      getDirectionalNeighbor(landscapeLayout, 'storageChest', 'left'),
+      'worldMap',
+      `${width}x${height} Storage Chest left follows the illustrated lower row`,
+    );
+    equal(
+      getDirectionalNeighbor(landscapeLayout, 'worldMap', 'right'),
+      'storageChest',
+      `${width}x${height} World Map right follows the illustrated lower row`,
+    );
+  }
+
   const portraitLayout = getHubMapLayout({
     width: 390,
     height: 844,
@@ -199,6 +219,10 @@ async function testLayout() {
     ['questBoard', 'worldMap'],
     'portrait shows only the focused and guided landmark labels',
   );
+  equal(getDirectionalNeighbor(portraitLayout, 'worldMap', 'left'), 'scoutHazel', 'portrait center left selects Scout Hazel');
+  equal(getDirectionalNeighbor(portraitLayout, 'worldMap', 'right'), 'playerTent', 'portrait center right selects Player Tent');
+  equal(getDirectionalNeighbor(portraitLayout, 'worldMap', 'up'), 'grannyThistle', 'portrait center up selects Granny Thistle');
+  equal(getDirectionalNeighbor(portraitLayout, 'worldMap', 'down'), 'shellbert', 'portrait center down selects Shellbert');
 
   const landmarksWithFallback = [
     ...LANDMARKS,
