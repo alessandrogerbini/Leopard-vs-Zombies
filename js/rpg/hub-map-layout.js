@@ -32,6 +32,10 @@ const ANCHORS = {
   },
 };
 
+// Dimensionless tangent delta: nearby directions in the same visual row or
+// column compete by distance, while clearly diagonal candidates stay excluded.
+const DIRECTION_ALIGNMENT_TOLERANCE = 0.2;
+
 function rect(x, y, w, h) {
   return { x: Math.round(x), y: Math.round(y), w: Math.round(w), h: Math.round(h) };
 }
@@ -220,12 +224,12 @@ export function getDirectionalNeighbor(layout, currentId, direction) {
       ...item,
       deviation: item.perpendicular / item.primary,
       distance: Math.hypot(item.dx, item.dy),
-    }))
-    .sort((a, b) => (
-      a.deviation - b.deviation
-      || a.distance - b.distance
-      || a.id.localeCompare(b.id)
-    ));
+    }));
 
-  return candidates[0]?.id || null;
+  const bestDeviation = Math.min(...candidates.map(item => item.deviation));
+  const alignedCandidates = candidates
+    .filter(item => item.deviation <= bestDeviation + DIRECTION_ALIGNMENT_TOLERANCE)
+    .sort((a, b) => a.distance - b.distance || a.id.localeCompare(b.id));
+
+  return alignedCandidates[0]?.id || null;
 }

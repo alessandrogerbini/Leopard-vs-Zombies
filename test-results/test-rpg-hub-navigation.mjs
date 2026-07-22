@@ -205,6 +205,21 @@ async function testLayout() {
       'storageChest',
       `${width}x${height} World Map right follows the illustrated lower row`,
     );
+    equal(
+      getDirectionalNeighbor(landscapeLayout, 'worldMap', 'up'),
+      'scoutHazel',
+      `${width}x${height} World Map up selects the nearer middle row`,
+    );
+    equal(
+      getDirectionalNeighbor(landscapeLayout, 'storageChest', 'up'),
+      'momoForeman',
+      `${width}x${height} Storage Chest up selects the nearer middle row`,
+    );
+    equal(
+      getDirectionalNeighbor(landscapeLayout, 'craftingBench', 'right'),
+      'momoForeman',
+      `${width}x${height} Crafting Bench right selects the nearest eligible destination`,
+    );
   }
 
   const portraitLayout = getHubMapLayout({
