@@ -82,6 +82,7 @@ export function createDefaultSave(animalId = 'leopard', slot = 0, now = 0) {
       alphaEndCardSeen: false,
       alphaEndCardUnlocked: false,
       bananaCannonPayoff: false,
+      firstQuestGuideDismissed: false,
     },
     playtimeSeconds: 0,
   };
@@ -168,6 +169,7 @@ export function normalizeSave(raw, animalId = raw?.animalId || 'leopard', slot =
     alphaEndCardSeen: Boolean(flags.alphaEndCardSeen),
     alphaEndCardUnlocked: Boolean(flags.alphaEndCardUnlocked),
     bananaCannonPayoff: Boolean(flags.bananaCannonPayoff),
+    firstQuestGuideDismissed: Boolean(flags.firstQuestGuideDismissed),
   };
   save.playtimeSeconds = toInt(raw.playtimeSeconds, defaultSave.playtimeSeconds);
 

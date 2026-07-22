@@ -75,6 +75,13 @@ async function testSaveSlots() {
   deepStrictEqual(defaultSave.unlockedZones, ['hub', 'forestEdge']);
   equal(defaultSave.currentZone, 'hub');
   equal(defaultSave.flags.spaceshipWitness, false);
+  equal(defaultSave.flags.firstQuestGuideDismissed, false, 'new saves show the first-quest guide');
+
+  const legacySave = saves.normalizeSave({
+    ...defaultSave,
+    flags: { spaceshipWitness: true },
+  });
+  equal(legacySave.flags.firstQuestGuideDismissed, false, 'legacy saves default the optional guide flag to false');
   equal(defaultSave.playtimeSeconds, 0);
 
   storage.setItem(leopardKey, '{not valid json');
@@ -125,6 +132,7 @@ async function testSaveReload() {
   save.currentZone = 'forestEdge';
   save.rescued.rabbitVillage = true;
   save.flags.spaceshipWitness = true;
+  save.flags.firstQuestGuideDismissed = true;
   save.playtimeSeconds = 360;
 
   saves.writeSaveSlot(storage, save, 2000);
@@ -144,6 +152,7 @@ async function testSaveReload() {
   ok(loaded.save.unlockedRecipes.includes('woodenClub'), 'unlocked recipes persist');
   equal(loaded.save.rescued.rabbitVillage, true);
   equal(loaded.save.flags.spaceshipWitness, true);
+  equal(loaded.save.flags.firstQuestGuideDismissed, true, 'guide dismissal persists after reload');
   equal(loaded.save.playtimeSeconds, 360);
 
   const otherAnimal = saves.readSaveSlot(storage, 'leopard', 0);
