@@ -1,4 +1,4 @@
-import { deepStrictEqual, equal } from 'assert/strict';
+import { deepStrictEqual, doesNotThrow, equal } from 'assert/strict';
 import { fileURLToPath, pathToFileURL } from 'url';
 import { dirname, join } from 'path';
 
@@ -319,6 +319,81 @@ async function testScreenLayouts() {
   console.log('PASS: screen-layouts');
 }
 
+function createMockCanvasContext(width = 960, height = 540) {
+  return {
+    canvas: { width, height },
+    clearRect() {},
+    fillRect() {},
+    strokeRect() {},
+    beginPath() {},
+    moveTo() {},
+    lineTo() {},
+    quadraticCurveTo() {},
+    closePath() {},
+    fill() {},
+    stroke() {},
+    fillText() {},
+    drawImage() {},
+    createLinearGradient() {
+      return { addColorStop() {} };
+    },
+    measureText(text) {
+      return { width: String(text).length * 8 };
+    },
+    fillStyle: '',
+    strokeStyle: '',
+    font: '',
+    textAlign: 'left',
+    lineWidth: 1,
+  };
+}
+
+async function testLegacyRenderSmoke() {
+  const { drawHub, drawQuestBoard, drawWorldMap } = await importRpgModule('hud-rpg.js');
+  const ctx = createMockCanvasContext();
+  const hub = {
+    npcs: [
+      { id: 'grannyThistle', name: 'Granny Thistle' },
+      { id: 'scoutHazel', name: 'Scout Hazel' },
+      { id: 'momoForeman', name: 'Momo Foreman' },
+      { id: 'shellbert', name: 'Shellbert' },
+    ],
+    interactables: [
+      { id: 'questBoard', label: 'Quest Board' },
+      { id: 'craftingBench', label: 'Crafting Bench' },
+      { id: 'worldMap', label: 'World Map' },
+      { id: 'playerTent', label: 'Player Tent' },
+      { id: 'storageChest', label: 'Storage Chest' },
+    ],
+  };
+
+  doesNotThrow(() => drawHub(ctx, { hub, focusItem: null, activeQuest: null }));
+  doesNotThrow(() => drawQuestBoard(ctx, {
+    activeQuest: null,
+    questBoard: {
+      selectedQuest: 0,
+      available: [{
+        id: 'heroSignup',
+        title: 'The Hero Sign-Up Sheet',
+        destinationZone: 'forestEdge',
+        rewardPreview: 'Wooden Club recipe',
+      }],
+    },
+  }));
+  doesNotThrow(() => drawWorldMap(ctx, {
+    worldMap: {
+      selectedMapEntry: 0,
+      entries: [
+        { id: 'forestEdge', label: 'Forest Edge', unlocked: true, reason: '' },
+        { id: 'rabbitVillage', label: 'Rabbit Village', unlocked: false, reason: 'Complete the first rescue' },
+      ],
+    },
+  }));
+
+  console.log('PASS: legacy-render-smoke');
+}
+
 await testGuidance();
 await testLayout();
 await testScreenLayouts();
+await testLegacyRenderSmoke();

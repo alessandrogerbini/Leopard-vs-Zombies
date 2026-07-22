@@ -12,7 +12,7 @@
  */
 
 import { SAVE_SLOT_COUNT } from './save-system.js';
-import { getGuideOverlayLayout } from './hub-map-layout.js';
+import { getGuideOverlayLayout, getHubMapLayout } from './hub-map-layout.js';
 
 function roundedRect(ctx, x, y, w, h, r) {
   const radius = Math.min(r, w / 2, h / 2);
@@ -412,7 +412,16 @@ export function drawHub(ctx, view) {
   const focus = view.focusItem;
   const activeQuest = view.activeQuest;
   const guide = view.guide;
-  const layout = hub.layout;
+  const layout = hub.layout || getHubMapLayout({
+    width: w,
+    height: h,
+    landmarks: [
+      ...(hub.npcs || []).map(npc => ({ id: npc.id, label: npc.name })),
+      ...(hub.interactables || []).map(item => ({ id: item.id, label: item.label })),
+    ],
+    focusId: focus?.id || null,
+    guideTargetId: guide?.active ? guide.targetId : null,
+  });
   const mapAsset = hub.mapAsset;
 
   ctx.clearRect(0, 0, w, h);
@@ -482,9 +491,9 @@ export function drawQuestBoard(ctx, view) {
   const h = ctx.canvas.height;
   const available = view.questBoard.available;
   const selectedQuest = view.questBoard.selectedQuest || 0;
-  const layout = view.questBoard.layout;
   const activeQuest = view.activeQuest;
   const guide = view.guide;
+  const layout = view.questBoard.layout || getQuestBoardLayout(w, h, available.length, Boolean(guide?.active));
 
   ctx.clearRect(0, 0, w, h);
   drawBackground(ctx, w, h);
@@ -549,8 +558,8 @@ export function drawWorldMap(ctx, view) {
   const h = ctx.canvas.height;
   const entries = view.worldMap.entries;
   const selected = view.worldMap.selectedMapEntry || 0;
-  const layout = view.worldMap.layout;
   const guide = view.guide;
+  const layout = view.worldMap.layout || getWorldMapLayout(w, h, entries.length, Boolean(guide?.active));
 
   ctx.clearRect(0, 0, w, h);
   drawBackground(ctx, w, h);
