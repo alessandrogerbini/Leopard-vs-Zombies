@@ -18,14 +18,30 @@ function makeSave() {
   };
 }
 
+const INACTIVE_GUIDE = {
+  active: false,
+  step: null,
+  targetId: null,
+  title: '',
+  instruction: '',
+  progress: null,
+  dismissible: false,
+};
+
 async function testGuidance() {
   const { deriveFirstQuestGuide } = await importRpgModule('guidance-rpg.js');
   const save = makeSave();
 
   let guide = deriveFirstQuestGuide({ save, screen: 'hub' });
-  equal(guide.step, 'open-quest-board');
-  equal(guide.targetId, 'questBoard');
-  equal(guide.instruction, 'NEXT: Open the Quest Board');
+  deepStrictEqual(guide, {
+    active: true,
+    step: 'open-quest-board',
+    targetId: 'questBoard',
+    title: 'FIRST RESCUE',
+    instruction: 'NEXT: Open the Quest Board',
+    progress: null,
+    dismissible: true,
+  });
 
   guide = deriveFirstQuestGuide({ save, screen: 'questBoard' });
   equal(guide.step, 'accept-hero-signup');
@@ -60,6 +76,35 @@ async function testGuidance() {
   save.quests.completed = [];
   save.quests.active = 'bunnyRescue';
   equal(deriveFirstQuestGuide({ save, screen: 'hub' }).active, false);
+
+  deepStrictEqual(deriveFirstQuestGuide({ screen: 'hub' }), INACTIVE_GUIDE);
+
+  const immutableSave = makeSave();
+  immutableSave.quests.active = 'heroSignup';
+  immutableSave.quests.progress.heroSignup = { wood: 2, tutorialZombies: 1 };
+  const saveSnapshot = structuredClone(immutableSave);
+  deriveFirstQuestGuide({ save: immutableSave, screen: 'hub' });
+  deepStrictEqual(immutableSave, saveSnapshot);
+
+  const sanitizationSave = makeSave();
+  sanitizationSave.currentZone = 'forestEdge';
+  sanitizationSave.quests.active = 'heroSignup';
+  sanitizationSave.quests.progress.heroSignup = { wood: -2, tutorialZombies: '4.9' };
+  guide = deriveFirstQuestGuide({ save: sanitizationSave, screen: 'zone' });
+  deepStrictEqual(guide.progress, {
+    wood: { current: 0, required: 5, label: 'Wood' },
+    tutorialZombies: { current: 4, required: 3, label: 'Zombies' },
+  });
+
+  sanitizationSave.quests.progress.heroSignup = {
+    wood: Number.POSITIVE_INFINITY,
+    tutorialZombies: 'not-a-number',
+  };
+  guide = deriveFirstQuestGuide({ save: sanitizationSave, screen: 'zone' });
+  deepStrictEqual(guide.progress, {
+    wood: { current: 0, required: 5, label: 'Wood' },
+    tutorialZombies: { current: 0, required: 3, label: 'Zombies' },
+  });
 
   console.log('PASS: guidance');
 }
